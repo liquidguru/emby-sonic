@@ -1,0 +1,188 @@
+"""
+Similarity search and playlist generation algorithms.
+
+All functions are async (SQLAlchemy async sessions), but the FAISS calls are
+synchronous in-memory operations — fast enough not to need offloading.
+
+Algorithms:
+  Track Radio    — seed → k-NN in FAISS
+  Sonic Adventure — interpolate embedding space from A to B, pick nearest real tracks
+  Mixes for You  — k-means cluster → one mix per cluster (run during scan)
+  Guest DJ       — alias for Track Radio with smaller k (used by queue/inject)
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from api.schemas import SimilarTrack, TrackOut, SimilarArtist, SimilarAlbum
+from analysis.faiss_index import sonic_index
+from db.models import Track, Embedding
+
+
+async def _load_track_out(track_id: str, db: AsyncSession) -> TrackOut | None:
+    track = await db.get(Track, track_id)
+    if track is None:
+        return None
+    return TrackOut.model_validate(track)
+
+
+async def get_similar_tracks(
+    track_id: str, n: int, db: AsyncSession
+) -> list[SimilarTrack]:
+    vec = sonic_index.get_vector(track_id)
+    if vec is None:
+        return []
+    results = sonic_index.search(vec, k=n, exclude_id=track_id)
+    out = []
+    for tid, score in results:
+        track_out = await _load_track_out(tid, db)
+        if track_out:
+            out.append(SimilarTrack(track=track_out, score=score))
+    return out
+
+
+async def build_radio(seed_id: str, length: int, db: AsyncSession) -> list[TrackOut]:
+    """
+    Track Radio: grow a queue by iteratively picking the nearest unvisited neighbour.
+    Starting from seed, each step finds the nearest track to the *current* tail track
+    to keep the queue sonically coherent rather than just clustering around the seed.
+    """
+    seed_vec = sonic_index.get_vector(seed_id)
+    if seed_vec is None:
+        return []
+
+    visited = {seed_id}
+    queue: list[TrackOut] = []
+    current_vec = seed_vec
+
+    while len(queue) < length:
+        candidates = sonic_index.search(current_vec, k=20)
+        next_track = next(
+            ((tid, score) for tid, score in candidates if tid not in visited), None
+        )
+        if next_track is None:
+            break
+        tid, _ = next_track
+        visited.add(tid)
+        track_out = await _load_track_out(tid, db)
+        if track_out:
+            queue.append(track_out)
+            next_vec = sonic_index.get_vector(tid)
+            if next_vec is not None:
+                current_vec = next_vec
+
+    return queue
+
+
+async def build_adventure(
+    from_id: str, to_id: str, length: int, db: AsyncSession
+) -> list[TrackOut]:
+    """
+    Sonic Adventure: interpolate linearly through embedding space from A to B,
+    find the nearest real track at each interpolation step.
+    """
+    vec_a = sonic_index.get_vector(from_id)
+    vec_b = sonic_index.get_vector(to_id)
+    if vec_a is None or vec_b is None:
+        return []
+
+    visited = {from_id, to_id}
+    tracks: list[TrackOut] = []
+
+    for step in range(1, length + 1):
+        t = step / (length + 1)  # 0 < t < 1, never hits endpoints
+        interp = (1.0 - t) * vec_a + t * vec_b
+        interp = interp / (np.linalg.norm(interp) + 1e-8)
+
+        for tid, _ in sonic_index.search(interp, k=10):
+            if tid not in visited:
+                visited.add(tid)
+                track_out = await _load_track_out(tid, db)
+                if track_out:
+                    tracks.append(track_out)
+                break
+
+    return tracks
+
+
+async def get_similar_artists(
+    artist_id: str, n: int, db: AsyncSession
+) -> list[SimilarArtist]:
+    """
+    Artist similarity: average the embeddings of all tracks by the artist,
+    then find tracks from other artists whose centroids are nearest.
+
+    artist_id here is the Emby ArtistId (string). We resolve artist name → tracks
+    via the Track table's artist column (Emby doesn't give us a separate artist table).
+    """
+    result = await db.execute(select(Track).where(Track.id == artist_id))
+    seed_track = result.scalar_one_or_none()
+    if seed_track is None or seed_track.artist is None:
+        return []
+
+    artist_name = seed_track.artist
+    artist_tracks = (
+        await db.execute(select(Track).where(Track.artist == artist_name))
+    ).scalars().all()
+
+    vecs = [sonic_index.get_vector(t.id) for t in artist_tracks]
+    vecs = [v for v in vecs if v is not None]
+    if not vecs:
+        return []
+
+    centroid = np.mean(vecs, axis=0).astype(np.float32)
+    candidates = sonic_index.search(centroid, k=n * 20)
+
+    seen_artists: set[str] = {artist_name}
+    out: list[SimilarArtist] = []
+    for tid, score in candidates:
+        track = await db.get(Track, tid)
+        if track and track.artist and track.artist not in seen_artists:
+            seen_artists.add(track.artist)
+            out.append(SimilarArtist(artist=track.artist, score=score))
+        if len(out) >= n:
+            break
+    return out
+
+
+async def get_similar_albums(
+    album_id: str, n: int, db: AsyncSession
+) -> list[SimilarAlbum]:
+    """
+    Album similarity: average track embeddings for the seed album, then find
+    other albums with nearest centroids.
+    """
+    seed_track = await db.get(Track, album_id)
+    if seed_track is None or seed_track.album is None:
+        return []
+
+    album_name = seed_track.album
+    album_tracks = (
+        await db.execute(select(Track).where(Track.album == album_name))
+    ).scalars().all()
+
+    vecs = [sonic_index.get_vector(t.id) for t in album_tracks]
+    vecs = [v for v in vecs if v is not None]
+    if not vecs:
+        return []
+
+    centroid = np.mean(vecs, axis=0).astype(np.float32)
+    candidates = sonic_index.search(centroid, k=n * 20)
+
+    seen_albums: set[str] = {album_name}
+    out: list[SimilarAlbum] = []
+    for tid, score in candidates:
+        track = await db.get(Track, tid)
+        if track and track.album and track.album not in seen_albums:
+            seen_albums.add(track.album)
+            out.append(SimilarAlbum(
+                album=track.album,
+                artist=track.artist,
+                score=score,
+            ))
+        if len(out) >= n:
+            break
+    return out

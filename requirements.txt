@@ -1,0 +1,23 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+sqlalchemy[asyncio]>=2.0
+aiosqlite>=0.20.0
+httpx>=0.27.0
+pydantic-settings>=2.2
+numpy>=1.26
+librosa>=0.10
+soundfile>=0.12
+faiss-cpu>=1.8.0
+transformers>=4.42.0
+huggingface-hub>=0.23.0
+scipy>=1.13.0
+scikit-learn>=1.5.0
+
+# PyTorch CPU-only (smaller, fine for N100):
+# pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.3.0
+
+# Essentia for mood/vocals analysis.
+# Windows: pip install essentia   (prebuilt wheel available)
+# If wheel fails, install via conda: conda install -c mtg essentia
+essentia>=2.1b6.dev1110
