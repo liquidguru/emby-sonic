@@ -23,6 +23,14 @@ from config import settings
 MODEL_ID = "m-a-p/MERT-v1-95M"
 SAMPLE_RATE = 24000  # MERT's expected input sample rate
 
+# Full-track inference is ~10GB RAM / very slow on CPU (benchmarked on an N100),
+# so each track is sampled as a few fixed-length windows that are embedded
+# independently and averaged. This bounds memory/time per track regardless of
+# its length.
+WINDOW_SECONDS = 30
+WINDOW_SAMPLES = WINDOW_SECONDS * SAMPLE_RATE
+NUM_WINDOWS = 3
+
 
 class MERTEmbedder:
     def __init__(self) -> None:
@@ -54,22 +62,42 @@ class MERTEmbedder:
         self._model = AutoModel.from_pretrained(source, **kwargs).eval()
 
     def embed_raw(self, waveform: np.ndarray) -> np.ndarray:
-        """Return the native 768-dim MERT embedding for a 24kHz mono waveform."""
+        """
+        Return the native 768-dim MERT embedding for a 24kHz mono waveform.
+
+        The track is sampled as up to NUM_WINDOWS windows of WINDOW_SAMPLES,
+        each embedded independently (mean-pooled over time) and then averaged.
+        This keeps memory/compute roughly constant regardless of track length.
+        """
         import torch
 
         self._ensure_loaded()
-        inputs = self._processor(
-            raw_speech=waveform,
-            sampling_rate=SAMPLE_RATE,
-            return_tensors="pt",
-        )
-        with torch.no_grad():
-            outputs = self._model(**inputs, output_hidden_states=True)
 
-        # Mean-pool the last transformer layer over the time dimension
-        last_hidden = outputs.hidden_states[-1]  # (1, T, 768)
-        embedding = last_hidden.mean(dim=1).squeeze(0).numpy()  # (768,)
+        per_window = []
+        for w in self._sample_windows(waveform):
+            inputs = self._processor(
+                raw_speech=w,
+                sampling_rate=SAMPLE_RATE,
+                return_tensors="pt",
+            )
+            with torch.no_grad():
+                outputs = self._model(**inputs, output_hidden_states=True)
+            # Mean-pool the last transformer layer over the time dimension
+            last_hidden = outputs.hidden_states[-1]  # (1, T, 768)
+            per_window.append(last_hidden.mean(dim=1).squeeze(0).numpy())
+
+        embedding = np.mean(per_window, axis=0)  # (768,)
         return embedding.astype(np.float32)
+
+    @staticmethod
+    def _sample_windows(waveform: np.ndarray) -> list[np.ndarray]:
+        """Up to NUM_WINDOWS windows of WINDOW_SAMPLES, spread across the track."""
+        if len(waveform) <= WINDOW_SAMPLES:
+            return [waveform]
+        usable = len(waveform) - WINDOW_SAMPLES
+        # Spread starts across the track, avoiding the exact edges
+        starts = (np.linspace(0.1, 0.9, NUM_WINDOWS) * usable).astype(int)
+        return [waveform[s : s + WINDOW_SAMPLES] for s in starts]
 
     def embed(self, waveform: np.ndarray) -> np.ndarray:
         """Return a 128-dim embedding, using PCA if fitted or truncation otherwise."""
