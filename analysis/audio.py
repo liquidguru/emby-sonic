@@ -54,7 +54,8 @@ def _extract_librosa_features(waveform: np.ndarray, sample_rate: int) -> dict:
     import librosa
 
     tempo, _ = librosa.beat.beat_track(y=waveform, sr=sample_rate)
-    tempo = float(tempo)
+    # librosa >=0.10 returns tempo as a 1-element ndarray, not a scalar
+    tempo = float(np.atleast_1d(tempo)[0])
 
     rms = librosa.feature.rms(y=waveform)
     energy = float(np.mean(rms))
