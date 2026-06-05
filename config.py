@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     model_dir: Path = Path("models")
 
-    embedding_model: str = "m-a-p/MERT-v1-95M"
-    # Target dimensionality after PCA reduction from MERT's native 768-dim output.
+    embedding_model: str = "PANNs-CNN14"  # informational; embedder loads CNN14 directly
+    # Target dimensionality after PCA reduction from CNN14's native 2048-dim output.
     # PCA is fitted on the first full-library batch then saved to data/pca.pkl.
     embedding_dim: int = 128
 

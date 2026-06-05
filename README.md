@@ -16,7 +16,7 @@ Emby Server (existing)
 └── Emby Plugin (C#, thin agnostic proxy — Phase 2)
     └── Python Analysis Service (FastAPI — Phase 1, this repo)
         ├── Audio analysis (librosa; Essentia optional)
-        ├── Embeddings (MERT-v1-95M → 128-dim via PCA)
+        ├── Embeddings (PANNs CNN14 → 128-dim via PCA)
         ├── FAISS vector store (cosine similarity)
         └── SQLite metadata DB
 ```

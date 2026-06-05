@@ -8,7 +8,7 @@ Flow:
      a. Load audio with librosa
      b. Extract librosa features (tempo, energy)
      c. Extract Essentia features (valence, arousal, instrumentalness, vocals)
-     d. Embed with MERT → 128-dim vector
+     d. Embed with CNN14 → 128-dim vector
      e. Write embedding row to SQLite
      f. Add vector to FAISS index
   4. After all tracks: if enough raw embeddings collected, fit/refit PCA

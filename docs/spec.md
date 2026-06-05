@@ -88,8 +88,8 @@ the resolved note in Open Questions.
 **Audio analysis pipeline:**
 - Input: file path (from Emby library)
 - Libraries: `librosa` (tempo, energy, spectral features), `Essentia` (mood, instruments, vocals)
-- Model: pre-trained audio embedding model (HuggingFace — MusicCaps or similar)
-- Output: multi-dimensional vector (128-dim embedding) per track
+- Model: **PANNs CNN14** (AudioSet-pretrained CNN, PyTorch). Chosen over the MERT transformer after benchmarking — see Resolved Decisions. Each track is sampled as 3×30s windows whose CNN embeddings are averaged.
+- Output: 2048-dim CNN embedding → PCA → 128-dim vector per track
 
 **Storage:**
 - `SQLite` — track metadata, analysis state, playlist definitions
@@ -203,7 +203,7 @@ CREATE TABLE mix_tracks (
 
 - Set up FastAPI project structure
 - Integrate librosa + Essentia audio pipeline
-- Download and integrate HuggingFace audio embedding model
+- Download and integrate the PANNs CNN14 embedding model
 - Build SQLite schema + FAISS index
 - Implement similarity search endpoints
 - Implement playlist generation algorithms
@@ -254,7 +254,7 @@ CREATE TABLE mix_tracks (
 | Analysis runs on | coordinator-host | Co-located with Emby; portable model for other users |
 | Library size target | 10k–50k tracks | FAISS flat index sufficient; upgrade path exists |
 | Audio analysis library | librosa + Essentia | Well-maintained, Python-native, proven on music |
-| Embedding model | HuggingFace (TBD — MusicCaps or similar) | No API key needed, runs locally |
+| Embedding model | PANNs CNN14 (PyTorch) | Lightweight CNN, fast on CPU at scale; MERT transformer benchmarked far too slow (~57s vs ~14s/track on the N100) |
 | Vector store | FAISS | Fast, runs in-process, no extra service |
 | Metadata DB | SQLite | Consistent with idGuru pattern; no server overhead |
 | Plugin language | C# (.NET) | Required by Emby plugin SDK |
@@ -266,13 +266,37 @@ CREATE TABLE mix_tracks (
 
 ## Open Questions (to resolve in Phase 1)
 
-- Which HuggingFace embedding model gives best results for music? *(Locked for Phase 1: `m-a-p/MERT-v1-95M`, 768→128-dim via PCA. Revisit after benchmarking.)*
+- Which embedding model gives best results for music? *(RESOLVED: started with MERT-v1-95M but it's far too slow on CPU at scale — switched to **PANNs CNN14** (2048→128-dim via PCA). See Resolved Decisions.)*
 - Should FAISS index live in-memory or on disk? *(Resolved: on disk — `IndexFlatIP` persisted to `data/faiss.index`, loaded on startup.)*
 - Analysis speed on N100 CPU — benchmark needed. GPU acceleration possible? *(Benchmark harness ready: `benchmark.py` reports per-stage timing + real-time factor. Run before full scan.)*
 - Waveform data: generate during analysis or on-demand in app?
 - Incremental scan strategy — watch Emby webhook for library updates?
 
 ## Resolved Decisions (Phase 1 build)
+
+### Embedding model: MERT → PANNs CNN14 (benchmark-driven)
+
+The spec originally locked MERT-v1-95M. Benchmarking on coordinator-host (N100) showed
+MERT — a 95M-param **transformer** — is the wrong tool for CPU-at-scale:
+
+- Full-track inference: ~10 GB RAM + impractically slow (had to chunk to 30s windows).
+- Even chunked (3×30s): **~57s/track** → a ~25k-track library = **~19 days**.
+
+Why Plex is fast on the same class of hardware: it uses a compact **CNN**, not a
+research transformer. So we switched to **PANNs CNN14** (AudioSet-pretrained
+convolutional net, PyTorch, 2048-dim → PCA 128):
+
+- **~14s/track** (incl. one-time model load; ~7s warm) — a 4–8× speedup.
+- 25k-track scan drops from ~19 days to **~3–4 days**, with a clear path to an
+  overnight scan by windowing the whole pipeline (decode + librosa features on
+  the sampled windows only, not the full track — currently the features step is
+  the bottleneck at ~20s/track on long files).
+- CNN14 wants **32 kHz** mono input (MERT used 24 kHz).
+- Checkpoint (`Cnn14_mAP=0.431.pth`, 327 MB) is pre-placed at
+  `~/panns_data/` — `panns_inference`'s auto-download uses `wget`, absent on Windows.
+
+GPU-on-dev-pc (to keep MERT) was considered and rejected as overkill once a
+CNN delivered Plex-class speed on CPU.
 
 ### Cross-platform portability — analysis service
 
