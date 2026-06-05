@@ -23,7 +23,9 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
-        return f"sqlite+aiosqlite:///{self.data_dir / 'sonic.db'}"
+        # as_posix() forces forward slashes — backslashes from a Windows Path
+        # break the SQLAlchemy URL on the driver side.
+        return f"sqlite+aiosqlite:///{(self.data_dir / 'sonic.db').as_posix()}"
 
     @property
     def faiss_index_path(self) -> Path:
