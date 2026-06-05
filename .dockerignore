@@ -1,0 +1,10 @@
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/
+models/
+*.md
+deploy.ps1

@@ -17,7 +17,7 @@ scikit-learn>=1.5.0
 # pip install torch --index-url https://download.pytorch.org/whl/cpu
 torch>=2.3.0
 
-# Essentia for mood/vocals analysis.
-# Windows: pip install essentia   (prebuilt wheel available)
-# If wheel fails, install via conda: conda install -c mtg essentia
-essentia>=2.1b6.dev1110
+# NOTE: Essentia is NOT a core dependency. It has no reliable wheel on Windows
+# or ARM, so requiring it would break native installs on those platforms.
+# It is an OPTIONAL upgrade for higher-quality mood/vocal features — see
+# requirements-optional.txt. Without it, librosa-derived proxies are used.

@@ -83,7 +83,7 @@ async def run_scan(full: bool = False) -> None:
 async def _do_scan(full: bool) -> None:
     from db.database import AsyncSessionLocal
     from db.models import Track, Embedding
-    from analysis.audio import load_audio, extract_librosa_features, extract_essentia_features
+    from analysis.audio import load_audio, extract_features
     from analysis.embeddings import embedder
     from analysis.faiss_index import sonic_index
     from sqlalchemy import select
@@ -125,8 +125,7 @@ async def _do_scan(full: bool) -> None:
             try:
                 # CPU-bound — offload to thread so the event loop stays responsive
                 waveform, sr = await asyncio.to_thread(load_audio, file_path)
-                librosa_feats = await asyncio.to_thread(extract_librosa_features, waveform, sr)
-                essentia_feats = await asyncio.to_thread(extract_essentia_features, file_path)
+                feats = await asyncio.to_thread(extract_features, file_path, waveform, sr)
 
                 raw_vec = await asyncio.to_thread(embedder.embed_raw, waveform)
                 raw_embeddings.append(raw_vec)
@@ -140,12 +139,12 @@ async def _do_scan(full: bool) -> None:
                     emb = existing
 
                 emb.vector = final_vec.tobytes()
-                emb.tempo = librosa_feats.get("tempo")
-                emb.energy = librosa_feats.get("energy")
-                emb.valence = essentia_feats.get("valence")
-                emb.arousal = essentia_feats.get("arousal")
-                emb.instrumentalness = essentia_feats.get("instrumentalness")
-                emb.vocals_present = essentia_feats.get("vocals_present")
+                emb.tempo = feats.get("tempo")
+                emb.energy = feats.get("energy")
+                emb.valence = feats.get("valence")
+                emb.arousal = feats.get("arousal")
+                emb.instrumentalness = feats.get("instrumentalness")
+                emb.vocals_present = feats.get("vocals_present")
 
                 track.analysed_at = datetime.now(UTC)
                 track.analysis_version = 1

@@ -31,16 +31,13 @@ def main():
     print(f"  load_audio          {t_load:.2f}s   ({len(waveform)/sr:.0f}s of audio at {sr}Hz)")
 
     t0 = time.perf_counter()
-    from analysis.audio import extract_librosa_features
-    librosa_feats = extract_librosa_features(waveform, sr)
-    t_librosa = time.perf_counter() - t0
-    print(f"  librosa features    {t_librosa:.2f}s   tempo={librosa_feats['tempo']:.1f} bpm, energy={librosa_feats['energy']:.4f}")
-
-    t0 = time.perf_counter()
-    from analysis.audio import extract_essentia_features
-    essentia_feats = extract_essentia_features(path)
-    t_essentia = time.perf_counter() - t0
-    print(f"  essentia features   {t_essentia:.2f}s   {essentia_feats}")
+    from analysis.audio import extract_features, _HAS_ESSENTIA
+    feats = extract_features(path, waveform, sr)
+    t_feats = time.perf_counter() - t0
+    backend = "essentia + librosa" if _HAS_ESSENTIA else "librosa only (no Essentia)"
+    print(f"  scalar features     {t_feats:.2f}s   [{backend}]")
+    print(f"    tempo={feats['tempo']:.1f} bpm  energy={feats['energy']:.4f}  "
+          f"valence={feats['valence']:.3f}  arousal={feats['arousal']:.3f}")
 
     print("\n  Loading MERT model (first call includes download/cache)...")
     t0 = time.perf_counter()
@@ -49,7 +46,7 @@ def main():
     t_embed = time.perf_counter() - t0
     print(f"  MERT embed_raw      {t_embed:.2f}s   shape={raw_vec.shape}")
 
-    total = t_load + t_librosa + t_essentia + t_embed
+    total = t_load + t_feats + t_embed
     audio_len = len(waveform) / sr
     rtf = total / audio_len  # real-time factor
 

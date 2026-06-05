@@ -1,0 +1,13 @@
+# Optional dependencies — install only if your platform supports them.
+#
+# Essentia upgrades valence/arousal/instrumentalness/vocal-detection from
+# librosa proxies to pre-trained model outputs. The analysis service detects
+# it automatically at runtime and uses it when present.
+#
+# Platform support:
+#   Linux x86_64 : pip install essentia            (wheel available)
+#   macOS        : pip install essentia            (or: brew install essentia)
+#   Windows / ARM: no reliable wheel — use conda:   conda install -c mtg essentia
+#                  or simply skip it (librosa fallback is used).
+
+essentia>=2.1b6.dev1110
