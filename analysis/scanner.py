@@ -123,14 +123,15 @@ async def _do_scan(full: bool) -> None:
                 continue
 
             try:
-                waveform, sr = load_audio(file_path)
-                librosa_feats = extract_librosa_features(waveform, sr)
-                essentia_feats = extract_essentia_features(file_path)
+                # CPU-bound — offload to thread so the event loop stays responsive
+                waveform, sr = await asyncio.to_thread(load_audio, file_path)
+                librosa_feats = await asyncio.to_thread(extract_librosa_features, waveform, sr)
+                essentia_feats = await asyncio.to_thread(extract_essentia_features, file_path)
 
-                raw_vec = embedder.embed_raw(waveform)
+                raw_vec = await asyncio.to_thread(embedder.embed_raw, waveform)
                 raw_embeddings.append(raw_vec)
 
-                final_vec = embedder.embed(waveform)
+                final_vec = await asyncio.to_thread(embedder.embed, waveform)
 
                 if existing is None:
                     emb = Embedding(track_id=track_id)
