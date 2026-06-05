@@ -39,14 +39,19 @@ class MERTEmbedder:
             return
         from transformers import AutoModel, AutoProcessor
 
-        cache = str(settings.model_dir)
-        self._processor = AutoProcessor.from_pretrained(
-            MODEL_ID, cache_dir=cache, trust_remote_code=True
-        )
-        self._model = (
-            AutoModel.from_pretrained(MODEL_ID, cache_dir=cache, trust_remote_code=True)
-            .eval()
-        )
+        # Prefer a locally pre-downloaded model dir (models/MERT-v1-95M) for
+        # offline / slow-network hosts like the N100; otherwise download by repo
+        # id into the cache. The local dir avoids HF's xet CDN entirely.
+        local_dir = settings.model_dir / "MERT-v1-95M"
+        if (local_dir / "config.json").exists():
+            source = str(local_dir)
+            kwargs = {"trust_remote_code": True, "local_files_only": True}
+        else:
+            source = MODEL_ID
+            kwargs = {"trust_remote_code": True, "cache_dir": str(settings.model_dir)}
+
+        self._processor = AutoProcessor.from_pretrained(source, **kwargs)
+        self._model = AutoModel.from_pretrained(source, **kwargs).eval()
 
     def embed_raw(self, waveform: np.ndarray) -> np.ndarray:
         """Return the native 768-dim MERT embedding for a 24kHz mono waveform."""
