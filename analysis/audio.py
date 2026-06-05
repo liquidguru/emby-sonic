@@ -25,8 +25,8 @@ except ImportError:
     _HAS_ESSENTIA = False
 
 
-def load_audio(file_path: str, target_sr: int = 24000) -> tuple[np.ndarray, int]:
-    """Load audio file, convert to mono, resample to target_sr."""
+def load_audio(file_path: str, target_sr: int = 32000) -> tuple[np.ndarray, int]:
+    """Load audio file, convert to mono, resample to target_sr (CNN14 wants 32kHz)."""
     import librosa
     waveform, sr = librosa.load(file_path, sr=target_sr, mono=True)
     return waveform, sr

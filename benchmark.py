@@ -39,12 +39,12 @@ def main():
     print(f"    tempo={feats['tempo']:.1f} bpm  energy={feats['energy']:.4f}  "
           f"valence={feats['valence']:.3f}  arousal={feats['arousal']:.3f}")
 
-    print("\n  Loading MERT model (first call includes download/cache)...")
+    print("\n  Loading embedding model (CNN14; first call loads checkpoint)...")
     t0 = time.perf_counter()
     from analysis.embeddings import embedder
     raw_vec = embedder.embed_raw(waveform)
     t_embed = time.perf_counter() - t0
-    print(f"  MERT embed_raw      {t_embed:.2f}s   shape={raw_vec.shape}")
+    print(f"  embed_raw (CNN14)   {t_embed:.2f}s   shape={raw_vec.shape}")
 
     total = t_load + t_feats + t_embed
     audio_len = len(waveform) / sr
