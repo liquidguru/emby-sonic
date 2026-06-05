@@ -11,7 +11,7 @@ Design for cross-platform portability:
     everywhere — just with lower fidelity.
 
 These scalar features are auxiliary metadata for display/filtering. Core
-sonic similarity comes from the MERT embedding vector, not these scalars,
+sonic similarity comes from the CNN14 embedding vector, not these scalars,
 so the librosa proxies being approximate is acceptable.
 """
 
