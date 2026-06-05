@@ -1,15 +1,23 @@
 """
-MERT-v1-95M audio embedding model.
+Audio embedding via PANNs CNN14 (PyTorch).
+
+Why CNN14 and not a transformer (MERT): MERT (95M-param transformer) costs ~19s
+per 30s window on the N100 CPU, which makes a 25k-track library scan take weeks.
+CNN14 is a convolutional AudioSet model that runs an order of magnitude faster on
+CPU — the same class of lightweight model Plex uses for Sonic Analysis.
 
 Pipeline:
-  audio waveform (24kHz mono)
-  → MERT transformer (12 layers, 768-dim hidden states)
-  → mean-pool last hidden state over time → 768-dim vector
+  audio waveform (32kHz mono)
+  → sample NUM_WINDOWS fixed-length windows (bounds memory/time vs full track)
+  → CNN14 per window → 2048-dim embedding → average windows → 2048-dim
   → PCA reduction → 128-dim float32 embedding
 
 PCA is fitted on the first full-library batch and persisted to data/pca.pkl.
-Until PCA is available, naive truncation to 128-dim is used (similarity will
-be approximate but structurally correct).
+Until PCA is available, naive truncation to 128-dim is used.
+
+NOTE: the CNN14 checkpoint must already exist at ~/panns_data/Cnn14_mAP=0.431.pth.
+panns_inference's auto-download shells out to `wget`, which is absent on Windows,
+so the checkpoint is pre-placed there via curl during setup.
 """
 
 from __future__ import annotations
@@ -20,22 +28,19 @@ import numpy as np
 
 from config import settings
 
-MODEL_ID = "m-a-p/MERT-v1-95M"
-SAMPLE_RATE = 24000  # MERT's expected input sample rate
+SAMPLE_RATE = 32000  # CNN14's expected input sample rate
+RAW_DIM = 2048       # CNN14 embedding dimensionality (before PCA)
 
-# Full-track inference is ~10GB RAM / very slow on CPU (benchmarked on an N100),
-# so each track is sampled as a few fixed-length windows that are embedded
-# independently and averaged. This bounds memory/time per track regardless of
-# its length.
+# Each track is sampled as a few fixed-length windows, embedded independently and
+# averaged — bounds memory/time regardless of track length.
 WINDOW_SECONDS = 30
 WINDOW_SAMPLES = WINDOW_SECONDS * SAMPLE_RATE
 NUM_WINDOWS = 3
 
 
-class MERTEmbedder:
+class PANNsEmbedder:
     def __init__(self) -> None:
         self._model = None
-        self._processor = None
         self._pca = None
         self._pca_fitted = False
 
@@ -45,49 +50,26 @@ class MERTEmbedder:
     def _ensure_loaded(self) -> None:
         if self._model is not None:
             return
-        from transformers import AutoModel, AutoProcessor
+        from panns_inference import AudioTagging
 
-        # Prefer a locally pre-downloaded model dir (models/MERT-v1-95M) for
-        # offline / slow-network hosts like the N100; otherwise download by repo
-        # id into the cache. The local dir avoids HF's xet CDN entirely.
-        local_dir = settings.model_dir / "MERT-v1-95M"
-        if (local_dir / "config.json").exists():
-            source = str(local_dir)
-            kwargs = {"trust_remote_code": True, "local_files_only": True}
-        else:
-            source = MODEL_ID
-            kwargs = {"trust_remote_code": True, "cache_dir": str(settings.model_dir)}
-
-        self._processor = AutoProcessor.from_pretrained(source, **kwargs)
-        self._model = AutoModel.from_pretrained(source, **kwargs).eval()
+        # checkpoint_path=None → panns_inference resolves to
+        # ~/panns_data/Cnn14_mAP=0.431.pth, which we pre-place via curl.
+        self._model = AudioTagging(checkpoint_path=None, device="cpu")
 
     def embed_raw(self, waveform: np.ndarray) -> np.ndarray:
         """
-        Return the native 768-dim MERT embedding for a 24kHz mono waveform.
-
-        The track is sampled as up to NUM_WINDOWS windows of WINDOW_SAMPLES,
-        each embedded independently (mean-pooled over time) and then averaged.
-        This keeps memory/compute roughly constant regardless of track length.
+        Return the native 2048-dim CNN14 embedding for a 32kHz mono waveform,
+        averaged over up to NUM_WINDOWS sampled windows.
         """
-        import torch
-
         self._ensure_loaded()
 
         per_window = []
         for w in self._sample_windows(waveform):
-            inputs = self._processor(
-                raw_speech=w,
-                sampling_rate=SAMPLE_RATE,
-                return_tensors="pt",
-            )
-            with torch.no_grad():
-                outputs = self._model(**inputs, output_hidden_states=True)
-            # Mean-pool the last transformer layer over the time dimension
-            last_hidden = outputs.hidden_states[-1]  # (1, T, 768)
-            per_window.append(last_hidden.mean(dim=1).squeeze(0).numpy())
+            audio = np.ascontiguousarray(w[None, :], dtype=np.float32)  # (1, samples)
+            _clipwise, embedding = self._model.inference(audio)
+            per_window.append(np.asarray(embedding)[0])  # (2048,)
 
-        embedding = np.mean(per_window, axis=0)  # (768,)
-        return embedding.astype(np.float32)
+        return np.mean(per_window, axis=0).astype(np.float32)
 
     @staticmethod
     def _sample_windows(waveform: np.ndarray) -> list[np.ndarray]:
@@ -104,11 +86,11 @@ class MERTEmbedder:
         raw = self.embed_raw(waveform)
         if self._pca_fitted:
             return self._pca.transform(raw.reshape(1, -1))[0].astype(np.float32)
-        # Naive fallback: first 128 principal components by index
+        # Naive fallback until PCA is fitted: first 128 dims
         return raw[: settings.embedding_dim].astype(np.float32)
 
     def fit_pca(self, raw_embeddings: np.ndarray) -> None:
-        """Fit PCA on an (N, 768) matrix of raw embeddings and persist to disk."""
+        """Fit PCA on an (N, 2048) matrix of raw embeddings and persist to disk."""
         from sklearn.decomposition import PCA
 
         self._pca = PCA(n_components=settings.embedding_dim, random_state=42)
@@ -128,4 +110,4 @@ class MERTEmbedder:
 
 
 # Module-level singleton — loaded lazily on first embed() call
-embedder = MERTEmbedder()
+embedder = PANNsEmbedder()
