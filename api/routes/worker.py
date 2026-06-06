@@ -107,6 +107,8 @@ async def results(body: ResultsRequest, db: DB, _auth: WorkerAuth) -> ResultsRes
                 failed += 1
 
         await db.commit()
-        if stored:
-            sonic_index.save()
+    # NB: we intentionally do NOT persist the FAISS index here — writing the
+    # whole index on every batch blocks the event loop and worsens as it grows.
+    # The in-memory index stays current via sonic_index.add(); on restart it is
+    # rebuilt from the DB (the source of truth) by rebuild_index_from_db().
     return ResultsResponse(stored=stored, failed=failed)
