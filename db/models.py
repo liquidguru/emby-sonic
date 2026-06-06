@@ -16,6 +16,14 @@ class Track(Base):
     analysed_at: Mapped[datetime | None] = mapped_column(DateTime)
     analysis_version: Mapped[int | None] = mapped_column(Integer)
 
+    # Crash-safe / distributed-worker state. The coordinator hands tracks to
+    # workers (local or remote) on a lease: a track is claimable when
+    # status='pending' and claimed_at is NULL or older than the lease timeout.
+    # On crash/restart, stale claims are reclaimed and 'done' tracks are skipped.
+    analysis_status: Mapped[str] = mapped_column(Text, default="pending", index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    error: Mapped[str | None] = mapped_column(Text)
+
     embedding: Mapped["Embedding | None"] = relationship(back_populates="track", uselist=False)
 
 
@@ -23,8 +31,12 @@ class Embedding(Base):
     __tablename__ = "embeddings"
 
     track_id: Mapped[str] = mapped_column(Text, ForeignKey("tracks.id"), primary_key=True)
-    # 128-dim float32 stored as raw bytes (numpy ndarray.tobytes() / frombuffer())
+    # 128-dim float32 stored as raw bytes (numpy ndarray.tobytes() / frombuffer()).
+    # This is the FAISS-indexed vector — FAISS is rebuilt from these on startup.
     vector: Mapped[bytes | None] = mapped_column(LargeBinary)
+    # Native 2048-dim CNN14 vector, kept so PCA can be (re)fitted later and the
+    # 128-dim `vector` + FAISS index regenerated without re-analysing audio.
+    raw_vector: Mapped[bytes | None] = mapped_column(LargeBinary)
     tempo: Mapped[float | None] = mapped_column(Float)
     energy: Mapped[float | None] = mapped_column(Float)
     valence: Mapped[float | None] = mapped_column(Float)

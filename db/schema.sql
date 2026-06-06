@@ -9,12 +9,16 @@ CREATE TABLE tracks (
   duration_ms INTEGER,
   file_path TEXT,
   analysed_at TIMESTAMP,
-  analysis_version INTEGER
+  analysis_version INTEGER,
+  analysis_status TEXT DEFAULT 'pending',  -- pending | done | error (crash-safe resume)
+  claimed_at TIMESTAMP,         -- worker lease; NULL or stale = reclaimable
+  error TEXT                    -- last failure message, if status='error'
 );
 
 CREATE TABLE embeddings (
   track_id TEXT PRIMARY KEY REFERENCES tracks(id),
-  vector BLOB,                  -- serialised 128-dim float32 array (numpy tobytes)
+  vector BLOB,                  -- serialised 128-dim float32 array (FAISS-indexed; rebuilt from DB)
+  raw_vector BLOB,              -- native 2048-dim CNN14 vector (for PCA refit / index rebuild)
   tempo REAL,
   energy REAL,
   valence REAL,                 -- mood: sad → happy (Essentia)

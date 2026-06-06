@@ -117,9 +117,9 @@ async def _do_scan(full: bool) -> None:
             track.duration_ms = int(ticks / 10000) if ticks else None
             track.file_path = file_path
 
-            # Skip if already analysed (unless full re-scan)
+            # Skip already-completed tracks (crash-safe resume); unless full re-scan
             existing = await db.get(Embedding, track_id)
-            if existing is not None and not full:
+            if track.analysis_status == "done" and not full:
                 scan_state["done"] += 1
                 continue
 
@@ -147,6 +147,7 @@ async def _do_scan(full: bool) -> None:
                     emb = existing
 
                 emb.vector = final_vec.tobytes()
+                emb.raw_vector = raw_vec.tobytes()  # kept for PCA refit / FAISS rebuild
                 emb.tempo = feats.get("tempo")
                 emb.energy = feats.get("energy")
                 emb.valence = feats.get("valence")
@@ -156,11 +157,15 @@ async def _do_scan(full: bool) -> None:
 
                 track.analysed_at = datetime.now(UTC)
                 track.analysis_version = 1
+                track.analysis_status = "done"
+                track.error = None
 
                 sonic_index.add(track_id, final_vec)
 
-            except Exception:
+            except Exception as exc:
                 logger.exception("Failed to analyse track %s (%s)", track_id, file_path)
+                track.analysis_status = "error"
+                track.error = str(exc)[:500]
                 scan_state["errors"] += 1
 
             scan_state["done"] += 1
