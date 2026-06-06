@@ -13,9 +13,8 @@ async def get_status(db: DB, _token: AuthToken) -> StatusOut:
     total = (await db.execute(select(func.count()).select_from(Track))).scalar_one()
     analysed = (await db.execute(select(func.count()).select_from(Embedding))).scalar_one()
 
-    progress = None
-    if scan_state["running"] and scan_state["total"] > 0:
-        progress = scan_state["done"] / scan_state["total"]
+    # Analysis progress is the share of the library embedded (workers drive it).
+    progress = (analysed / total) if total else None
 
     return StatusOut(
         total_tracks=total,

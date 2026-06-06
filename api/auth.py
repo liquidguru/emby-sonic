@@ -5,6 +5,7 @@ from fastapi.security import APIKeyHeader
 from config import settings
 
 _header = APIKeyHeader(name="X-Emby-Token", auto_error=True)
+_worker_header = APIKeyHeader(name="X-Worker-Token", auto_error=True)
 
 
 async def verify_emby_token(token: str = Security(_header)) -> str:
@@ -16,4 +17,15 @@ async def verify_emby_token(token: str = Security(_header)) -> str:
         )
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Invalid or expired Emby token")
+    return token
+
+
+async def verify_worker(token: str = Security(_worker_header)) -> str:
+    """
+    Authenticate an analysis worker. Workers present a shared secret (the Emby
+    API key, which they already hold to stream audio) in X-Worker-Token. Simple
+    and sufficient for a trusted LAN; can be split into a dedicated secret later.
+    """
+    if not settings.emby_api_key or token != settings.emby_api_key:
+        raise HTTPException(status_code=401, detail="Invalid worker token")
     return token

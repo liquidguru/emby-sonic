@@ -38,6 +38,7 @@ RAW_DIM = 2048  # CNN14 embedding dimensionality (before PCA)
 class PANNsEmbedder:
     def __init__(self) -> None:
         self._model = None
+        self._device = None
         self._pca = None
         self._pca_fitted = False
 
@@ -47,11 +48,15 @@ class PANNsEmbedder:
     def _ensure_loaded(self) -> None:
         if self._model is not None:
             return
+        import torch
         from panns_inference import AudioTagging
 
+        # Auto-detect GPU: a worker on a CUDA box (e.g. liquidHulk's RTX 4070)
+        # gets a 10-50x speedup for free; the N100 coordinator stays on CPU.
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
         # checkpoint_path=None → panns_inference resolves to
         # ~/panns_data/Cnn14_mAP=0.431.pth, which we pre-place via curl.
-        self._model = AudioTagging(checkpoint_path=None, device="cpu")
+        self._model = AudioTagging(checkpoint_path=None, device=self._device)
 
     def embed_raw(self, windows: list[np.ndarray]) -> np.ndarray:
         """
