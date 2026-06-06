@@ -9,7 +9,13 @@ _worker_header = APIKeyHeader(name="X-Worker-Token", auto_error=True)
 
 
 async def verify_emby_token(token: str = Security(_header)) -> str:
-    """Validate the caller's Emby token against Emby's /Users/Me endpoint."""
+    """Validate the caller's Emby token against Emby's /Users/Me endpoint.
+
+    The server API key is also accepted so admin tooling and integration tests
+    don't need a user session token. Mobile clients use real Emby user tokens.
+    """
+    if settings.emby_api_key and token == settings.emby_api_key:
+        return token
     async with httpx.AsyncClient(base_url=settings.emby_url, timeout=5.0) as client:
         resp = await client.get(
             "/Users/Me",
