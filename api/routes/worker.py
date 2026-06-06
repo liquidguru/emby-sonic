@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 from fastapi import APIRouter
@@ -25,6 +25,13 @@ from api.deps import DB, WorkerAuth
 from api.schemas import ClaimRequest, ClaimResponse, ClaimedTrack, ResultsRequest, ResultsResponse
 from db.models import Track, Embedding
 from analysis.faiss_index import sonic_index
+
+_UTC = timezone.utc
+
+
+def _utcnow() -> datetime:
+    """Naive UTC datetime for SQLite storage (DateTime column has no timezone)."""
+    return datetime.now(_UTC).replace(tzinfo=None)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +46,7 @@ router = APIRouter(tags=["worker"])
 
 @router.post("/worker/claim", response_model=ClaimResponse)
 async def claim(body: ClaimRequest, db: DB, _auth: WorkerAuth) -> ClaimResponse:
-    cutoff = datetime.now(UTC) - timedelta(seconds=body.lease_seconds)
+    cutoff = _utcnow() - timedelta(seconds=body.lease_seconds)
     stmt = (
         select(Track)
         .where(
@@ -50,7 +57,7 @@ async def claim(body: ClaimRequest, db: DB, _auth: WorkerAuth) -> ClaimResponse:
     )
     tracks = (await db.execute(stmt)).scalars().all()
 
-    now = datetime.now(UTC)
+    now = _utcnow()
     for t in tracks:
         t.claimed_at = now
     await db.commit()
@@ -91,7 +98,7 @@ async def results(body: ResultsRequest, db: DB, _auth: WorkerAuth) -> ResultsRes
                 emb.vocals_present = r.vocals_present
 
                 track.analysis_status = "done"
-                track.analysed_at = datetime.now(UTC)
+                track.analysed_at = _utcnow()
                 track.analysis_version = 1
                 track.error = None
                 track.claimed_at = None
