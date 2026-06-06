@@ -28,14 +28,11 @@ import numpy as np
 
 from config import settings
 
-SAMPLE_RATE = 32000  # CNN14's expected input sample rate
-RAW_DIM = 2048       # CNN14 embedding dimensionality (before PCA)
+RAW_DIM = 2048  # CNN14 embedding dimensionality (before PCA)
 
-# Each track is sampled as a few fixed-length windows, embedded independently and
-# averaged — bounds memory/time regardless of track length.
-WINDOW_SECONDS = 30
-WINDOW_SAMPLES = WINDOW_SECONDS * SAMPLE_RATE
-NUM_WINDOWS = 3
+# NOTE: windowing now happens upstream in audio.load_windows() — the embedder
+# receives a list of pre-decoded windows and averages their embeddings. Window
+# count / length / sample rate live in config (settings.num_windows etc.).
 
 
 class PANNsEmbedder:
@@ -56,38 +53,32 @@ class PANNsEmbedder:
         # ~/panns_data/Cnn14_mAP=0.431.pth, which we pre-place via curl.
         self._model = AudioTagging(checkpoint_path=None, device="cpu")
 
-    def embed_raw(self, waveform: np.ndarray) -> np.ndarray:
+    def embed_raw(self, windows: list[np.ndarray]) -> np.ndarray:
         """
-        Return the native 2048-dim CNN14 embedding for a 32kHz mono waveform,
-        averaged over up to NUM_WINDOWS sampled windows.
+        Return the native 2048-dim CNN14 embedding for a track, given the list of
+        pre-decoded 32kHz mono windows (from audio.load_windows). Each window is
+        embedded independently and the results are averaged.
         """
         self._ensure_loaded()
 
         per_window = []
-        for w in self._sample_windows(waveform):
+        for w in windows:
             audio = np.ascontiguousarray(w[None, :], dtype=np.float32)  # (1, samples)
             _clipwise, embedding = self._model.inference(audio)
             per_window.append(np.asarray(embedding)[0])  # (2048,)
 
         return np.mean(per_window, axis=0).astype(np.float32)
 
-    @staticmethod
-    def _sample_windows(waveform: np.ndarray) -> list[np.ndarray]:
-        """Up to NUM_WINDOWS windows of WINDOW_SAMPLES, spread across the track."""
-        if len(waveform) <= WINDOW_SAMPLES:
-            return [waveform]
-        usable = len(waveform) - WINDOW_SAMPLES
-        # Spread starts across the track, avoiding the exact edges
-        starts = (np.linspace(0.1, 0.9, NUM_WINDOWS) * usable).astype(int)
-        return [waveform[s : s + WINDOW_SAMPLES] for s in starts]
-
-    def embed(self, waveform: np.ndarray) -> np.ndarray:
-        """Return a 128-dim embedding, using PCA if fitted or truncation otherwise."""
-        raw = self.embed_raw(waveform)
+    def reduce(self, raw: np.ndarray) -> np.ndarray:
+        """Reduce a raw 2048-dim vector to 128-dim (PCA if fitted, else truncate)."""
         if self._pca_fitted:
             return self._pca.transform(raw.reshape(1, -1))[0].astype(np.float32)
         # Naive fallback until PCA is fitted: first 128 dims
         return raw[: settings.embedding_dim].astype(np.float32)
+
+    def embed(self, windows: list[np.ndarray]) -> np.ndarray:
+        """Return a 128-dim embedding for a track's pre-decoded windows."""
+        return self.reduce(self.embed_raw(windows))
 
     def fit_pca(self, raw_embeddings: np.ndarray) -> None:
         """Fit PCA on an (N, 2048) matrix of raw embeddings and persist to disk."""

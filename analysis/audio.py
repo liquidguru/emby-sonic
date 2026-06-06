@@ -18,6 +18,8 @@ so the librosa proxies being approximate is acceptable.
 from __future__ import annotations
 import numpy as np
 
+from config import settings
+
 try:
     import essentia.standard as es
     _HAS_ESSENTIA = True
@@ -26,10 +28,48 @@ except ImportError:
 
 
 def load_audio(file_path: str, target_sr: int = 32000) -> tuple[np.ndarray, int]:
-    """Load audio file, convert to mono, resample to target_sr (CNN14 wants 32kHz)."""
+    """Load the whole file, mono, resampled to target_sr. (Used as a fallback.)"""
     import librosa
     waveform, sr = librosa.load(file_path, sr=target_sr, mono=True)
     return waveform, sr
+
+
+def load_windows(file_path: str) -> list[np.ndarray]:
+    """
+    Decode ONLY the sampled analysis windows, not the whole track.
+
+    Reads the duration from the header, then decodes `settings.num_windows`
+    windows of `settings.window_seconds` spread across the track (avoiding the
+    exact edges). This bounds decode + downstream feature/embedding cost to a
+    fixed amount of audio regardless of track length — the core of the
+    pipeline-windowing optimisation. Short tracks return a single whole-file window.
+    """
+    import librosa
+
+    sr = settings.sample_rate
+    win = settings.window_seconds
+
+    try:
+        duration = float(librosa.get_duration(path=file_path))
+    except Exception:
+        duration = 0.0
+
+    if duration <= win:
+        y, _ = librosa.load(file_path, sr=sr, mono=True)
+        return [y] if len(y) else []
+
+    usable = duration - win
+    starts = np.linspace(0.1, 0.9, settings.num_windows) * usable
+    windows: list[np.ndarray] = []
+    for s in starts:
+        y, _ = librosa.load(file_path, sr=sr, mono=True, offset=float(s), duration=win)
+        if len(y):
+            windows.append(y)
+
+    if not windows:  # decode failed for every window — fall back to whole file
+        y, _ = librosa.load(file_path, sr=sr, mono=True)
+        windows = [y] if len(y) else []
+    return windows
 
 
 def extract_features(file_path: str, waveform: np.ndarray, sample_rate: int) -> dict:
