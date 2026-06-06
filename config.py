@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     # PCA is fitted on the first full-library batch then saved to data/pca.pkl.
     embedding_dim: int = 128
 
+    # Analysis windowing. Each track is sampled as `num_windows` windows of
+    # `window_seconds`, decoded + feature-analysed + embedded — only these
+    # windows, never the full track — so per-track cost is bounded regardless of
+    # length. num_windows is the main speed/quality knob (1 = fastest scan).
+    sample_rate: int = 32000  # CNN14's expected input rate
+    window_seconds: int = 30
+    num_windows: int = 3
+
     analysis_workers: int = 2
 
     @property

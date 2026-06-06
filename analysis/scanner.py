@@ -83,7 +83,8 @@ async def run_scan(full: bool = False) -> None:
 async def _do_scan(full: bool) -> None:
     from db.database import AsyncSessionLocal
     from db.models import Track, Embedding
-    from analysis.audio import load_audio, extract_features
+    from analysis.audio import load_windows, extract_features
+    from config import settings
     from analysis.embeddings import embedder
     from analysis.faiss_index import sonic_index
     from sqlalchemy import select
@@ -123,14 +124,21 @@ async def _do_scan(full: bool) -> None:
                 continue
 
             try:
-                # CPU-bound — offload to thread so the event loop stays responsive
-                waveform, sr = await asyncio.to_thread(load_audio, file_path)
-                feats = await asyncio.to_thread(extract_features, file_path, waveform, sr)
+                # CPU-bound — offload to thread so the event loop stays responsive.
+                # Decode ONLY the sampled windows (not the full track), then run
+                # both features and embedding on that bounded audio.
+                windows = await asyncio.to_thread(load_windows, file_path)
+                if not windows:
+                    raise ValueError("no decodable audio")
+                window_audio = np.concatenate(windows)
+                feats = await asyncio.to_thread(
+                    extract_features, file_path, window_audio, settings.sample_rate
+                )
 
-                raw_vec = await asyncio.to_thread(embedder.embed_raw, waveform)
+                raw_vec = await asyncio.to_thread(embedder.embed_raw, windows)
                 raw_embeddings.append(raw_vec)
 
-                final_vec = await asyncio.to_thread(embedder.embed, waveform)
+                final_vec = embedder.reduce(raw_vec)
 
                 if existing is None:
                     emb = Embedding(track_id=track_id)
