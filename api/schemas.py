@@ -85,3 +85,41 @@ class SimilarAlbum(BaseModel):
     album: str
     artist: str | None
     score: float
+
+
+# ---- Distributed analysis workers ----
+
+class ClaimRequest(BaseModel):
+    worker_id: str
+    batch_size: int = 16
+    lease_seconds: int = 600  # reclaim a track if a worker hasn't reported back in time
+
+
+class ClaimedTrack(BaseModel):
+    id: str            # Emby item id — worker streams audio via /Items/{id}/Download
+    path: str | None   # original path; used only for the temp-file extension
+
+
+class ClaimResponse(BaseModel):
+    tracks: list[ClaimedTrack]
+
+
+class WorkerResult(BaseModel):
+    track_id: str
+    raw_vector: str | None = None  # base64 of the 2048-dim float32 CNN embedding
+    tempo: float | None = None
+    energy: float | None = None
+    valence: float | None = None
+    arousal: float | None = None
+    instrumentalness: float | None = None
+    vocals_present: int | None = None
+    error: str | None = None       # set if this track failed on the worker
+
+
+class ResultsRequest(BaseModel):
+    results: list[WorkerResult]
+
+
+class ResultsResponse(BaseModel):
+    stored: int
+    failed: int

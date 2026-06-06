@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from api.routes import status, tracks, adventure, mixes, queue, library, artists, albums
+from api.routes import status, tracks, adventure, mixes, queue, library, artists, albums, worker
 from db.database import init_db
 from config import settings
 
@@ -30,6 +30,7 @@ app.include_router(queue.router, prefix="/sonic")
 app.include_router(library.router, prefix="/sonic")
 app.include_router(artists.router, prefix="/sonic")
 app.include_router(albums.router, prefix="/sonic")
+app.include_router(worker.router, prefix="/sonic")
 
 
 if __name__ == "__main__":
