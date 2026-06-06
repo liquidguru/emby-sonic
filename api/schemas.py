@@ -76,6 +76,17 @@ class ScanStarted(BaseModel):
     full: bool
 
 
+class BuildMixesRequest(BaseModel):
+    n_clusters: int = 30       # number of mixes to generate
+    tracks_per_mix: int = 50   # tracks per mix (closest to cluster centroid)
+
+
+class BuildMixesStarted(BaseModel):
+    message: str
+    n_clusters: int
+    tracks_per_mix: int
+
+
 class SimilarArtist(BaseModel):
     artist: str
     score: float
