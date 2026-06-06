@@ -99,14 +99,19 @@ def main() -> None:
                 except Exception as exc:
                     results.append({"track_id": track["id"], "error": str(exc)[:500]})
 
-            r = client.post(
-                f"{COORDINATOR}/sonic/worker/results",
-                json={"results": results},
-                headers=_HEADERS,
-            )
-            r.raise_for_status()
-            out = r.json()
-            print(f"[worker] batch done: stored={out['stored']} failed={out['failed']}")
+            try:
+                r = client.post(
+                    f"{COORDINATOR}/sonic/worker/results",
+                    json={"results": results},
+                    headers=_HEADERS,
+                )
+                r.raise_for_status()
+                out = r.json()
+                print(f"[worker] batch done: stored={out['stored']} failed={out['failed']}")
+            except Exception as exc:
+                # Don't crash — the coordinator's lease re-queues these tracks.
+                print(f"[worker] results POST failed: {exc}; tracks will be re-leased")
+                time.sleep(5)
 
 
 if __name__ == "__main__":
