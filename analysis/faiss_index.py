@@ -38,6 +38,18 @@ class SonicIndex:
         self._index.add(vec)
         self._track_ids.append(track_id)
 
+    def rebuild(self, items: list[tuple[str, np.ndarray]]) -> None:
+        """
+        Reset the index and repopulate from (track_id, 128-dim vector) pairs.
+        Used on startup to rebuild FAISS from the SQLite DB (the source of truth)
+        — so a crash that loses the on-disk index loses no analysed work.
+        """
+        self._index = faiss.IndexFlatIP(settings.embedding_dim)
+        self._track_ids = []
+        for tid, vec in items:
+            self.add(tid, vec)
+        self.save()
+
     def search(self, vector: np.ndarray, k: int, exclude_id: str | None = None) -> list[tuple[str, float]]:
         """Return up to k (track_id, cosine_score) pairs, excluding exclude_id if given."""
         self._ensure_loaded()

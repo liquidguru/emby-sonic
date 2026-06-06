@@ -11,7 +11,12 @@ async def lifespan(app: FastAPI):
     settings.model_dir.mkdir(parents=True, exist_ok=True)
     await init_db()
     from analysis.faiss_index import sonic_index
+    from analysis.index_sync import rebuild_index_from_db
     sonic_index.load_or_create()
+    # Rebuild FAISS from the DB (source of truth) so a crash that lost the
+    # on-disk index — or stale index after analysed tracks were committed —
+    # is reconciled on every startup.
+    await rebuild_index_from_db()
     yield
 
 
