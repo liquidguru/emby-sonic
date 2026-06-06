@@ -56,10 +56,10 @@ def main():
     print(f"  embed_raw (CNN14)   {t_embed:.2f}s   shape={raw_vec.shape}")
 
     total = t_load + t_feats + t_embed
-    print(f"\n  Total (cold): {total:.2f}s/track  — bounded, independent of length")
+    print(f"\n  Total (cold): {total:.2f}s/track  - bounded, independent of length")
     # Warm estimate: the model loads once per scan, so subtract a ~6s load estimate.
     warm = t_load + t_feats + max(t_embed - 6.0, t_embed * 0.4)
-    print(f"  Warm est: ~{warm:.1f}s/track  →  ~25k tracks ≈ ~{warm * 25000 / 3600:.0f} hours")
+    print(f"  Warm est: ~{warm:.1f}s/track  ->  ~25k tracks = ~{warm * 25000 / 3600:.0f} hours")
 
 
 if __name__ == "__main__":
