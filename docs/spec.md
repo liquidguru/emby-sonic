@@ -1,7 +1,7 @@
 # Emby Sonic — Project Specification
-**Version:** 0.1 (draft)
+**Version:** 0.2
 **Author:** Kaj Maney
-**Status:** Architecture locked, implementation not started
+**Status:** Phase 1 COMPLETE — Phase 2 (C# plugin) next
 
 ---
 
@@ -27,7 +27,7 @@ Emby Sonic is a fully self-contained Emby plugin + companion Android (and eventu
 
 ---
 
-## Features (Full Scope — Option C)
+## Features (Full Scope)
 
 | Feature | Description |
 |---|---|
@@ -46,15 +46,21 @@ Emby Sonic is a fully self-contained Emby plugin + companion Android (and eventu
 ### Deployment topology
 
 ```
-liquidBee (192.168.1.9)
+liquidBee (192.168.1.9) — or any Emby host
 ├── Emby Server (existing)
-├── Emby Plugin (C# — thin wrapper, Phase 2)
-└── Python Analysis Service (FastAPI — Phase 1)
-    ├── Audio analysis engine
-    ├── Embeddings model
-    ├── FAISS vector store
-    └── SQLite metadata DB
+├── Emby Plugin (C# — thin proxy, Phase 2)
+└── Emby Sonic Coordinator (FastAPI, :8765 — Phase 1)
+    ├── SQLite — track metadata, analysis state, playlist definitions
+    └── FAISS — 128-dim cosine similarity index
+
+Any LAN machine (e.g. liquidHulk w/ RTX 4070)
+└── Analysis Worker(s) — claim tracks, stream audio from Emby, embed, report back
 ```
+
+The coordinator and workers are decoupled: workers can run on the same host or on
+any networked machine (including a GPU box). This lets a small Emby server offload
+heavy analysis to a more powerful machine on the LAN — without file shares or
+special network config, since workers stream audio directly from Emby's HTTP API.
 
 ### Layer 1 — Emby (existing)
 
@@ -74,53 +80,53 @@ liquidBee (192.168.1.9)
 
 **Design principle — keep the plugin thin and platform-agnostic.** An Emby
 plugin is a managed .NET assembly (IL), so a single `.dll` runs unchanged on
-every platform Emby supports (Windows, Linux x86/ARM, macOS) — *as long as the
-plugin contains no native code*. The plugin must therefore stay a pure proxy:
-it registers routes and forwards to the Python service, nothing more. It must
-NOT bundle the Python service's native binaries (torch/faiss/numpy/librosa are
-per-OS/per-arch wheels) inside the plugin zip — doing so would destroy the
-plugin's natural agnosticism and force a per-platform build. How the Python
-service is provisioned is a *separate* concern from the plugin artifact — see
-the resolved note in Open Questions.
+every platform Emby supports — *as long as the plugin contains no native code*.
+The plugin must stay a pure proxy; it must NOT bundle the Python service's native
+binaries (torch/faiss/numpy are per-OS/per-arch wheels). See provisioning options
+in Resolved Decisions.
 
 ### Layer 3 — Python Analysis Service (FastAPI)
 
-**Audio analysis pipeline:**
-- Input: file path (from Emby library)
-- Libraries: `librosa` (tempo, energy, spectral features), `Essentia` (mood, instruments, vocals)
-- Model: **PANNs CNN14** (AudioSet-pretrained CNN, PyTorch). Chosen over the MERT transformer after benchmarking — see Resolved Decisions. Each track is sampled as 3×30s windows whose CNN embeddings are averaged.
-- Output: 2048-dim CNN embedding → PCA → 128-dim vector per track
+**Audio analysis pipeline (per track):**
+1. Stream audio from Emby via `/Items/{id}/Download` (workers do this; no file share needed)
+2. Decode 3×30s windows at 32 kHz mono (librosa; full track never loaded into memory)
+3. Extract features (tempo, energy, spectral) on the windowed audio only
+4. Embed via **PANNs CNN14** (AudioSet-pretrained CNN, PyTorch) → 2048-dim vector
+5. PCA → 128-dim vector (PCA fitted on first full-library batch, saved to `data/pca.pkl`)
+6. Store raw (2048-dim) + reduced (128-dim) vectors in SQLite; add to FAISS
 
 **Storage:**
-- `SQLite` — track metadata, analysis state, playlist definitions
-- `FAISS` — vector index for fast nearest-neighbour similarity search
+- `SQLite` — track metadata, analysis state (`pending`/`done`/`error`), worker leases, playlist definitions
+- `FAISS` — `IndexFlatIP` (cosine) — in-memory, rebuilt from SQLite on startup (DB is source of truth)
+- Raw 2048-dim vectors kept in SQLite so PCA can be refitted without re-analysing audio
 
-**Similarity engine:**
-- Cosine similarity between track embeddings
-- FAISS `IndexFlatL2` for MVP, upgrade to `IndexIVFFlat` at scale (>50k tracks)
+**Coordinator/Worker split:**
+- **Coordinator** (runs on the Emby host): owns SQLite + FAISS, serves all API routes, hands out
+  tracks to workers on time-limited leases (default 600s). If a worker crashes, its tracks become
+  reclaimable by another worker after the lease expires.
+- **Workers** (`worker.py`): stateless; claim a batch → stream + embed → POST results back.
+  Workers auto-detect CUDA and use it if available. Run as many as VRAM allows; 5 workers
+  fit comfortably in 12 GB (RTX 4070).
 
-**Playlist generation algorithms:**
-- Track Radio: seed track → k-nearest neighbours → queue
-- Sonic Adventure: seed A + target B → find intermediate chain through embedding space
-- Mixes For You: cluster library into N groups (k-means) → curate one mix per cluster
-- Guest DJ: real-time queue injection of nearest neighbours to current track
+**REST API (FastAPI, all under `/sonic`):**
 
-**REST API (FastAPI):**
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/sonic/status` | GET | Emby user token | Analysis progress + library stats |
+| `/sonic/tracks/{id}/similar` | GET | Emby user token | N most sonically similar tracks |
+| `/sonic/tracks/{id}/radio` | GET | Emby user token | Track radio playlist (greedy walk) |
+| `/sonic/adventure` | POST | Emby user token | Body: `{from_id, to_id, length}` → playlist |
+| `/sonic/mixes` | GET | Emby user token | All curated mixes |
+| `/sonic/mixes/{id}` | GET | Emby user token | Mix detail + track list |
+| `/sonic/queue/inject` | POST | Emby user token | Guest DJ: inject similar tracks |
+| `/sonic/artists/{id}/similar` | GET | Emby user token | Sonically similar artists |
+| `/sonic/albums/{id}/similar` | GET | Emby user token | Sonically similar albums |
+| `/sonic/library/scan` | POST | Emby user token | Trigger full/incremental sync |
+| `/sonic/worker/claim` | POST | Worker token | Claim a batch of pending tracks |
+| `/sonic/worker/results` | POST | Worker token | Submit embeddings for a batch |
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/sonic/status` | GET | Analysis progress, library stats |
-| `/sonic/tracks/{id}/similar` | GET | N most sonically similar tracks |
-| `/sonic/tracks/{id}/radio` | GET | Generate track radio playlist |
-| `/sonic/adventure` | POST | Body: `{from_id, to_id, length}` → playlist |
-| `/sonic/mixes` | GET | All curated mixes for current user |
-| `/sonic/mixes/{id}` | GET | Mix detail + track list |
-| `/sonic/queue/inject` | POST | Guest DJ: inject similar tracks into queue |
-| `/sonic/library/scan` | POST | Trigger full or incremental re-analysis |
-| `/sonic/artists/{id}/similar` | GET | Sonically similar artists |
-| `/sonic/albums/{id}/similar` | GET | Sonically similar albums |
-
-Auth: Emby API token passed in `X-Emby-Token` header — Python service validates against Emby's `/Users/Me` endpoint.
+**Auth:** User-facing routes validate `X-Emby-Token` against Emby's `/Users/Me`.
+Worker routes validate `X-Worker-Token` against the shared `EMBY_API_KEY`.
 
 ### Layer 4 — Android App (Kotlin / Jetpack Compose)
 
@@ -139,12 +145,9 @@ Auth: Emby API token passed in `X-Emby-Token` header — Python service validate
 | Settings | Server address, auth, analysis status |
 
 **Playback:**
-- Stream directly from Emby API using Emby stream URL
+- Stream directly from Emby API
 - ExoPlayer for playback
 - MediaSession for system/notification controls
-- Offline queue caching (optional, Phase 3+)
-
-**UI aesthetic reference:** Plexamp / YouTube Music — dark theme, large album art, smooth transitions, waveform visualisation on Now Playing
 
 ### Layer 5 — iOS App (Swift / SwiftUI — Phase 4)
 
@@ -164,16 +167,22 @@ CREATE TABLE tracks (
   album TEXT,
   duration_ms INTEGER,
   file_path TEXT,
-  analysed_at TIMESTAMP,
-  analysis_version INTEGER
+  analysed_at TIMESTAMP,        -- naive UTC
+  analysis_version INTEGER,
+
+  -- Distributed worker state
+  analysis_status TEXT DEFAULT 'pending',  -- 'pending' | 'done' | 'error'
+  claimed_at TIMESTAMP,         -- naive UTC; NULL = unclaimed
+  error TEXT                    -- set if status='error'
 );
 
 CREATE TABLE embeddings (
   track_id TEXT PRIMARY KEY REFERENCES tracks(id),
-  vector BLOB,                  -- serialised 128-dim float32 array
+  vector BLOB,                  -- 128-dim float32, PCA-reduced (FAISS-indexed)
+  raw_vector BLOB,              -- 2048-dim float32 (CNN14 native; kept for PCA refit)
   tempo REAL,
   energy REAL,
-  valence REAL,                 -- mood: sad → happy
+  valence REAL,                 -- mood: sad → happy (librosa proxy; Essentia if available)
   arousal REAL,                 -- mood: calm → energetic
   instrumentalness REAL,
   vocals_present INTEGER        -- boolean
@@ -198,52 +207,66 @@ CREATE TABLE mix_tracks (
 
 ## Build Phases
 
-### Phase 1 — Python Analysis Service
-*Your comfort zone. Start here.*
+### Phase 1 — Python Analysis Service ✅ COMPLETE
 
-- Set up FastAPI project structure
-- Integrate librosa + Essentia audio pipeline
-- Download and integrate the PANNs CNN14 embedding model
-- Build SQLite schema + FAISS index
-- Implement similarity search endpoints
-- Implement playlist generation algorithms
-- Test against local music library on liquidBee
-- **Deliverable:** Working API accessible at `http://liquidBee:8765`
+**Delivered:**
+- FastAPI coordinator with full route set (similarity, radio, adventure, mixes, queue, library, workers)
+- PANNs CNN14 embedding pipeline with 3×30s windowed audio decode
+- Pipeline-windowing optimisation: librosa features on windows only (6.8s vs 19.9s for long tracks)
+- SQLite schema with crash-safe worker lease mechanism
+- FAISS `IndexFlatIP` rebuilt from DB on every startup (crash-safe)
+- Distributed worker subsystem (`worker.py`) — GPU auto-detect, streams audio from Emby, no file share
+- PCA fitted on first full-library batch (`data/pca.pkl`), 2048→128 dim
 
-**Tools:** Claude Code, Python, FastAPI, librosa, Essentia, FAISS, SQLite
+**Real-world results (liquidBee N100 + liquidHulk RTX 4070, library of 28,316 tracks):**
+- 5 GPU workers on liquidHulk, coordinator on liquidBee
+- **27,692 tracks embedded** (97.8%) — 608 errors (broken files in Emby library)
+- End-to-end validated: claim → stream from Emby → GPU embed → store → FAISS → similarity query
+- Similarity quality confirmed: Banco de Gaia → Aes Dana (0.752), Tiësto (0.733) — correct ambient/downtempo neighbourhood from audio alone, no genre tags
+
+**Benchmarks (liquidBee N100, warm model):**
+
+| Stage | Time |
+|---|---|
+| Audio decode (3×30s windows) | ~6.5s |
+| librosa features (on windows) | ~6.8s |
+| CNN14 embed (3 windows, GPU) | ~1–2s |
+| CNN14 embed (3 windows, CPU) | ~10.7s |
+| **Total per track (GPU worker)** | **~10–15s** |
+
+**Remaining Phase 1 items:**
+- Mixes: k-means clustering job to populate `Mix`/`MixTrack` tables (routes exist, data not yet generated)
+- User-facing auth: confirm end-to-end with a real Emby user token from Android
+- Incremental scan: Emby webhook or polling (currently manual trigger only)
 
 ### Phase 2 — Emby Plugin (C# wrapper)
-*New learning, but small scope.*
+*Next.*
 
 - Learn Emby plugin SDK basics
 - Create minimal plugin project (C# / .NET)
-- Register API route passthrough to Python service
-- Bundle Python service launcher
-- Test plugin install from Emby dashboard
-- **Deliverable:** Plugin zip installable from Emby → Python service auto-starts
+- Register API route passthrough to Python coordinator
+- Trigger library scan on Emby library update events
+- Bundle Python service launcher (provisioning option A or B — see Resolved Decisions)
+- **Deliverable:** Plugin zip installable from Emby dashboard
 
 **Tools:** Claude Code, C# / .NET SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
 *Pure UI consuming stable API.*
 
-- Set up Kotlin / Jetpack Compose project
-- Implement server discovery + auth flow
-- Build library browser screens
-- Build Now Playing screen (ExoPlayer + waveform)
-- Integrate all discovery features
-- Polish UI (dark theme, animations, transitions)
+- Kotlin / Jetpack Compose project
+- Server discovery + auth flow (user logs into Emby; app uses Emby session token)
+- Library browser screens
+- Now Playing (ExoPlayer + waveform)
+- All discovery features
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
-
-**Tools:** Android Studio, Kotlin, Jetpack Compose, ExoPlayer
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
 
-- Swift / SwiftUI project
-- Same API, same feature set
+- Swift / SwiftUI
 - AVPlayer for audio
-- **Deliverable:** TestFlight build → App Store
+- **Deliverable:** TestFlight → App Store
 
 ---
 
@@ -251,82 +274,87 @@ CREATE TABLE mix_tracks (
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Analysis runs on | liquidBee | Co-located with Emby; portable model for other users |
-| Library size target | 10k–50k tracks | FAISS flat index sufficient; upgrade path exists |
-| Audio analysis library | librosa + Essentia | Well-maintained, Python-native, proven on music |
-| Embedding model | PANNs CNN14 (PyTorch) | Lightweight CNN, fast on CPU at scale; MERT transformer benchmarked far too slow (~57s vs ~14s/track on the N100) |
-| Vector store | FAISS | Fast, runs in-process, no extra service |
-| Metadata DB | SQLite | Consistent with idGuru pattern; no server overhead |
+| Analysis runs on | Any LAN machine (coordinator on Emby host) | Coordinator is lightweight; GPU workers can run elsewhere |
+| Worker architecture | Coordinator + distributed workers via HTTP | Crash-safe leases; GPU offload; no file-share dependency |
+| Library size target | 10k–50k tracks | FAISS flat index sufficient; upgrade path to IVFFlat exists |
+| Audio analysis library | librosa (core) + Essentia (optional) | Essentia has no Windows/ARM wheel; librosa proxies mood features |
+| Embedding model | PANNs CNN14 (2048-dim, PyTorch) | Lightweight CNN, fast at scale; MERT transformer was ~4× slower on CPU |
+| Audio windowing | 3×30s windows, decoded on-demand | Bounds RAM regardless of track length; windowed features = ~3× faster |
+| Embedding dim | 128 (PCA from 2048) | FAISS-efficient; PCA fitted on full library, saved for refit without re-analysis |
+| Vector store | FAISS IndexFlatIP (cosine) | Fast, in-process; DB is source of truth; FAISS rebuilt on startup |
+| Metadata DB | SQLite (aiosqlite, WAL mode) | No server overhead; crash-safe with WAL + busy_timeout |
 | Plugin language | C# (.NET) | Required by Emby plugin SDK |
 | Android language | Kotlin / Jetpack Compose | Modern Android standard |
-| API auth | Emby token passthrough | No second auth system to maintain |
-| MVP scope | All discovery features together | No point building without the features that make it valuable |
+| API auth | Emby token passthrough | No second auth system; worker routes use shared API key |
+| MVP scope | All discovery features together | No point shipping without the features that make it valuable |
 
 ---
 
-## Open Questions (to resolve in Phase 1)
+## Open Questions
 
-- Which embedding model gives best results for music? *(RESOLVED: started with MERT-v1-95M but it's far too slow on CPU at scale — switched to **PANNs CNN14** (2048→128-dim via PCA). See Resolved Decisions.)*
-- Should FAISS index live in-memory or on disk? *(Resolved: on disk — `IndexFlatIP` persisted to `data/faiss.index`, loaded on startup.)*
-- Analysis speed on N100 CPU — benchmark needed. GPU acceleration possible? *(Benchmark harness ready: `benchmark.py` reports per-stage timing + real-time factor. Run before full scan.)*
-- Waveform data: generate during analysis or on-demand in app?
-- Incremental scan strategy — watch Emby webhook for library updates?
+- **Mixes generation:** when/how to trigger k-means clustering? On-demand via `/library/scan`? Nightly cron?
+- **Waveform data:** generate during analysis or on-demand in the app?
+- **Incremental scan:** poll Emby on a schedule, or webhook on library update?
+- **Worker token:** currently the shared `EMBY_API_KEY` — split into a dedicated `WORKER_SECRET` env var?
 
-## Resolved Decisions (Phase 1 build)
+---
+
+## Resolved Decisions
 
 ### Embedding model: MERT → PANNs CNN14 (benchmark-driven)
 
 The spec originally locked MERT-v1-95M. Benchmarking on liquidBee (N100) showed
-MERT — a 95M-param **transformer** — is the wrong tool for CPU-at-scale:
+MERT — a 95M-param **transformer** — is too slow for CPU-at-scale:
 
-- Full-track inference: ~10 GB RAM + impractically slow (had to chunk to 30s windows).
-- Even chunked (3×30s): **~57s/track** → a ~25k-track library = **~19 days**.
+- Full-track: ~10 GB RAM, impractically slow.
+- Chunked (3×30s): **~57s/track** → 25k tracks = **~19 days**.
 
-Why Plex is fast on the same class of hardware: it uses a compact **CNN**, not a
-research transformer. So we switched to **PANNs CNN14** (AudioSet-pretrained
-convolutional net, PyTorch, 2048-dim → PCA 128):
+Plex is fast on the same hardware because it uses a compact CNN, not a research
+transformer. Switched to **PANNs CNN14** (AudioSet-pretrained, PyTorch, 2048-dim):
 
-- **~14s/track** (incl. one-time model load; ~7s warm) — a 4–8× speedup.
-- 25k-track scan drops from ~19 days to **~3–4 days**, with a clear path to an
-  overnight scan by windowing the whole pipeline (decode + librosa features on
-  the sampled windows only, not the full track — currently the features step is
-  the bottleneck at ~20s/track on long files).
-- CNN14 wants **32 kHz** mono input (MERT used 24 kHz).
-- Checkpoint (`Cnn14_mAP=0.431.pth`, 327 MB) is pre-placed at
-  `~/panns_data/` — `panns_inference`'s auto-download uses `wget`, absent on Windows.
+- **~14s/track CPU, ~10s GPU** — 4–8× faster than MERT.
+- CNN14 checkpoint (`Cnn14_mAP=0.431.pth`, 327 MB) pre-placed at `~/panns_data/`
+  — `panns_inference` auto-download uses `wget`, absent on Windows.
 
-GPU-on-liquidHulk (to keep MERT) was considered and rejected as overkill once a
-CNN delivered Plex-class speed on CPU.
+### Pipeline windowing
 
-### Cross-platform portability — analysis service
+librosa's full-track feature extraction was the CPU bottleneck (~20s on long files).
+Fixed by decoding only the N sampled windows and running all feature extraction on
+the concatenated windows. librosa features dropped from ~20s to ~7s per track.
+Config knobs: `NUM_WINDOWS` (default 3), `WINDOW_SECONDS` (default 30).
 
-The Python service must run anywhere Emby Server runs, **including native
-Windows hosts with no Docker and no NAS** (a large share of Emby users, and
-the developer's own setup). Decisions made to guarantee this:
+### Distributed workers (crash-safe)
 
-- **Essentia is NOT a core dependency.** It has no reliable wheel on Windows or
-  ARM. mood/vocal features fall back to librosa-derived proxies and are
-  upgraded automatically if Essentia is detected at runtime
-  (`requirements-optional.txt`). Native `pip install` is the primary path on
-  every platform; Docker is an optional convenience for NAS/Linux users.
-- The mobile apps (Android/iOS) are **clients only** — they consume the HTTP
-  API and never run analysis, so "runs on iOS" is not a service concern.
+Initial design ran analysis inside the coordinator. Rejected because:
+- A 25k-track scan ties up the coordinator for days.
+- No GPU offload path.
+- No crash-resume at the track level.
+
+Replaced with coordinator + workers via HTTP:
+- SQLite is the source of truth (not FAISS).
+- Workers claim tracks on a lease; expired leases are reclaimed automatically.
+- FAISS is rebuilt from SQLite on every coordinator startup — a crash that loses the
+  on-disk FAISS index loses no analysed work.
+- Workers stream audio from Emby's `/Items/{id}/Download` — no file share needed.
+
+### Cross-platform portability
+
+Essentia has no wheel on Windows or ARM. Made optional: librosa proxies for
+valence/arousal, upgraded automatically if Essentia is detected at runtime.
+Native `pip install` is the primary path; Docker is optional for NAS/Linux.
 
 ### Plugin agnosticism vs. Python provisioning (Phase 2)
 
-An Emby plugin (managed .NET IL) is inherently platform/arch-agnostic — one
-`.dll` for all platforms — *unless* it embeds native code. The Python analysis
-service is the opposite: native, per-OS/per-arch wheels. These two facts must
-not be conflated. **The plugin stays a thin agnostic proxy; the Python service
-is provisioned separately.** Provisioning options (decide in Phase 2):
+Plugin stays a thin agnostic proxy (managed IL, no native code). Python service
+provisioned separately. Options for Phase 2:
 
 | Option | Mechanism | Trade-off |
 |---|---|---|
-| **A. Bootstrap** | Plugin creates a venv + `pip install` against the host's Python on first run | Best "single install" UX; keeps plugin agnostic; needs Python present on host |
-| **B. Sidecar / Docker** | Python service runs separately; plugin points at its URL | Zero binaries in plugin (current liquidBee setup); user provisions the service |
-| **C. Bundle all platforms** | Ship every platform's binaries in the zip | **Avoid** — destroys plugin agnosticism, balloons artifact, N binary sets to maintain |
+| **A. Bootstrap** | Plugin creates a venv + `pip install` on first run | Best UX; needs Python on host |
+| **B. Sidecar** | Python service runs separately; plugin points at its URL | Zero binaries in plugin (current setup) |
+| **C. Bundle all** | Ship every platform's native wheels in the zip | **Rejected** — destroys agnosticism |
 
-Leaning A (community distribution) + B (power users / current setup). C rejected.
+Leaning A (community) + B (power users). C rejected.
 
 ---
 
@@ -334,10 +362,10 @@ Leaning A (community distribution) + B (power users / current setup). C rejected
 
 | Phase | Where |
 |---|---|
-| Spec & architecture | Claude.ai chat (here) |
+| Spec & architecture | Claude.ai chat |
 | Phase 1 backend | Claude Code (desktop app) |
-| Phase 2 plugin | Claude Code + Claude.ai chat for C# learning |
-| Phase 3 Android | Claude.ai chat for UI design, Claude Code for implementation |
+| Phase 2 plugin | Claude Code + Claude.ai for C# learning |
+| Phase 3 Android | Claude.ai for UI design, Claude Code for implementation |
 | Phase 4 iOS | Same as Phase 3 |
 
 ---
