@@ -2,6 +2,7 @@ package guru.liquid.embysonic.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,11 +31,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues(),
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(
+        modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
         topBar = {
             TopAppBar(
                 title = { Text(state.userName?.let { "Hi, $it" } ?: "Emby Sonic") },
