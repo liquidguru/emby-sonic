@@ -6,15 +6,15 @@ space" using audio embeddings (not genre tags), enabling sonically intelligent
 discovery: similar tracks/artists/albums, track radio, sonic adventures, auto-curated
 mixes, and a Guest DJ.
 
-> **Status:** Phase 1 (Python analysis service) complete. Phase 2 (C# Emby plugin) next.
-> See [`docs/spec.md`](docs/spec.md) for the full architecture and roadmap.
+> **Status:** Phase 1 (Python analysis service) and Phase 2 (C# Emby plugin) complete.
+> Phase 3 (Android app) next. See [`docs/spec.md`](docs/spec.md) for the full architecture and roadmap.
 
 ## Architecture
 
 ```
 Emby Server (existing)
-└── Emby Plugin (C#, thin proxy — Phase 2)
-    └── Emby Sonic Coordinator (FastAPI, :8765 — Phase 1)
+└── Emby Plugin (C#, config UI + scan trigger — Phase 2 ✅)
+    └── Emby Sonic Coordinator (FastAPI, :8765 — Phase 1 ✅)
         ├── SQLite — metadata, analysis state, playlists
         └── FAISS — 128-dim cosine similarity index
 
@@ -93,7 +93,7 @@ docker run -d --name emby-sonic -p 8765:8765 \
 ## API
 
 All user-facing routes are under `/sonic` and require an `X-Emby-Token` header
-(validated against Emby's `/Users/Me`). Worker routes use `X-Worker-Token`.
+(validated against Emby's `/System/Info`). Worker routes use `X-Worker-Token`.
 
 | Endpoint | Method | Description |
 |---|---|---|
@@ -106,6 +106,7 @@ All user-facing routes are under `/sonic` and require an `X-Emby-Token` header
 | `/sonic/artists/{id}/similar` | GET | Similar artists |
 | `/sonic/albums/{id}/similar` | GET | Similar albums |
 | `/sonic/library/scan` | POST | Trigger library sync |
+| `/sonic/library/build-mixes` | POST | Rebuild auto-curated mixes (k-means) |
 
 Interactive docs at `http://<host>:8765/docs` once running.
 
@@ -122,6 +123,29 @@ Set via environment variables or a `.env` file:
 | `NUM_WINDOWS` | `3` | Windows sampled per track (speed/quality knob) |
 | `WINDOW_SECONDS` | `30` | Duration of each analysis window |
 | `EMBEDDING_DIM` | `128` | PCA target dimensionality |
+
+## Phase 2 — Emby Plugin
+
+A .NET 8 plugin (`plugin/`) that adds an Emby dashboard config page (set the
+coordinator URL, view live analysis status, trigger scans / mix rebuilds) and
+fires an incremental scan when tracks are added to the library.
+
+**Build** (requires the .NET 8 SDK and Emby's SDK DLLs in `plugin/lib/` —
+`MediaBrowser.Common.dll`, `MediaBrowser.Controller.dll`, `MediaBrowser.Model.dll`,
+copied from your Emby install's `system/` folder; they are not redistributable):
+
+```
+cd plugin
+dotnet build -c Debug
+```
+
+**Install:** copy `plugin/bin/Debug/net8.0/EmbysonicPlugin.dll` into your Emby
+server's `programdata/plugins/` folder (as a flat file) and restart Emby. The
+plugin appears under **Dashboard → Plugins → Emby Sonic**.
+
+The plugin talks to the coordinator over HTTP; run the coordinator wherever it's
+convenient (same host or another LAN machine) and point the plugin's config page
+at its URL.
 
 ## License
 
