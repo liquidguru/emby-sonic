@@ -134,14 +134,24 @@ fires an incremental scan when tracks are added to the library.
 `MediaBrowser.Common.dll`, `MediaBrowser.Controller.dll`, `MediaBrowser.Model.dll`,
 copied from your Emby install's `system/` folder; they are not redistributable):
 
-```
+```powershell
 cd plugin
-dotnet build -c Debug
+./build.ps1            # Release build + dist/EmbysonicPlugin_<version>.zip
 ```
 
-**Install:** copy `plugin/bin/Debug/net8.0/EmbysonicPlugin.dll` into your Emby
-server's `programdata/plugins/` folder (as a flat file) and restart Emby. The
-plugin appears under **Dashboard → Plugins → Emby Sonic**.
+**Install:** Emby (unlike Jellyfin) has no plugin-zip upload in its dashboard, so
+the plugin is installed by placing its DLL in Emby's `programdata/plugins/` folder.
+The release zip ships install scripts that do this for you — run on the Emby host:
+
+```powershell
+./install.ps1         # Windows: auto-detects Emby, copies DLL, restarts
+```
+```bash
+./install.sh          # Linux: auto-detects Emby plugins dir, copies DLL
+```
+
+Or copy `EmbysonicPlugin.dll` into `…/Emby-Server/programdata/plugins/` manually
+and restart Emby. The plugin then appears under **Dashboard → Plugins → Emby Sonic**.
 
 The plugin talks to the coordinator over HTTP; run the coordinator wherever it's
 convenient (same host or another LAN machine) and point the plugin's config page
