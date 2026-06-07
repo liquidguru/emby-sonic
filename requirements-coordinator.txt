@@ -1,0 +1,20 @@
+# Coordinator-only dependencies (no torch / librosa / panns / transformers).
+#
+# The coordinator owns the API, SQLite, the FAISS index, Emby auth, and the
+# k-means mix builder. It NEVER embeds audio — that's the worker's job — so it
+# does not need the heavy ML stack. This keeps the Docker image small and
+# buildable on any NAS (incl. ARM), which is the whole point of the
+# coordinator/worker split.
+#
+# Workers install the full requirements.txt (which adds torch, librosa, panns).
+
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+sqlalchemy[asyncio]>=2.0
+aiosqlite>=0.20.0
+httpx>=0.27.0
+pydantic-settings>=2.2
+numpy>=1.26
+faiss-cpu>=1.8.0
+scikit-learn>=1.5.0
+scipy>=1.13.0

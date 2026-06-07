@@ -1,0 +1,34 @@
+# Emby Sonic coordinator (lightweight) for NAS / Docker hosts.
+#
+#   1. Set EMBY_URL + EMBY_API_KEY below (or in a .env file next to this).
+#   2. docker compose up -d
+#   3. Point the Emby plugin's "Python Service URL" at http://<this-host>:8765
+#   4. Run one or more WORKERS on a machine with spare CPU/GPU (they install the
+#      full requirements.txt and stream audio from Emby). See docs/spec.md.
+#
+# The coordinator does not embed audio itself — workers do — so this container
+# is small and needs no GPU.
+
+services:
+  coordinator:
+    build:
+      context: .
+      dockerfile: Dockerfile.coordinator
+    image: emby-sonic-coordinator
+    container_name: emby-sonic-coordinator
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      # Your Emby server (used to validate tokens and list the library).
+      EMBY_URL: "${EMBY_URL:-http://192.168.1.50:8096}"
+      # Emby API key — also the shared secret workers present. REQUIRED.
+      EMBY_API_KEY: "${EMBY_API_KEY:?set EMBY_API_KEY in your environment or .env}"
+      # Optional analysis tuning (workers read these too):
+      NUM_WINDOWS: "${NUM_WINDOWS:-3}"
+    volumes:
+      # SQLite DB + FAISS index live here — persist them.
+      - emby-sonic-data:/app/data
+
+volumes:
+  emby-sonic-data:

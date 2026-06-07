@@ -2,9 +2,17 @@
 .gitignore
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
 data/
 models/
 *.md
+docs/
+plugin/
+dist/
+*.zip
+.env
+*.log
 deploy.ps1
+benchmark.py

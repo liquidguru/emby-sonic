@@ -1,0 +1,37 @@
+# Emby Sonic — coordinator-only image (lightweight, no ML stack).
+#
+# The coordinator runs the API + SQLite + FAISS + mix builder. Audio embedding
+# happens on separate workers (run the full app on a GPU/CPU box on your LAN),
+# so this image deliberately omits torch/librosa/panns — it stays small and
+# builds on any NAS architecture.
+#
+#   docker build -f Dockerfile.coordinator -t emby-sonic-coordinator .
+#   docker run -d --name emby-sonic-coordinator -p 8765:8765 \
+#       -e EMBY_URL=http://<emby-host>:8096 -e EMBY_API_KEY=<key> \
+#       -v emby-sonic-data:/app/data emby-sonic-coordinator
+#
+# Or use docker-compose.yml.
+
+FROM python:3.12-slim
+
+# libgomp1: OpenMP runtime needed by faiss-cpu and scikit-learn.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install deps first for layer caching.
+COPY requirements-coordinator.txt .
+RUN pip install --no-cache-dir -r requirements-coordinator.txt
+
+# App code (see .dockerignore for what's excluded).
+COPY . .
+
+# Persist SQLite + FAISS index across restarts.
+VOLUME ["/app/data"]
+
+EXPOSE 8765
+
+# main.py runs uvicorn on settings.host:settings.port (0.0.0.0:8765 by default).
+CMD ["python", "main.py"]
