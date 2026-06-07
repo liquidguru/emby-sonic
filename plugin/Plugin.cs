@@ -32,6 +32,12 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             Name = "EmbysonicConfig",
             EmbeddedResourcePath = $"{GetType().Namespace}.Configuration.configPage.html",
             DisplayName = "Emby Sonic",
+        },
+        new PluginPageInfo
+        {
+            // Loaded as the view-controller via data-controller="__plugin/embysonicconfigjs"
+            Name = "embysonicconfigjs",
+            EmbeddedResourcePath = $"{GetType().Namespace}.Configuration.configPage.js",
         }
     ];
 }

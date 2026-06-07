@@ -1,146 +1,26 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Emby Sonic</title>
-</head>
-<body>
-<div id="EmbysonicConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" style="background:#101010;">
-    <div data-role="content">
-        <div class="content-primary">
+<div is="emby-scroller" class="view flex flex-direction-column scrollFrameY flex-grow"
+     data-horizontal="false" data-forcescrollbar="true" data-centerfocus="true"
+     data-bindheader="true" data-title="Emby Sonic"
+     data-controller="__plugin/embysonicconfigjs">
+    <div class="scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page settingsContainer">
+        <form class="embysonicConfigForm auto-center">
 
-            <form id="EmbysonicConfigForm">
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="serviceUrl">Python Service URL</label>
-                    <input id="serviceUrl" name="ServiceUrl" type="text"
-                           placeholder="http://localhost:8765" class="emby-input" />
-                    <div class="fieldDescription">
-                        URL of the Emby Sonic Python coordinator service.
-                        Default: <code>http://localhost:8765</code>.
-                        For NAS users running the coordinator in Docker on another host, enter that host's address.
-                    </div>
+            <div class="inputContainer">
+                <input is="emby-input" type="text" class="txtServiceUrl" label="Python Service URL" autocomplete="off" />
+                <div class="fieldDescription">
+                    URL of the Emby Sonic Python coordinator service. Default: <code>http://localhost:8765</code>.
+                    For NAS users running the coordinator on another host, enter that host's address
+                    (e.g. <code>http://192.168.1.50:8765</code>).
                 </div>
+            </div>
 
-                <div id="sonicStatus" style="margin:1em 0; padding:1em; background:#1a1a1a; border-radius:4px;">
-                    Checking service status...
-                </div>
+            <div class="sonicStatus" style="margin:1.5em 0; padding:1em; background:#1a1a1a; border-radius:4px;">
+                Checking service status...
+            </div>
 
-                <div>
-                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                        <span>Save</span>
-                    </button>
-                    <button is="emby-button" type="button" id="btnBuildMixes" class="raised block emby-button">
-                        <span>Rebuild Mixes</span>
-                    </button>
-                    <button is="emby-button" type="button" id="btnScan" class="raised block emby-button">
-                        <span>Trigger Library Scan</span>
-                    </button>
-                </div>
-            </form>
-
-        </div>
+            <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+            <button is="emby-button" type="button" class="btnBuildMixes raised block"><span>Rebuild Mixes</span></button>
+            <button is="emby-button" type="button" class="btnScan raised block"><span>Trigger Library Scan</span></button>
+        </form>
     </div>
-
-    <script type="text/javascript">
-        var EmbysonicConfig = {
-            pluginId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-
-            getToken: function () {
-                try { return ApiClient.accessToken(); } catch (e) { return ''; }
-            },
-
-            getHeaders: function () {
-                var h = { 'Content-Type': 'application/json' };
-                var t = this.getToken();
-                if (t) h['X-Emby-Token'] = t;
-                return h;
-            },
-
-            load: function (page) {
-                var self = this;
-                fetch('/emby/Plugins/' + self.pluginId + '/Configuration',
-                    { headers: self.getHeaders() })
-                    .then(function (r) { return r.ok ? r.json() : {}; })
-                    .then(function (config) {
-                        var url = (config && config.ServiceUrl) ? config.ServiceUrl : '';
-                        page.querySelector('#serviceUrl').value = url;
-                        self.refreshStatus(page, url);
-                    })
-                    .catch(function () {
-                        self.refreshStatus(page, '');
-                    });
-            },
-
-            save: function (page) {
-                var self = this;
-                var url = page.querySelector('#serviceUrl').value.trim();
-                var config = { ServiceUrl: url };
-                fetch('/emby/Plugins/' + self.pluginId + '/Configuration', {
-                    method: 'POST',
-                    headers: self.getHeaders(),
-                    body: JSON.stringify(config)
-                }).then(function (r) {
-                    if (r.ok) {
-                        Dashboard.alert('Settings saved.');
-                        self.refreshStatus(page, url);
-                    } else {
-                        Dashboard.alert('Save failed (HTTP ' + r.status + ').');
-                    }
-                }).catch(function (e) {
-                    Dashboard.alert('Save failed: ' + e);
-                });
-            },
-
-            refreshStatus: function (page, serviceUrl) {
-                var url = (serviceUrl || 'http://localhost:8765').replace(/\/$/, '');
-                var token = this.getToken();
-                fetch(url + '/sonic/status', { headers: { 'X-Emby-Token': token } })
-                    .then(function (r) { return r.json(); })
-                    .then(function (d) {
-                        var pct = d.scan_progress != null ? (d.scan_progress * 100).toFixed(1) + '%' : 'N/A';
-                        page.querySelector('#sonicStatus').innerHTML =
-                            '<b>Service: online</b><br>' +
-                            'Tracks: ' + d.analysed_tracks + ' / ' + d.total_tracks + ' analysed (' + pct + ')<br>' +
-                            'Pending: ' + d.pending_tracks +
-                            (d.scan_running ? ' &nbsp; <em>Scan running...</em>' : '');
-                    })
-                    .catch(function () {
-                        page.querySelector('#sonicStatus').innerHTML =
-                            '<b style="color:#e74c3c">Service: offline</b><br>' +
-                            'Could not reach ' + url + '/sonic/status';
-                    });
-            }
-        };
-
-        document.addEventListener('pageshow', function (e) {
-            var page = e.target;
-            if (page.id === 'EmbysonicConfigPage') {
-                EmbysonicConfig.load(page);
-
-                page.querySelector('#EmbysonicConfigForm').addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    EmbysonicConfig.save(page);
-                });
-
-                page.querySelector('#btnScan').addEventListener('click', function () {
-                    var url = (page.querySelector('#serviceUrl').value || 'http://localhost:8765').replace(/\/$/, '');
-                    fetch(url + '/sonic/library/scan', {
-                        method: 'POST',
-                        headers: { 'X-Emby-Token': EmbysonicConfig.getToken(), 'Content-Type': 'application/json' },
-                        body: '{}'
-                    }).then(function () { Dashboard.alert('Library scan started.'); });
-                });
-
-                page.querySelector('#btnBuildMixes').addEventListener('click', function () {
-                    var url = (page.querySelector('#serviceUrl').value || 'http://localhost:8765').replace(/\/$/, '');
-                    fetch(url + '/sonic/library/build-mixes', {
-                        method: 'POST',
-                        headers: { 'X-Emby-Token': EmbysonicConfig.getToken(), 'Content-Type': 'application/json' },
-                        body: '{}'
-                    }).then(function () { Dashboard.alert('Mix generation started.'); });
-                });
-            }
-        });
-    </script>
 </div>
-</body>
-</html>
