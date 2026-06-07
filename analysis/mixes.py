@@ -42,6 +42,12 @@ _MOOD = {
 # A cluster gets an artist suffix when one artist is at least this fraction of it.
 _ARTIST_DOMINANCE = 0.35
 
+# Compilation / placeholder "artists" that shouldn't be used to name a mix.
+_IGNORED_ARTISTS = {
+    "various artists", "various", "va", "unknown artist", "unknown",
+    "[unknown]", "[unknown artist]", "soundtrack", "various artist",
+}
+
 
 def build_state() -> dict:
     return {"running": _build_running}
@@ -69,26 +75,15 @@ def _level(x: float | None, terc: tuple[float | None, float | None]) -> int:
 
 
 def _dominant_artist(artists: list[str | None]) -> tuple[str | None, float]:
-    clean = [a for a in artists if a]
-    if not clean:
+    # Fraction is over all named tracks, but compilation placeholders never win.
+    named = [a for a in artists if a]
+    if not named:
         return (None, 0.0)
-    artist, count = Counter(clean).most_common(1)[0]
-    return (artist, count / len(clean))
-
-
-def _mix_name(
-    tempos: list[float | None],
-    energies: list[float | None],
-    artists: list[str | None],
-    tempo_terc: tuple[float | None, float | None],
-    energy_terc: tuple[float | None, float | None],
-) -> str:
-    """Build a human mix name from a cluster's tempo/energy character + artists."""
-    mood = _MOOD[(_level(_mean(tempos), tempo_terc), _level(_mean(energies), energy_terc))]
-    artist, frac = _dominant_artist(artists)
-    if artist and frac >= _ARTIST_DOMINANCE:
-        return f"{mood} · {artist}"
-    return mood
+    real = [a for a in named if a.strip().lower() not in _IGNORED_ARTISTS]
+    if not real:
+        return (None, 0.0)
+    artist, count = Counter(real).most_common(1)[0]
+    return (artist, count / len(named))
 
 
 def _dedupe(name: str, used: set[str]) -> str:
@@ -148,11 +143,6 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
     energies = [r.energy for r in rows]
     artists = [r.artist for r in rows]
 
-    # Library-wide terciles so cluster naming is relative to this collection
-    # (librosa's energy/tempo scales vary — no portable hard-coded thresholds).
-    tempo_terc = _terciles(tempos)
-    energy_terc = _terciles(energies)
-
     logger.info("build_mixes: clustering %d tracks into %d mixes", len(track_ids), n_clusters)
 
     n_clusters = min(n_clusters, len(vecs))
@@ -160,52 +150,59 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
     labels = km.fit_predict(vecs)
     centroids = km.cluster_centers_.astype(np.float32)
 
+    # Pass 1: pick each cluster's top tracks and gather their naming features.
+    clusters: list[dict] = []
+    for cluster_id in range(n_clusters):
+        mask = np.where(labels == cluster_id)[0]
+        if len(mask) == 0:
+            continue
+        cluster_vecs = vecs[mask]
+        centroid = centroids[cluster_id]
+        centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
+        scores = cluster_vecs @ centroid_norm
+        top_indices = np.argsort(-scores)[:tracks_per_mix]
+
+        sel_tempos = [tempos[mask[i]] for i in top_indices]
+        sel_energies = [energies[mask[i]] for i in top_indices]
+        clusters.append({
+            "cluster_id": cluster_id,
+            "track_ids": [track_ids[mask[i]] for i in top_indices],
+            "mean_tempo": _mean(sel_tempos),
+            "mean_energy": _mean(sel_energies),
+            "artists": [artists[mask[i]] for i in top_indices],
+        })
+
+    # Grade clusters RELATIVE TO EACH OTHER: terciles over the per-cluster means,
+    # not over individual tracks (averaging 50 tracks pulls toward the global mean,
+    # so track-level terciles would label almost every cluster "mid").
+    tempo_terc = _terciles([c["mean_tempo"] for c in clusters])
+    energy_terc = _terciles([c["mean_energy"] for c in clusters])
+
+    used_names: set[str] = set()
+    for c in clusters:
+        mood = _MOOD[(_level(c["mean_tempo"], tempo_terc), _level(c["mean_energy"], energy_terc))]
+        artist, frac = _dominant_artist(c["artists"])
+        base = f"{mood} · {artist}" if (artist and frac >= _ARTIST_DOMINANCE) else mood
+        c["name"] = _dedupe(base, used_names)
+
+    # Pass 2: replace all mixes and write the new ones.
     async with AsyncSessionLocal() as db:
-        # Replace all mixes on each build
         await db.execute(delete(MixTrack))
         await db.execute(delete(Mix))
         await db.commit()
 
-        used_names: set[str] = set()
-        built = 0
-        for cluster_id in range(n_clusters):
-            mask = np.where(labels == cluster_id)[0]
-            if len(mask) == 0:
-                continue
-
-            cluster_track_ids = [track_ids[i] for i in mask]
-            cluster_vecs = vecs[mask]
-
-            centroid = centroids[cluster_id]
-            centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
-            scores = cluster_vecs @ centroid_norm
-            top_indices = np.argsort(-scores)[:tracks_per_mix]
-
-            # Name from the tracks that actually make the mix (the top ones).
-            sel_tempos = [tempos[mask[i]] for i in top_indices]
-            sel_energies = [energies[mask[i]] for i in top_indices]
-            sel_artists = [artists[mask[i]] for i in top_indices]
-            name = _dedupe(
-                _mix_name(sel_tempos, sel_energies, sel_artists, tempo_terc, energy_terc),
-                used_names,
-            )
-
+        for c in clusters:
             mix_id = str(uuid.uuid4())
             db.add(Mix(
                 id=mix_id,
-                name=name,
+                name=c["name"],
                 created_at=_utcnow(),
-                cluster_id=cluster_id,
+                cluster_id=c["cluster_id"],
             ))
-            for position, idx in enumerate(top_indices):
-                db.add(MixTrack(
-                    mix_id=mix_id,
-                    position=position,
-                    track_id=cluster_track_ids[idx],
-                ))
-            built += 1
+            for position, tid in enumerate(c["track_ids"]):
+                db.add(MixTrack(mix_id=mix_id, position=position, track_id=tid))
 
         await db.commit()
 
-    logger.info("build_mixes: done — %d mixes created", built)
-    return built
+    logger.info("build_mixes: done — %d mixes created", len(clusters))
+    return len(clusters)
