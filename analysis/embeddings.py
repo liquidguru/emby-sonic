@@ -15,9 +15,11 @@ Pipeline:
 PCA is fitted on the first full-library batch and persisted to data/pca.pkl.
 Until PCA is available, naive truncation to 128-dim is used.
 
-NOTE: the CNN14 checkpoint must already exist at ~/panns_data/Cnn14_mAP=0.431.pth.
-panns_inference's auto-download shells out to `wget`, which is absent on Windows,
-so the checkpoint is pre-placed there via curl during setup.
+The CNN14 checkpoint (~327 MB) is auto-provisioned cross-platform: if it's not
+already at settings.panns_checkpoint_path we download it with stdlib urllib
+before constructing AudioTagging. (panns_inference's own auto-download shells out
+to `wget`, which is absent on Windows and most NAS — hence we handle it here and
+pass an explicit checkpoint_path so panns never reaches for wget.)
 """
 
 from __future__ import annotations
@@ -29,6 +31,56 @@ import numpy as np
 from config import settings
 
 RAW_DIM = 2048  # CNN14 embedding dimensionality (before PCA)
+_MIN_CHECKPOINT_BYTES = 3e8  # panns considers <300 MB a failed/partial download
+
+
+def _download(url: str, dest: Path) -> None:
+    """Stream a URL to dest atomically (via a .tmp file), printing progress."""
+    import urllib.request
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".tmp")
+    req = urllib.request.Request(url, headers={"User-Agent": "emby-sonic/1.0"})
+    with urllib.request.urlopen(req) as resp, open(tmp, "wb") as f:
+        total = int(resp.headers.get("Content-Length", 0))
+        done = 0
+        next_pct = 0
+        while True:
+            buf = resp.read(262144)  # 256 KB
+            if not buf:
+                break
+            f.write(buf)
+            done += len(buf)
+            if total:
+                pct = int(done * 100 / total)
+                if pct >= next_pct:
+                    print(
+                        f"  CNN14 checkpoint: {pct}% "
+                        f"({done // 1_000_000}/{total // 1_000_000} MB)",
+                        flush=True,
+                    )
+                    next_pct = pct + 5
+    tmp.replace(dest)
+
+
+def ensure_checkpoint() -> Path:
+    """Return the CNN14 checkpoint path, downloading it if absent/partial."""
+    path = settings.panns_checkpoint_path
+    if path.exists() and path.stat().st_size >= _MIN_CHECKPOINT_BYTES:
+        return path
+    print(
+        f"CNN14 checkpoint not found at {path}; downloading (~327 MB)...",
+        flush=True,
+    )
+    _download(settings.panns_checkpoint_url, path)
+    size = path.stat().st_size if path.exists() else 0
+    if size < _MIN_CHECKPOINT_BYTES:
+        raise RuntimeError(
+            f"CNN14 checkpoint download looks incomplete ({size} bytes) at {path}. "
+            f"Check {settings.panns_checkpoint_url} or place the file manually."
+        )
+    print(f"CNN14 checkpoint ready: {path}", flush=True)
+    return path
 
 # NOTE: windowing now happens upstream in audio.load_windows() — the embedder
 # receives a list of pre-decoded windows and averages their embeddings. Window
@@ -54,9 +106,10 @@ class PANNsEmbedder:
         # Auto-detect GPU: a worker on a CUDA box (e.g. dev-pc's RTX 4070)
         # gets a 10-50x speedup for free; the N100 coordinator stays on CPU.
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
-        # checkpoint_path=None → panns_inference resolves to
-        # ~/panns_data/Cnn14_mAP=0.431.pth, which we pre-place via curl.
-        self._model = AudioTagging(checkpoint_path=None, device=self._device)
+        # Provision the checkpoint ourselves (cross-platform) and pass it
+        # explicitly so panns_inference never falls back to its wget download.
+        ckpt = ensure_checkpoint()
+        self._model = AudioTagging(checkpoint_path=str(ckpt), device=self._device)
 
     def embed_raw(self, windows: list[np.ndarray]) -> np.ndarray:
         """

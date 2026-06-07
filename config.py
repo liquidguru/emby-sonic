@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     model_dir: Path = Path("models")
 
     embedding_model: str = "PANNs-CNN14"  # informational; embedder loads CNN14 directly
+
+    # CNN14 checkpoint (~327 MB). Default location matches panns_inference's own
+    # convention so a pre-placed file is reused. If missing, the embedder
+    # downloads it from this URL with stdlib urllib (panns's own auto-download
+    # shells out to `wget`, which is absent on Windows/most NAS). Override either
+    # with env PANNS_CHECKPOINT_PATH / PANNS_CHECKPOINT_URL.
+    panns_checkpoint_path: Path = Path.home() / "panns_data" / "Cnn14_mAP=0.431.pth"
+    panns_checkpoint_url: str = (
+        "https://zenodo.org/record/3987831/files/Cnn14_mAP%3D0.431.pth?download=1"
+    )
     # Target dimensionality after PCA reduction from CNN14's native 2048-dim output.
     # PCA is fitted on the first full-library batch then saved to data/pca.pkl.
     embedding_dim: int = 128
