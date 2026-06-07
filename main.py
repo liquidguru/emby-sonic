@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from api.routes import status, tracks, adventure, mixes, queue, library, artists, albums, worker
 from db.database import init_db
 from config import settings
@@ -21,6 +22,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Emby Sonic", version="0.1.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(status.router, prefix="/sonic")
 app.include_router(tracks.router, prefix="/sonic")
