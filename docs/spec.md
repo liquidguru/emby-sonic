@@ -258,8 +258,11 @@ dashboard config page, and triggers scans on library changes.
       incremental scan on the coordinator
 - [x] Coordinator runs as a Windows scheduled task (`EmbySonicCoordinator`,
       at-boot, SYSTEM, auto-restart) — survives reboots
-- [ ] Package as an installable zip / plugin-catalog manifest (currently a manual
-      DLL copy to `programdata/plugins/`)
+- [x] Packaging: `plugin/build.ps1` builds Release + a versioned release zip;
+      `install.ps1` / `install.sh` drop the DLL into Emby's plugins dir and
+      restart. (Emby has no custom-catalog/zip-upload API — `/Repositories`
+      returns 404; only Emby's own curated `/Packages` catalog exists. So
+      dashboard-catalog install would require submitting to Emby itself.)
 - [ ] Coordinator-only Docker image for NAS users (cross-brand deploy story)
 
 **Emby plugin gotchas (hard-won, 2026-06-07):**
