@@ -1,7 +1,7 @@
 # Emby Sonic — Project Specification
 **Version:** 0.2
 **Author:** Kaj Maney
-**Status:** Phase 1 COMPLETE — Phase 2 (C# plugin) next
+**Status:** Phase 1 & 2 COMPLETE — Phase 3 (Android app) next
 
 ---
 
@@ -48,8 +48,8 @@ Emby Sonic is a fully self-contained Emby plugin + companion Android (and eventu
 ```
 liquidBee (192.168.1.9) — or any Emby host
 ├── Emby Server (existing)
-├── Emby Plugin (C# — thin proxy, Phase 2)
-└── Emby Sonic Coordinator (FastAPI, :8765 — Phase 1)
+├── Emby Plugin (C# — config UI + scan trigger, Phase 2 ✅)
+└── Emby Sonic Coordinator (FastAPI, :8765 — Phase 1 ✅)
     ├── SQLite — track metadata, analysis state, playlist definitions
     └── FAISS — 128-dim cosine similarity index
 
@@ -126,8 +126,13 @@ in Resolved Decisions.
 | `/sonic/worker/claim` | POST | Worker token | Claim a batch of pending tracks |
 | `/sonic/worker/results` | POST | Worker token | Submit embeddings for a batch |
 
-**Auth:** User-facing routes validate `X-Emby-Token` against Emby's `/Users/Me`.
-The server `EMBY_API_KEY` is also accepted directly (short-circuits the `/Users/Me` call) for admin use and integration testing. Mobile clients use real Emby user session tokens.
+**Auth:** User-facing routes validate `X-Emby-Token` against Emby's `/System/Info`
+(returns 200 for any valid token, 401 otherwise). **Note:** `/Users/Me` is NOT
+usable for this — Emby 4.10 returns 500 for a bare `X-Emby-Token` there (it needs
+the full `X-Emby-Authorization` client context). The server `EMBY_API_KEY` is also
+accepted directly (short-circuits the call) for admin use and integration testing.
+Mobile clients use real Emby user session tokens. CORS is enabled (`allow_origins=["*"]`)
+so the Emby dashboard config page can fetch the coordinator cross-origin.
 Worker routes validate `X-Worker-Token` against the shared `EMBY_API_KEY`.
 
 ### Layer 4 — Android App (Kotlin / Jetpack Compose)
@@ -241,20 +246,41 @@ CREATE TABLE mix_tracks (
 - Incremental scan: Emby webhook or polling (currently manual trigger only)
 - Mix naming: currently "Mix 1"…"Mix N"; could derive a name from dominant artist/genre of the cluster
 
-### Phase 2 — Emby Plugin (C# wrapper)
-*Next.*
+### Phase 2 — Emby Plugin (C# wrapper) ✅ COMPLETE
 
-- Learn Emby plugin SDK basics
-- Create minimal plugin project (C# / .NET)
-- Register API route passthrough to Python coordinator
-- Trigger library scan on Emby library update events
-- Bundle Python service launcher (provisioning option A or B — see Resolved Decisions)
-- **Deliverable:** Plugin zip installable from Emby dashboard
+.NET 8 plugin (`plugin/EmbysonicPlugin`) — installs into Emby, provides a
+dashboard config page, and triggers scans on library changes.
 
-**Tools:** Claude Code, C# / .NET SDK, Emby Plugin SDK
+- [x] Minimal plugin project (`BasePlugin<PluginConfiguration>`, .NET 8)
+- [x] Dashboard config page: set coordinator URL, live service status, Save /
+      Rebuild Mixes / Trigger Library Scan buttons
+- [x] `ServerEntryPoint` subscribes to `ILibraryManager.ItemAdded` → triggers an
+      incremental scan on the coordinator
+- [x] Coordinator runs as a Windows scheduled task (`EmbySonicCoordinator`,
+      at-boot, SYSTEM, auto-restart) — survives reboots
+- [ ] Package as an installable zip / plugin-catalog manifest (currently a manual
+      DLL copy to `programdata/plugins/`)
+- [ ] Coordinator-only Docker image for NAS users (cross-brand deploy story)
+
+**Emby plugin gotchas (hard-won, 2026-06-07):**
+- Emby injects config-page HTML via `innerHTML`, so **inline `<script>` never runs**.
+  Config pages must split into two registered `PluginPageInfo`s: an HTML page whose
+  root is `<div is="emby-scroller" class="view" data-controller="__plugin/<jsname>">`
+  and a separate `*js` **AMD module** (`define([...], function(){ ... return View; })`
+  where `View` extends `baseView` and implements `onResume`). See `plugin/Configuration/`.
+- Config load/save uses `ApiClient.get/updatePluginConfiguration`; status & action
+  calls use `fetch()` to the coordinator with `ApiClient.accessToken()`.
+- Plugin DLL goes in `…/Emby-Server/programdata/plugins/` as a **flat file**.
+- csproj needs `<FrameworkReference Include="Microsoft.AspNetCore.App" />`; the three
+  `MediaBrowser.*.dll` SDK refs live in `plugin/lib/` (gitignored — not redistributable).
+- An ASP.NET MVC proxy controller (`SonicController.cs`) was scaffolded but Emby does
+  not auto-route plugin MVC controllers; the config page talks to the coordinator
+  directly instead. Kept for a possible future client-app proxy.
+
+**Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API.*
+*Pure UI consuming stable API. Next.*
 
 - Kotlin / Jetpack Compose project
 - Server discovery + auth flow (user logs into Emby; app uses Emby session token)
