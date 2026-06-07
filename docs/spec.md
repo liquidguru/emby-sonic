@@ -344,8 +344,12 @@ Plex is fast on the same hardware because it uses a compact CNN, not a research
 transformer. Switched to **PANNs CNN14** (AudioSet-pretrained, PyTorch, 2048-dim):
 
 - **~14s/track CPU, ~10s GPU** — 4–8× faster than MERT.
-- CNN14 checkpoint (`Cnn14_mAP=0.431.pth`, 327 MB) pre-placed at `~/panns_data/`
-  — `panns_inference` auto-download uses `wget`, absent on Windows.
+- CNN14 checkpoint (`Cnn14_mAP=0.431.pth`, 327 MB) auto-downloaded on first use
+  by `analysis.embeddings.ensure_checkpoint()` via stdlib `urllib` (atomic,
+  resumable-safe) to `settings.panns_checkpoint_path` (default `~/panns_data/`,
+  env-overridable). We pass an explicit `checkpoint_path` to `AudioTagging` so
+  `panns_inference` never falls back to its `wget` download (absent on
+  Windows/most NAS). A pre-placed file is reused as-is.
 
 ### Pipeline windowing
 
