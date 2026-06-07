@@ -111,7 +111,7 @@ All user-facing routes are under `/sonic` and require an `X-Emby-Token` header
 | `/sonic/tracks/{id}/similar` | GET | Sonically similar tracks |
 | `/sonic/tracks/{id}/radio` | GET | Track radio playlist |
 | `/sonic/adventure` | POST | Mood-transitioning playlist A→B |
-| `/sonic/mixes` | GET | Auto-curated mixes |
+| `/sonic/mixes` | GET | Auto-curated mixes (named by sonic character + dominant artist) |
 | `/sonic/queue/inject` | POST | Guest DJ queue injection |
 | `/sonic/artists/{id}/similar` | GET | Similar artists |
 | `/sonic/albums/{id}/similar` | GET | Similar albums |
