@@ -263,7 +263,12 @@ dashboard config page, and triggers scans on library changes.
       restart. (Emby has no custom-catalog/zip-upload API — `/Repositories`
       returns 404; only Emby's own curated `/Packages` catalog exists. So
       dashboard-catalog install would require submitting to Emby itself.)
-- [ ] Coordinator-only Docker image for NAS users (cross-brand deploy story)
+- [x] Coordinator-only Docker image for NAS users (cross-brand deploy story):
+      `Dockerfile.coordinator` + `docker-compose.yml` + `requirements-coordinator.txt`
+      (no torch/librosa/panns — proven the coordinator imports and runs the
+      `reduce()` path with the ML stack absent; validated in a clean venv with
+      only the minimal deps). `python:3.12-slim` + `libgomp1`; data volume for
+      SQLite/FAISS. Workers still run the full `requirements.txt` on a CPU/GPU box.
 
 **Emby plugin gotchas (hard-won, 2026-06-07):**
 - Emby injects config-page HTML via `innerHTML`, so **inline `<script>` never runs**.

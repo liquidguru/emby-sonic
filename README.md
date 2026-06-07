@@ -43,16 +43,26 @@ cp .env.example .env   # set EMBY_URL and EMBY_API_KEY
 python main.py         # coordinator on http://0.0.0.0:8765
 ```
 
-**PANNs CNN14 checkpoint** — pre-download before first scan (the `panns_inference`
-library uses `wget` which is absent on Windows):
+**PANNs CNN14 checkpoint** (~327 MB) — auto-downloaded by workers on first use
+(stdlib `urllib`, cross-platform). No manual step needed. To pre-place or
+relocate it, set `PANNS_CHECKPOINT_PATH` (default `~/panns_data/Cnn14_mAP=0.431.pth`);
+an existing file is reused.
+
+### Deploy on a NAS (Docker)
+
+The coordinator is lightweight (no torch/librosa/panns — those live on workers),
+so it runs in a small container on any NAS (Synology, QNAP, UGREEN, …), including
+ARM. Audio analysis runs on separate **workers** on a machine with spare CPU/GPU.
 
 ```bash
-# Download to ~/panns_data/ (or set PANNS_DATA env var)
-curl -L -o ~/panns_data/Cnn14_mAP=0.431.pth \
-  https://zenodo.org/record/3987831/files/Cnn14_mAP%3D0.431.pth
-curl -L -o ~/panns_data/class_labels_indices.csv \
-  https://raw.githubusercontent.com/qiuqiangkong/audioset_tagging_cnn/master/metadata/class_labels_indices.csv
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d --build
 ```
+
+This builds [`Dockerfile.coordinator`](Dockerfile.coordinator) and starts the
+coordinator on port 8765 with a persistent `emby-sonic-data` volume (SQLite +
+FAISS index). Then point the Emby plugin's **Python Service URL** at
+`http://<nas-host>:8765` and run one or more workers (full `requirements.txt`)
+on your GPU/CPU box — they stream audio from Emby, so no file shares are needed.
 
 ### Benchmark before a full scan
 
