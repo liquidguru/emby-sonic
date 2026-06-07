@@ -122,10 +122,12 @@ in Resolved Decisions.
 | `/sonic/artists/{id}/similar` | GET | Emby user token | Sonically similar artists |
 | `/sonic/albums/{id}/similar` | GET | Emby user token | Sonically similar albums |
 | `/sonic/library/scan` | POST | Emby user token | Trigger full/incremental sync |
+| `/sonic/library/build-mixes` | POST | Emby user token | Trigger k-means mix generation |
 | `/sonic/worker/claim` | POST | Worker token | Claim a batch of pending tracks |
 | `/sonic/worker/results` | POST | Worker token | Submit embeddings for a batch |
 
 **Auth:** User-facing routes validate `X-Emby-Token` against Emby's `/Users/Me`.
+The server `EMBY_API_KEY` is also accepted directly (short-circuits the `/Users/Me` call) for admin use and integration testing. Mobile clients use real Emby user session tokens.
 Worker routes validate `X-Worker-Token` against the shared `EMBY_API_KEY`.
 
 ### Layer 4 — Android App (Kotlin / Jetpack Compose)
@@ -223,6 +225,7 @@ CREATE TABLE mix_tracks (
 - **27,692 tracks embedded** (97.8%) — 608 errors (broken files in Emby library)
 - End-to-end validated: claim → stream from Emby → GPU embed → store → FAISS → similarity query
 - Similarity quality confirmed: Banco de Gaia → Aes Dana (0.752), Tiësto (0.733) — correct ambient/downtempo neighbourhood from audio alone, no genre tags
+- Mixes confirmed: 30 clusters generated, sonically coherent — Mix 1 (jazz/standards: Lee Morgan, Diana Krall), Mix 10 (drum & bass: Nicky Blackmarket), Mix 20 (R&B/pop: Craig David, Leona Lewis), Mix 30 (audiobooks: Robert Jordan, John Gwynne) — genre separation correct from audio alone
 
 **Benchmarks (liquidBee N100, warm model):**
 
@@ -234,10 +237,9 @@ CREATE TABLE mix_tracks (
 | CNN14 embed (3 windows, CPU) | ~10.7s |
 | **Total per track (GPU worker)** | **~10–15s** |
 
-**Remaining Phase 1 items:**
-- Mixes: k-means clustering job to populate `Mix`/`MixTrack` tables (routes exist, data not yet generated)
-- User-facing auth: confirm end-to-end with a real Emby user token from Android
+**All Phase 1 items complete.** Remaining for future consideration:
 - Incremental scan: Emby webhook or polling (currently manual trigger only)
+- Mix naming: currently "Mix 1"…"Mix N"; could derive a name from dominant artist/genre of the cluster
 
 ### Phase 2 — Emby Plugin (C# wrapper)
 *Next.*
@@ -292,10 +294,10 @@ CREATE TABLE mix_tracks (
 
 ## Open Questions
 
-- **Mixes generation:** when/how to trigger k-means clustering? On-demand via `/library/scan`? Nightly cron?
 - **Waveform data:** generate during analysis or on-demand in the app?
 - **Incremental scan:** poll Emby on a schedule, or webhook on library update?
 - **Worker token:** currently the shared `EMBY_API_KEY` — split into a dedicated `WORKER_SECRET` env var?
+- **Mix naming:** auto-name clusters from dominant artist/tempo/energy rather than "Mix N"?
 
 ---
 
