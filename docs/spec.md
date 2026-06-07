@@ -242,9 +242,16 @@ CREATE TABLE mix_tracks (
 | CNN14 embed (3 windows, CPU) | ~10.7s |
 | **Total per track (GPU worker)** | **~10–15s** |
 
-**All Phase 1 items complete.** Remaining for future consideration:
-- Incremental scan: Emby webhook or polling (currently manual trigger only)
-- Mix naming: currently "Mix 1"…"Mix N"; could derive a name from dominant artist/genre of the cluster
+**All Phase 1 items complete.** Mixes are auto-named from each cluster's sonic
+character (tempo + energy, graded by terciles over the per-cluster means so names
+spread across the mood range) plus a dominant-artist suffix when one artist is
+≥35% of the mix; compilation placeholders ("Various Artists", "unknown",
+"soundtrack") are ignored. E.g. *Deep & Atmospheric*, *Bright & Breezy · Sarah J.
+Maas*. Remaining for future consideration:
+- Incremental scan is wired (plugin fires a scan on `ItemAdded`); a webhook/poll
+  fallback for non-plugin setups is still optional
+- `build_mixes` runs the blocking k-means in the event loop (~15–20s) — could be
+  offloaded via `asyncio.to_thread`
 
 ### Phase 2 — Emby Plugin (C# wrapper) ✅ COMPLETE
 
@@ -329,9 +336,8 @@ dashboard config page, and triggers scans on library changes.
 ## Open Questions
 
 - **Waveform data:** generate during analysis or on-demand in the app?
-- **Incremental scan:** poll Emby on a schedule, or webhook on library update?
+- **Incremental scan:** webhook/poll fallback for setups without the plugin (the plugin already fires a scan on `ItemAdded`)?
 - **Worker token:** currently the shared `EMBY_API_KEY` — split into a dedicated `WORKER_SECRET` env var?
-- **Mix naming:** auto-name clusters from dominant artist/tempo/energy rather than "Mix N"?
 
 ---
 
