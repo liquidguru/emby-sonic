@@ -295,13 +295,26 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. Next.*
+*Pure UI consuming stable API. In progress (started 2026-06-08).*
 
-- Kotlin / Jetpack Compose project
-- Server discovery + auth flow (user logs into Emby; app uses Emby session token)
-- Library browser screens
-- Now Playing (ExoPlayer + waveform)
-- All discovery features
+Kotlin / Jetpack Compose. Browse/stream/auth go to the **Emby API directly**; all
+sonic features go to the **coordinator**. Lives in `android/` inside this repo.
+Stack: Compose + Hilt (DI) + Retrofit/OkHttp (two clients: Emby + coordinator) +
+Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
+
+**Milestones:**
+- **M1 — Foundation:** scaffold, Hilt, Retrofit clients, DataStore, Settings
+  screen, auth flow (Emby `AuthenticateByName` → session token → coordinator
+  `/sonic/status` check).
+- **M2 — Browse:** Library tabs (Artists/Albums/Tracks via Emby API), Artist
+  detail, Album detail + track list.
+- **M3 — Playback:** Now Playing, ExoPlayer (Media3), MediaSession, queue. Transport
+  uses a plain progress bar (`TrackProgress` interface — see waveform decision).
+- **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
+  sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
+- **M5 — Waveform + polish:** Home (recents + mixes), icon/theming. Real waveform
+  (Option A) considered here, dropped in behind the `TrackProgress` interface.
+
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
 ### Phase 4 — iOS App
@@ -335,7 +348,6 @@ dashboard config page, and triggers scans on library changes.
 
 ## Open Questions
 
-- **Waveform data:** generate during analysis or on-demand in the app?
 - **Incremental scan:** webhook/poll fallback for setups without the plugin (the plugin already fires a scan on `ItemAdded`)?
 - **Worker token:** currently the shared `EMBY_API_KEY` — split into a dedicated `WORKER_SECRET` env var?
 
@@ -382,6 +394,30 @@ Replaced with coordinator + workers via HTTP:
 - FAISS is rebuilt from SQLite on every coordinator startup — a crash that loses the
   on-disk FAISS index loses no analysed work.
 - Workers stream audio from Emby's `/Items/{id}/Download` — no file share needed.
+
+### Waveform: MVP placeholder (B), designed for on-demand caching (A)
+
+Decided 2026-06-08. The Android Now Playing screen ships with a plain progress/seek
+bar for the MVP — **no real waveform** (Option B). This keeps waveform off the
+critical path and out of the otherwise-lightweight coordinator (the slim
+`Dockerfile.coordinator` image deliberately excludes librosa/decoders).
+
+The app is **designed so real waveforms drop in later (Option A)** without rework:
+
+- Now Playing renders a `TrackProgress` component behind an interface. The MVP
+  implementation is a progress bar; the future implementation fetches a real
+  amplitude array and draws bars. Swapping one for the other touches no other code.
+- Future server side (when we do A): add `waveform BLOB` to the `embeddings` table
+  and a `GET /sonic/tracks/{id}/waveform` route. On first request the coordinator
+  streams the track from Emby (`/Items/{id}/Download`, same path workers use),
+  decodes at a low sample rate, downsamples to ~300 peak-amplitude floats, caches
+  them in the new column, and returns them. Cache hits are instant and shared
+  across all clients/users. First-ever request for a track costs ~2–5s decode on
+  the N100 (show a shimmer placeholder). No library re-scan required — waveforms
+  accrue lazily as tracks are played.
+- Option C (compute during analysis) stays rejected: it would force a 27k re-scan.
+- Slim-image caveat for A: the coordinator-only Docker image would need a minimal
+  decoder (`soundfile`/`audioread`) added before the waveform route works there.
 
 ### Cross-platform portability
 
