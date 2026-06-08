@@ -95,7 +95,7 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                             Text(
-                                "${st.pending} pending · ${st.error} errors · ${st.mixes} mixes",
+                                "${st.pending} pending · ${if (st.scanRunning) "scan running" else "idle"}",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
