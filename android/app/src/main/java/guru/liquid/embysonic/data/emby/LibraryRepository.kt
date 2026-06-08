@@ -49,6 +49,13 @@ data class LibraryItem(
     val trailingText: String? = null,
 )
 
+/**
+ * Browse fetch cap. Set high so the full sorted list loads in one query — the A-Z
+ * index needs the complete alphabet (Music has thousands of artists/albums). Emby
+ * returns these comfortably on a LAN; LazyGrid/Column virtualise the rendering.
+ */
+private const val BROWSE_LIMIT = 10000
+
 private fun formatDuration(ms: Long?): String? {
     if (ms == null || ms <= 0) return null
     val totalSeconds = ms / 1000
@@ -89,14 +96,15 @@ class LibraryRepository @Inject constructor(
         }
 
     suspend fun artists(libraryId: String): List<LibraryItem> =
-        embyApi.getAlbumArtists(userId(), parentId = libraryId).items.map { it.toCollectionItem() }
+        embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = BROWSE_LIMIT)
+            .items.map { it.toCollectionItem() }
 
     /**
      * Audiobook authors. Like books, most authors have no image of their own, so we
      * resolve each author's cover from one of their chapters (keyed by album-artist id).
      */
     suspend fun authors(libraryId: String): List<LibraryItem> {
-        val authors = embyApi.getAlbumArtists(userId(), parentId = libraryId)
+        val authors = embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = BROWSE_LIMIT)
             .items.map { it.toCollectionItem() }
         val covers = audiobookAuthorCovers(libraryId)
         return authors.map { if (it.imageUrl == null) it.copy(imageUrl = covers[it.id]) else it }
@@ -123,7 +131,7 @@ class LibraryRepository @Inject constructor(
     }
 
     suspend fun albums(libraryId: String): List<LibraryItem> =
-        embyApi.getItems(userId(), parentId = libraryId, includeItemTypes = "MusicAlbum")
+        embyApi.getItems(userId(), parentId = libraryId, includeItemTypes = "MusicAlbum", limit = BROWSE_LIMIT)
             .items.map { it.toCollectionItem() }
 
     /**
@@ -138,6 +146,7 @@ class LibraryRepository @Inject constructor(
             includeItemTypes = "MusicAlbum",
             parentId = parentId,
             albumArtistIds = albumArtistId,
+            limit = BROWSE_LIMIT,
         ).items.map { it.toCollectionItem() }
         val covers = audiobookCovers(parentId, albumArtistId)
         return books.map { if (it.imageUrl == null) it.copy(imageUrl = covers[it.id]) else it }
