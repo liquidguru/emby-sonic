@@ -91,6 +91,37 @@ class LibraryRepository @Inject constructor(
     suspend fun artists(libraryId: String): List<LibraryItem> =
         embyApi.getAlbumArtists(userId(), parentId = libraryId).items.map { it.toCollectionItem() }
 
+    /**
+     * Audiobook authors. Like books, most authors have no image of their own, so we
+     * resolve each author's cover from one of their chapters (keyed by album-artist id).
+     */
+    suspend fun authors(libraryId: String): List<LibraryItem> {
+        val authors = embyApi.getAlbumArtists(userId(), parentId = libraryId)
+            .items.map { it.toCollectionItem() }
+        val covers = audiobookAuthorCovers(libraryId)
+        return authors.map { if (it.imageUrl == null) it.copy(imageUrl = covers[it.id]) else it }
+    }
+
+    /** Author id → a chapter's Primary image URL, for authors lacking their own image. */
+    private suspend fun audiobookAuthorCovers(libraryId: String): Map<String, String> {
+        val chapters = embyApi.getItems(
+            userId = userId(),
+            includeItemTypes = "Audio",
+            parentId = libraryId,
+            limit = 3000,
+        ).items
+        val covers = HashMap<String, String>()
+        for (c in chapters) {
+            val tag = c.imageTags["Primary"] ?: continue
+            val url = imageUrls.primary(c.id.orEmpty(), tag) ?: continue
+            for (artist in c.albumArtists) {
+                val id = artist.id ?: continue
+                covers.putIfAbsent(id, url)
+            }
+        }
+        return covers
+    }
+
     suspend fun albums(libraryId: String): List<LibraryItem> =
         embyApi.getItems(userId(), parentId = libraryId, includeItemTypes = "MusicAlbum")
             .items.map { it.toCollectionItem() }
