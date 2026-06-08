@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Card
@@ -109,6 +111,52 @@ internal fun CardGrid(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Top-bar action that toggles between card and list view, showing the target mode's icon. */
+@Composable
+internal fun ViewToggleAction(listView: Boolean, onToggle: () -> Unit) {
+    IconButton(onClick = onToggle) {
+        if (listView) {
+            Icon(Icons.Default.GridView, contentDescription = "Card view")
+        } else {
+            Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = "List view")
+        }
+    }
+}
+
+/** Single-column list of artists/albums/authors/books. Each row is the tap target. */
+@Composable
+internal fun CollectionList(
+    items: List<LibraryItem>,
+    placeholderBook: Boolean,
+    onItemClick: (LibraryItem) -> Unit,
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(vertical = 8.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(items, key = { it.id }) { item ->
+            ListItem(
+                modifier = Modifier.clickable { onItemClick(item) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                leadingContent = {
+                    Artwork(
+                        item.imageUrl,
+                        item.title,
+                        Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
+                        placeholderBook = placeholderBook,
+                    )
+                },
+                headlineContent = {
+                    Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                },
+                supportingContent = item.subtitle?.let {
+                    { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                },
+            )
         }
     }
 }

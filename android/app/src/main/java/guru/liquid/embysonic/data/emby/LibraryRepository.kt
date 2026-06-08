@@ -95,6 +95,45 @@ class LibraryRepository @Inject constructor(
         embyApi.getItems(userId(), parentId = libraryId, includeItemTypes = "MusicAlbum")
             .items.map { it.toCollectionItem() }
 
+    /**
+     * Audiobook "books" (MusicAlbum items). Most books have no album-level cover —
+     * the art is embedded on the child Audio item — so we resolve each book's cover
+     * from a representative chapter in one extra query. Scope by [parentId] (the
+     * library, for the Books tab) or [albumArtistId] (an author, for the detail).
+     */
+    suspend fun books(parentId: String? = null, albumArtistId: String? = null): List<LibraryItem> {
+        val books = embyApi.getItems(
+            userId = userId(),
+            includeItemTypes = "MusicAlbum",
+            parentId = parentId,
+            albumArtistIds = albumArtistId,
+        ).items.map { it.toCollectionItem() }
+        val covers = audiobookCovers(parentId, albumArtistId)
+        return books.map { if (it.imageUrl == null) it.copy(imageUrl = covers[it.id]) else it }
+    }
+
+    /** AlbumId → a child chapter's Primary image URL, for books lacking their own cover. */
+    private suspend fun audiobookCovers(
+        parentId: String?,
+        albumArtistId: String?,
+    ): Map<String, String> {
+        val chapters = embyApi.getItems(
+            userId = userId(),
+            includeItemTypes = "Audio",
+            parentId = parentId,
+            albumArtistIds = albumArtistId,
+            limit = 3000,
+        ).items
+        val covers = HashMap<String, String>()
+        for (c in chapters) {
+            val albumId = c.albumId ?: continue
+            if (covers.containsKey(albumId)) continue
+            val tag = c.imageTags["Primary"] ?: continue
+            imageUrls.primary(c.id.orEmpty(), tag)?.let { covers[albumId] = it }
+        }
+        return covers
+    }
+
     suspend fun tracks(libraryId: String): List<LibraryItem> =
         embyApi.getItems(
             userId = userId(),
@@ -110,12 +149,15 @@ class LibraryRepository @Inject constructor(
      */
     suspend fun childItems(parentId: String, kind: DetailKind): List<LibraryItem> =
         when (kind) {
-            DetailKind.ARTIST_ALBUMS, DetailKind.AUTHOR_BOOKS ->
+            DetailKind.ARTIST_ALBUMS ->
                 embyApi.getItems(
                     userId = userId(),
                     includeItemTypes = "MusicAlbum",
                     albumArtistIds = parentId,
                 ).items.map { it.toCollectionItem() }
+
+            // Books carry no album cover; resolve from a child chapter.
+            DetailKind.AUTHOR_BOOKS -> books(albumArtistId = parentId)
 
             DetailKind.ALBUM_TRACKS, DetailKind.BOOK_CHAPTERS ->
                 embyApi.getItems(

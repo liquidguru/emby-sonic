@@ -3,6 +3,7 @@ package guru.liquid.embysonic.data.settings
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -36,9 +37,18 @@ class SettingsRepository @Inject constructor(
         val USER_ID = stringPreferencesKey("user_id")
         val USER_NAME = stringPreferencesKey("user_name")
         val DEVICE_ID = stringPreferencesKey("device_id")
+        val LIBRARY_LIST_VIEW = booleanPreferencesKey("library_list_view")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
+
+    /** Whether library/detail grids render as a list instead of cards (persisted, shared). */
+    val libraryListView: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.LIBRARY_LIST_VIEW] ?: false }
+
+    suspend fun setLibraryListView(value: Boolean) {
+        context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
+    }
 
     @Volatile
     private var cached: AppSettings? = null

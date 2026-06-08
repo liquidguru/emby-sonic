@@ -7,10 +7,13 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.ui.nav.Routes
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -29,8 +32,15 @@ data class LibraryUiState(
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    private val settings: SettingsRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
+
+    /** Card grid vs. list, persisted and shared across library/detail screens. */
+    val listView: StateFlow<Boolean> =
+        settings.libraryListView.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun toggleListView() = viewModelScope.launch { settings.setLibraryListView(!listView.value) }
 
     private val libraryId: String = savedStateHandle.get<String>(Routes.ARG_LIBRARY_ID).orEmpty()
     val kind: LibraryKind = runCatching {
@@ -65,7 +75,11 @@ class LibraryViewModel @Inject constructor(
     )
 
     fun loadAlbums() = load(
-        block = { repository.albums(libraryId) },
+        block = {
+            // Audiobook "books" need cover resolution from their child chapters.
+            if (kind == LibraryKind.AUDIOBOOKS) repository.books(parentId = libraryId)
+            else repository.albums(libraryId)
+        },
         onResult = { tab -> _state.update { it.copy(albums = tab) } },
     )
 
