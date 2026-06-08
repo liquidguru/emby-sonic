@@ -103,7 +103,7 @@ fun LiquidWaveLogo(
                 val adjustedHeight = bar.height * amount
                 val centerY = bar.y + bar.height / 2f
                 drawRoundRect(
-                    color = PrimaryCyan.copy(alpha = if (animatedBars) 0.34f + (amount - 1f) * 0.7f else 0.34f),
+                    color = PrimaryCyan.copy(alpha = if (animatedBars) 0.34f + (amount - 1f) * 0.7f else 0.18f),
                     topLeft = Offset(bar.x, centerY - adjustedHeight / 2f),
                     size = Size(bar.width, adjustedHeight),
                     cornerRadius = CornerRadius(4.5f, 4.5f),
