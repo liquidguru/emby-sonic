@@ -4,7 +4,7 @@ __pycache__/
 *.pyo
 .venv/
 venv/
-data/
-models/
+/data/
+/models/
 *.egg-info/
 dist/
