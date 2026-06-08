@@ -45,7 +45,11 @@ assume: run `adb devices` and `git status` on the **host** (not a sandbox).
   commands on the host): you CAN build, verify, push, and sync. Do the **full
   routine** below end to end. **The Android verify loop is pure `adb` — install,
   `input tap`, `screencap` — so you do NOT need Computer Use / GUI automation
-  for it.** (`adb` is on PATH; the emulator AVD is `Pixel_3a_API_36`, launch it
+  for it.** (`adb` is on PATH for newly-opened shells; if `adb` isn't found,
+  open a fresh terminal or call it by full path
+  `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`. The emulator AVD is
+  `Pixel_3a_API_36` — launch it with
+  `%LOCALAPPDATA%\Android\Sdk\emulator\emulator.exe -avd Pixel_3a_API_36`
   if `adb devices` is empty.) Use a terminal for everything; Computer Use is
   optional and currently unreliable on this machine — don't depend on it.
 - **Mode B — cloud sandbox only** (no host execution, no LAN): you CANNOT build
