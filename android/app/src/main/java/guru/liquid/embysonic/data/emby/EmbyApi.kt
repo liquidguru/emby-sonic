@@ -8,6 +8,7 @@ import guru.liquid.embysonic.data.emby.dto.SystemInfo
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
@@ -20,6 +21,10 @@ interface EmbyApi {
 
     @GET("System/Info/Public")
     suspend fun publicSystemInfo(): SystemInfo
+
+    /** The user's libraries (each has Id + CollectionType: "music", "audiobooks", …). */
+    @GET("Users/{userId}/Views")
+    suspend fun getViews(@Path("userId") userId: String): QueryResult<EmbyItemDto>
 
     /**
      * Generic library query. [includeItemTypes] selects "MusicAlbum" or "Audio";
@@ -39,10 +44,11 @@ interface EmbyApi {
         @Query("AlbumArtistIds") albumArtistIds: String? = null,
     ): QueryResult<EmbyItemDto>
 
-    /** Album artists across the library. */
+    /** Album artists within a library ([parentId] scopes to that library). */
     @GET("Artists/AlbumArtists")
     suspend fun getAlbumArtists(
         @Query("UserId") userId: String,
+        @Query("ParentId") parentId: String? = null,
         @Query("SortBy") sortBy: String = "SortName",
         @Query("SortOrder") sortOrder: String = "Ascending",
         @Query("Fields") fields: String = "PrimaryImageAspectRatio",

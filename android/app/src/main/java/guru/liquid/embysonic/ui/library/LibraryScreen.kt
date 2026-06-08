@@ -53,7 +53,6 @@ import coil.compose.AsyncImage
 import guru.liquid.embysonic.R
 import guru.liquid.embysonic.data.emby.LibraryItem
 
-private val tabTitles = listOf("Artists", "Albums", "Tracks")
 private val ScreenPadding = 20.dp
 private val GridSpacing = 16.dp
 
@@ -65,6 +64,7 @@ fun LibraryScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val tabTitles = viewModel.tabTitles
 
     Scaffold(
         modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
@@ -78,7 +78,7 @@ fun LibraryScreen(
                         modifier = Modifier.size(40.dp),
                     )
                 },
-                title = { Text("Library") },
+                title = { Text(viewModel.title) },
                 actions = {
                     // TODO(M2+): wire library search + sort/filter overflow.
                     IconButton(onClick = {}) { Icon(Icons.Default.Search, contentDescription = "Search") }

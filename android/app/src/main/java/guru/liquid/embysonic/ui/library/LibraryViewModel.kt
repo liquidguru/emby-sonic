@@ -1,10 +1,13 @@
 package guru.liquid.embysonic.ui.library
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.emby.LibraryItem
+import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.ui.nav.Routes
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +30,24 @@ data class LibraryUiState(
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
+
+    private val libraryId: String = savedStateHandle.get<String>(Routes.ARG_LIBRARY_ID).orEmpty()
+    val kind: LibraryKind = runCatching {
+        LibraryKind.valueOf(savedStateHandle.get<String>(Routes.ARG_KIND) ?: LibraryKind.MUSIC.name)
+    }.getOrDefault(LibraryKind.MUSIC)
+
+    /** Tab labels differ by library type: music vs audiobooks. */
+    val tabTitles: List<String> = when (kind) {
+        LibraryKind.MUSIC -> listOf("Artists", "Albums", "Tracks")
+        LibraryKind.AUDIOBOOKS -> listOf("Authors", "Books", "Chapters")
+    }
+
+    val title: String = when (kind) {
+        LibraryKind.MUSIC -> "Music"
+        LibraryKind.AUDIOBOOKS -> "Audiobooks"
+    }
 
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
@@ -39,17 +59,17 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun loadArtists() = load(
-        block = { repository.artists() },
+        block = { repository.artists(libraryId) },
         onResult = { tab -> _state.update { it.copy(artists = tab) } },
     )
 
     fun loadAlbums() = load(
-        block = { repository.albums() },
+        block = { repository.albums(libraryId) },
         onResult = { tab -> _state.update { it.copy(albums = tab) } },
     )
 
     fun loadTracks() = load(
-        block = { repository.tracks() },
+        block = { repository.tracks(libraryId) },
         onResult = { tab -> _state.update { it.copy(tracks = tab) } },
     )
 

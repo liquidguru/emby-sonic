@@ -17,6 +17,9 @@ data class EmbyItemDto(
     @SerialName("Type")
     val type: String? = null,
 
+    @SerialName("CollectionType")
+    val collectionType: String? = null,
+
     @SerialName("Album")
     val album: String? = null,
 
