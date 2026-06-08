@@ -31,6 +31,23 @@ auto mixes), plus companion mobile apps.
 
 ---
 
+## Where you're running — pick the right mode
+
+Figure out your capabilities FIRST, then operate accordingly. Probe before you
+assume: try a terminal command (e.g. `adb devices`) and/or a screenshot.
+
+- **Mode A — local control** (computer-use / a real terminal on liquidHulk):
+  you CAN build, run the emulator, push, and sync. Do the **full routine** below
+  end to end. Prefer a real terminal/shell for builds and git (fast, reliable);
+  use screen control + screenshots only for the emulator UI verification step
+  that actually needs the screen. Do not click through GUIs for things a command
+  does better.
+- **Mode B — cloud sandbox only** (no local desktop, no LAN): you CANNOT build
+  the Android app, run the emulator, or reach Emby/the coordinator at
+  192.168.1.9. Implement the code, open a PR on a feature branch, and put a
+  precise build-and-verify checklist in the PR description for liquidHulk to run.
+  **Never claim something is verified on-device when you couldn't run it.**
+
 ## Build & verify — Android (the active work)
 
 Toolchain lives on **liquidHulk** (the main dev PC). On the NAS code-server
