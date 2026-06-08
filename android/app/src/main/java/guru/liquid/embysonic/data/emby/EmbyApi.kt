@@ -46,6 +46,18 @@ interface EmbyApi {
     ): QueryResult<EmbyItemDto>
 
     /**
+     * Items of a playlist, in playlist order. The dedicated endpoint preserves the
+     * stored sequence (and PlaylistItemId) that a generic `/Items` query would not.
+     */
+    @GET("Playlists/{playlistId}/Items")
+    suspend fun getPlaylistItems(
+        @Path("playlistId") playlistId: String,
+        @Query("UserId") userId: String,
+        @Query("Fields") fields: String = "PrimaryImageAspectRatio",
+        @Query("Limit") limit: Int = 2000,
+    ): QueryResult<EmbyItemDto>
+
+    /**
      * Creates an Emby playlist owned by [userId] with the given comma-separated
      * item [ids]. Persists server-side and appears in every Emby client.
      */

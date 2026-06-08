@@ -126,7 +126,9 @@ fun MainShell(
                     onOpenItem = openDetail,
                 )
             }
-            composable(Routes.MIXES) { MixesScreen(contentPadding = padding) }
+            composable(Routes.MIXES) {
+                MixesScreen(contentPadding = padding, onOpenItem = openDetail)
+            }
         }
     }
 }

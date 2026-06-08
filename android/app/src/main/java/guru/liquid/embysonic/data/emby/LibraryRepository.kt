@@ -17,7 +17,8 @@ enum class DetailKind {
     ARTIST_ALBUMS,
     ALBUM_TRACKS,
     AUTHOR_BOOKS,
-    BOOK_CHAPTERS;
+    BOOK_CHAPTERS,
+    PLAYLIST_TRACKS;
 
     /** Grid kinds drill further; leaf kinds (tracks/chapters) don't. */
     val isGrid: Boolean get() = this == ARTIST_ALBUMS || this == AUTHOR_BOOKS
@@ -30,7 +31,7 @@ enum class DetailKind {
         get() = when (this) {
             ARTIST_ALBUMS -> ALBUM_TRACKS
             AUTHOR_BOOKS -> BOOK_CHAPTERS
-            ALBUM_TRACKS, BOOK_CHAPTERS -> null
+            ALBUM_TRACKS, BOOK_CHAPTERS, PLAYLIST_TRACKS -> null
         }
 }
 
@@ -174,6 +175,22 @@ class LibraryRepository @Inject constructor(
         return covers
     }
 
+    /**
+     * The user's Emby playlists (across all libraries). Cover art is often absent —
+     * only some playlists have a Primary image — so the placeholder shows otherwise.
+     */
+    suspend fun playlists(): List<LibraryItem> =
+        embyApi.getItems(
+            userId = userId(),
+            includeItemTypes = "Playlist",
+            fields = "ChildCount,PrimaryImageAspectRatio",
+            limit = BROWSE_LIMIT,
+        ).items.map { it.toPlaylistItem() }
+
+    /** A playlist's tracks, in stored playlist order. */
+    suspend fun playlistTracks(playlistId: String): List<LibraryItem> =
+        embyApi.getPlaylistItems(playlistId, userId()).items.map { it.toTrackItem() }
+
     suspend fun tracks(libraryId: String): List<LibraryItem> =
         embyApi.getItems(
             userId = userId(),
@@ -199,6 +216,9 @@ class LibraryRepository @Inject constructor(
             // Books carry no album cover; resolve from a child chapter.
             DetailKind.AUTHOR_BOOKS -> books(albumArtistId = parentId)
 
+            // Playlists keep their own stored order via the dedicated endpoint.
+            DetailKind.PLAYLIST_TRACKS -> playlistTracks(parentId)
+
             DetailKind.ALBUM_TRACKS, DetailKind.BOOK_CHAPTERS ->
                 embyApi.getItems(
                     userId = userId(),
@@ -220,6 +240,14 @@ class LibraryRepository @Inject constructor(
             "MusicArtist" -> childCount?.let { "$it albums" }
             else -> albumArtist ?: artists.firstOrNull()
         },
+        imageUrl = imageTags["Primary"]?.let { imageUrls.primary(id.orEmpty(), it) },
+    )
+
+    /** Playlist cell: own Primary art if present (often absent → placeholder); track count as subtitle. */
+    private fun EmbyItemDto.toPlaylistItem(): LibraryItem = LibraryItem(
+        id = id.orEmpty(),
+        title = name.orEmpty(),
+        subtitle = childCount?.let { "$it ${if (it == 1) "track" else "tracks"}" },
         imageUrl = imageTags["Primary"]?.let { imageUrls.primary(id.orEmpty(), it) },
     )
 

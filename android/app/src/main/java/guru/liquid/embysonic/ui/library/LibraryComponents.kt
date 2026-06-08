@@ -317,7 +317,9 @@ internal fun TrackList(
                         item.trailingText?.let {
                             Text(it, style = MaterialTheme.typography.bodySmall)
                         }
-                        TrackOverflow(item, actions)
+                        // Only render the overflow when there's something in it
+                        // (music tracks have sonic actions; chapters/playlists don't).
+                        if (actions.isNotEmpty()) TrackOverflow(item, actions)
                     }
                 },
             )
