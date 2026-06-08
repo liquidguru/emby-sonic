@@ -34,7 +34,7 @@ class PlaybackController @Inject constructor(
     private val settings: SettingsRepository,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent("Emby Sonic/${BuildConfig.VERSION_NAME}")
+        .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
@@ -119,7 +119,7 @@ class PlaybackController @Inject constructor(
         val headers = linkedMapOf(
             "X-Emby-Authorization" to buildString {
                 append("MediaBrowser ")
-                append("Client=\"Emby Sonic\", ")
+                append("Client=\"liquidWave\", ")
                 append("Device=\"${Build.MODEL}\", ")
                 append("DeviceId=\"${snap.deviceId}\", ")
                 append("Version=\"${BuildConfig.VERSION_NAME}\"")

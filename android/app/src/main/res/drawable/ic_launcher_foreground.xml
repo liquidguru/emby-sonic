@@ -1,15 +1,46 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Sonic waveform glyph, centred in the adaptive-icon safe zone -->
-    <group android:translateX="18" android:translateY="34">
-        <path android:fillColor="#4FC3F7" android:pathData="M6,16 h6 v8 h-6 z" />
-        <path android:fillColor="#4FC3F7" android:pathData="M18,8 h6 v24 h-6 z" />
-        <path android:fillColor="#81D4FA" android:pathData="M30,0 h6 v40 h-6 z" />
-        <path android:fillColor="#81D4FA" android:pathData="M42,10 h6 v20 h-6 z" />
-        <path android:fillColor="#4FC3F7" android:pathData="M54,4 h6 v32 h-6 z" />
-        <path android:fillColor="#4FC3F7" android:pathData="M66,14 h6 v12 h-6 z" />
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <!-- liquidWave: static W geometry over static amplitude bars. -->
+    <group android:translateX="32" android:translateY="32" android:scaleX="0.75" android:scaleY="0.75">
+    <path android:fillColor="#131A2E" android:pathData="M64,0h128a64,64 0,0 1,64 64v128a64,64 0,0 1,-64 64h-128a64,64 0,0 1,-64 -64v-128a64,64 0,0 1,64 -64z" />
+    <group android:alpha="0.34">
+        <path android:fillColor="#4FC3F7" android:pathData="M52.5,91a4.5,4.5 0,0 1,4.5 4.5v73a4.5,4.5 0,0 1,-9 0v-73a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M66.5,78a4.5,4.5 0,0 1,4.5 4.5v99a4.5,4.5 0,0 1,-9 0v-99a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M80.5,96a4.5,4.5 0,0 1,4.5 4.5v63a4.5,4.5 0,0 1,-9 0v-63a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M94.5,106a4.5,4.5 0,0 1,4.5 4.5v49a4.5,4.5 0,0 1,-9 0v-49a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M108.5,88a4.5,4.5 0,0 1,4.5 4.5v85a4.5,4.5 0,0 1,-9 0v-85a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M122.5,98a4.5,4.5 0,0 1,4.5 4.5v63a4.5,4.5 0,0 1,-9 0v-63a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M136.5,105a4.5,4.5 0,0 1,4.5 4.5v51a4.5,4.5 0,0 1,-9 0v-51a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M150.5,85a4.5,4.5 0,0 1,4.5 4.5v91a4.5,4.5 0,0 1,-9 0v-91a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M164.5,96a4.5,4.5 0,0 1,4.5 4.5v63a4.5,4.5 0,0 1,-9 0v-63a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M178.5,80a4.5,4.5 0,0 1,4.5 4.5v95a4.5,4.5 0,0 1,-9 0v-95a4.5,4.5 0,0 1,4.5 -4.5z" />
+        <path android:fillColor="#4FC3F7" android:pathData="M192.5,92a4.5,4.5 0,0 1,4.5 4.5v73a4.5,4.5 0,0 1,-9 0v-73a4.5,4.5 0,0 1,4.5 -4.5z" />
+    </group>
+    <path android:pathData="M42,105 C55,77 72,70 84,111 C91,137 96,161 107,162 C119,163 125,127 134,110 C142,94 150,94 157,111 C166,136 170,158 181,158 C192,158 199,116 215,93 C220,86 231,93 226,102 C208,133 201,187 178,188 C154,189 149,150 140,126 C132,151 124,189 106,189 C84,189 78,151 70,124 C63,99 57,99 51,113 C48,120 38,113 42,105 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="42"
+                android:startY="78"
+                android:endX="218"
+                android:endY="178"
+                android:type="linear">
+                <item android:offset="0" android:color="#81D4FA" />
+                <item android:offset="0.42" android:color="#4FC3F7" />
+                <item android:offset="1" android:color="#35AEE4" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M61,101 C70,88 78,94 84,119 C91,145 96,169 108,171 C123,172 128,129 137,112 C143,102 148,102 153,114 C163,139 168,170 182,168 C194,166 199,124 213,103"
+        android:strokeAlpha="0.78"
+        android:strokeColor="#81D4FA"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="7" />
     </group>
 </vector>

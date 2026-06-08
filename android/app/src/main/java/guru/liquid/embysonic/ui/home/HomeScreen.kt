@@ -40,7 +40,7 @@ fun HomeScreen(
         modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
         topBar = {
             TopAppBar(
-                title = { Text(state.userName?.let { "Hi, $it" } ?: "Emby Sonic") },
+                title = { Text(state.userName?.let { "Hi, $it" } ?: "liquidWave") },
                 actions = {
                     IconButton(onClick = viewModel::refresh) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
