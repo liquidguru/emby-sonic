@@ -7,7 +7,7 @@
     <!-- liquidWave: static W geometry over static amplitude bars. -->
     <group android:translateX="32" android:translateY="32" android:scaleX="0.75" android:scaleY="0.75">
     <path android:fillColor="#131A2E" android:pathData="M64,0h128a64,64 0,0 1,64 64v128a64,64 0,0 1,-64 64h-128a64,64 0,0 1,-64 -64v-128a64,64 0,0 1,64 -64z" />
-    <group android:alpha="0.34">
+    <group android:alpha="0.18">
         <path android:fillColor="#4FC3F7" android:pathData="M52.5,91a4.5,4.5 0,0 1,4.5 4.5v73a4.5,4.5 0,0 1,-9 0v-73a4.5,4.5 0,0 1,4.5 -4.5z" />
         <path android:fillColor="#4FC3F7" android:pathData="M66.5,78a4.5,4.5 0,0 1,4.5 4.5v99a4.5,4.5 0,0 1,-9 0v-99a4.5,4.5 0,0 1,4.5 -4.5z" />
         <path android:fillColor="#4FC3F7" android:pathData="M80.5,96a4.5,4.5 0,0 1,4.5 4.5v63a4.5,4.5 0,0 1,-9 0v-63a4.5,4.5 0,0 1,4.5 -4.5z" />
