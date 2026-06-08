@@ -36,6 +36,7 @@ fun DetailScreen(
     contentPadding: PaddingValues = PaddingValues(),
     onBack: () -> Unit = {},
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit = { _, _, _ -> },
+    onOpenNowPlaying: () -> Unit = {},
     viewModel: DetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -92,7 +93,15 @@ fun DetailScreen(
                         CardGrid(items, placeholderBook = kind.usesBookIcon, onItemClick = onClick)
                     }
                 } else {
-                    TrackList(items, placeholderBook = kind.usesBookIcon, actions = trackActions)
+                    TrackList(
+                        items = items,
+                        placeholderBook = kind.usesBookIcon,
+                        actions = trackActions,
+                        onTrackClick = {
+                            viewModel.playFrom(it)
+                            onOpenNowPlaying()
+                        },
+                    )
                 }
             }
         }

@@ -290,6 +290,7 @@ internal fun TrackList(
     items: List<LibraryItem>,
     placeholderBook: Boolean,
     actions: List<TrackAction> = emptyList(),
+    onTrackClick: (LibraryItem) -> Unit = {},
 ) {
     LazyColumn(
         contentPadding = PaddingValues(vertical = 8.dp),
@@ -297,6 +298,7 @@ internal fun TrackList(
     ) {
         items(items, key = { it.id }) { item ->
             ListItem(
+                modifier = Modifier.clickable { onTrackClick(item) },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 leadingContent = {
                     Artwork(

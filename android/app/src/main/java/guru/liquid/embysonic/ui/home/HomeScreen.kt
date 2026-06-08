@@ -103,7 +103,7 @@ fun HomeScreen(
                 }
             }
             Text(
-                "Library browse, mixes and Now Playing arrive in the next milestones.",
+                "Library browse, playlists and Now Playing are live. Sonic mixes arrive next.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

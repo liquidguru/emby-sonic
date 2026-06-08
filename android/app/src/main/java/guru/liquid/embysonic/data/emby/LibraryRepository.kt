@@ -48,6 +48,8 @@ data class LibraryItem(
     val subtitle: String?,
     val imageUrl: String?,
     val trailingText: String? = null,
+    val album: String? = null,
+    val durationMs: Long? = null,
 )
 
 /**
@@ -265,6 +267,8 @@ class LibraryRepository @Inject constructor(
             subtitle = artists.joinToString(", ").ifBlank { albumArtist },
             imageUrl = art,
             trailingText = formatDuration(durationMs),
+            album = album,
+            durationMs = durationMs,
         )
     }
 }
