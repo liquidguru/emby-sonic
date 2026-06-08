@@ -5,6 +5,15 @@ import guru.liquid.embysonic.data.settings.SettingsRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** A browsable audio library. Audiobooks are kept distinct from music. */
+enum class LibraryKind { MUSIC, AUDIOBOOKS }
+
+data class AudioLibrary(
+    val id: String,
+    val name: String,
+    val kind: LibraryKind,
+)
+
 /** Flattened item for library list/grid UIs, with its Emby image URL resolved. */
 data class LibraryItem(
     val id: String,
@@ -41,15 +50,29 @@ class LibraryRepository @Inject constructor(
         settings.snapshot().userId?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("Not signed in")
 
-    suspend fun artists(): List<LibraryItem> =
-        embyApi.getAlbumArtists(userId()).items.map { it.toCollectionItem() }
+    /** The user's audio libraries (music + audiobooks), discovered at runtime. */
+    suspend fun audioLibraries(): List<AudioLibrary> =
+        embyApi.getViews(userId()).items.mapNotNull { v ->
+            val kind = when (v.collectionType) {
+                "music" -> LibraryKind.MUSIC
+                "audiobooks" -> LibraryKind.AUDIOBOOKS
+                else -> return@mapNotNull null
+            }
+            val id = v.id ?: return@mapNotNull null
+            AudioLibrary(id = id, name = v.name.orEmpty(), kind = kind)
+        }
 
-    suspend fun albums(): List<LibraryItem> =
-        embyApi.getItems(userId(), includeItemTypes = "MusicAlbum").items.map { it.toCollectionItem() }
+    suspend fun artists(libraryId: String): List<LibraryItem> =
+        embyApi.getAlbumArtists(userId(), parentId = libraryId).items.map { it.toCollectionItem() }
 
-    suspend fun tracks(): List<LibraryItem> =
+    suspend fun albums(libraryId: String): List<LibraryItem> =
+        embyApi.getItems(userId(), parentId = libraryId, includeItemTypes = "MusicAlbum")
+            .items.map { it.toCollectionItem() }
+
+    suspend fun tracks(libraryId: String): List<LibraryItem> =
         embyApi.getItems(
             userId = userId(),
+            parentId = libraryId,
             includeItemTypes = "Audio",
             sortBy = "Album,SortName",
         ).items.map { it.toTrackItem() }
