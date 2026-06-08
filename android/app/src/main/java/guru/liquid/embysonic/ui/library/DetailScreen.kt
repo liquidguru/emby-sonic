@@ -10,10 +10,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -37,9 +41,25 @@ fun DetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listView by viewModel.listView.collectAsStateWithLifecycle()
     val kind = viewModel.kind
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
+    }
+
+    // Sonic playlist actions belong to music tracks only, not audiobook chapters.
+    val trackActions = if (kind == DetailKind.ALBUM_TRACKS) {
+        listOf(
+            TrackAction("More like this", viewModel::createSimilarPlaylist),
+            TrackAction("Start radio", viewModel::createRadioPlaylist),
+        )
+    } else {
+        emptyList()
+    }
 
     Scaffold(
         modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -72,7 +92,7 @@ fun DetailScreen(
                         CardGrid(items, placeholderBook = kind.usesBookIcon, onItemClick = onClick)
                     }
                 } else {
-                    TrackList(items, placeholderBook = kind.usesBookIcon)
+                    TrackList(items, placeholderBook = kind.usesBookIcon, actions = trackActions)
                 }
             }
         }

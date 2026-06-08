@@ -5,13 +5,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.emby.DetailKind
+import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
+import kotlinx.coroutines.channels.Channel
 import guru.liquid.embysonic.ui.nav.Routes
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -23,6 +28,7 @@ import javax.inject.Inject
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    private val playlists: PlaylistRepository,
     private val settings: SettingsRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -52,6 +58,31 @@ class DetailViewModel @Inject constructor(
             runCatching { repository.childItems(itemId, kind) }.fold(
                 onSuccess = { _state.value = TabState.Data(it) },
                 onFailure = { _state.value = TabState.Error(it.message ?: "Failed to load") },
+            )
+        }
+    }
+
+    // Transient one-shot messages (playlist created / failed) for a snackbar.
+    private val _messages = Channel<String>(Channel.BUFFERED)
+    val messages: Flow<String> = _messages.receiveAsFlow()
+
+    /** Sonic "more like this": seed track + its nearest neighbours → Emby playlist. */
+    fun createSimilarPlaylist(seed: LibraryItem) = generate(
+        name = "Similar to ${seed.title}",
+        build = { playlists.similarTrackIds(seed.id) },
+    )
+
+    /** Sonic radio: a longer seeded sequence → Emby playlist. */
+    fun createRadioPlaylist(seed: LibraryItem) = generate(
+        name = "${seed.title} Radio",
+        build = { playlists.radioTrackIds(seed.id) },
+    )
+
+    private fun generate(name: String, build: suspend () -> List<String>) {
+        viewModelScope.launch {
+            runCatching { playlists.createPlaylist(name, build()) }.fold(
+                onSuccess = { _messages.send("Saved \"$name\" to Emby ($it tracks)") },
+                onFailure = { _messages.send("Couldn't create playlist: ${it.message}") },
             )
         }
     }

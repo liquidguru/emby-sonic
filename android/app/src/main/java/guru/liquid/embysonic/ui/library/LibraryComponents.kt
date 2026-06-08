@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -41,8 +43,11 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -245,9 +250,19 @@ internal fun letterIndex(items: List<LibraryItem>): LinkedHashMap<Char, Int> {
     return map
 }
 
-/** Track/chapter list. Leaf level; row playback wiring comes in M3. */
+/** A row-overflow action, e.g. "More like this" / "Start radio". */
+internal data class TrackAction(val label: String, val onClick: (LibraryItem) -> Unit)
+
+/**
+ * Track/chapter list. Leaf level; row playback wiring comes in M3. [actions], when
+ * non-empty, populate each row's overflow menu (music-only sonic playlist actions).
+ */
 @Composable
-internal fun TrackList(items: List<LibraryItem>, placeholderBook: Boolean) {
+internal fun TrackList(
+    items: List<LibraryItem>,
+    placeholderBook: Boolean,
+    actions: List<TrackAction> = emptyList(),
+) {
     LazyColumn(
         contentPadding = PaddingValues(vertical = 8.dp),
         modifier = Modifier.fillMaxSize(),
@@ -274,10 +289,28 @@ internal fun TrackList(items: List<LibraryItem>, placeholderBook: Boolean) {
                         item.trailingText?.let {
                             Text(it, style = MaterialTheme.typography.bodySmall)
                         }
-                        IconButton(onClick = {}) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More")
-                        }
+                        TrackOverflow(item, actions)
                     }
+                },
+            )
+        }
+    }
+}
+
+/** Overflow button + dropdown of [actions] for a single track row. */
+@Composable
+private fun TrackOverflow(item: LibraryItem, actions: List<TrackAction>) {
+    var expanded by remember { mutableStateOf(false) }
+    IconButton(onClick = { if (actions.isNotEmpty()) expanded = true }) {
+        Icon(Icons.Default.MoreVert, contentDescription = "More")
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        actions.forEach { action ->
+            DropdownMenuItem(
+                text = { Text(action.label) },
+                onClick = {
+                    expanded = false
+                    action.onClick(item)
                 },
             )
         }
