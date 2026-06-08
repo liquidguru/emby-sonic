@@ -31,22 +31,31 @@ auto mixes), plus companion mobile apps.
 
 ---
 
+> If you are reading this file, you are correctly rooted in the repo. If your
+> AGENTS.md came from `C:\Users\liqui` (the home dir) instead, your working
+> directory is wrong — set the project/working folder to
+> `C:\Users\liqui\dev\emby-sonic` so repo rules load.
+
 ## Where you're running — pick the right mode
 
 Figure out your capabilities FIRST, then operate accordingly. Probe before you
-assume: try a terminal command (e.g. `adb devices`) and/or a screenshot.
+assume: run `adb devices` and `git status` on the **host** (not a sandbox).
 
-- **Mode A — local control** (computer-use / a real terminal on liquidHulk):
-  you CAN build, run the emulator, push, and sync. Do the **full routine** below
-  end to end. Prefer a real terminal/shell for builds and git (fast, reliable);
-  use screen control + screenshots only for the emulator UI verification step
-  that actually needs the screen. Do not click through GUIs for things a command
-  does better.
-- **Mode B — cloud sandbox only** (no local desktop, no LAN): you CANNOT build
+- **Mode A — host command execution on liquidHulk** (you can run real shell
+  commands on the host): you CAN build, verify, push, and sync. Do the **full
+  routine** below end to end. **The Android verify loop is pure `adb` — install,
+  `input tap`, `screencap` — so you do NOT need Computer Use / GUI automation
+  for it.** (`adb` is on PATH; the emulator AVD is `Pixel_3a_API_36`, launch it
+  if `adb devices` is empty.) Use a terminal for everything; Computer Use is
+  optional and currently unreliable on this machine — don't depend on it.
+- **Mode B — cloud sandbox only** (no host execution, no LAN): you CANNOT build
   the Android app, run the emulator, or reach Emby/the coordinator at
   192.168.1.9. Implement the code, open a PR on a feature branch, and put a
   precise build-and-verify checklist in the PR description for liquidHulk to run.
   **Never claim something is verified on-device when you couldn't run it.**
+
+Note: run host commands **unsandboxed** — the repo is registered as a git
+`safe.directory`, but a sandbox may still block LAN/device access.
 
 ## Build & verify — Android (the active work)
 
