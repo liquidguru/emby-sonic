@@ -6,19 +6,29 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -42,29 +52,69 @@ fun LibraryScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listView by viewModel.listView.collectAsStateWithLifecycle()
+    val selectionMode by viewModel.selectionMode.collectAsStateWithLifecycle()
+    val selectedIds by viewModel.selectedIds.collectAsStateWithLifecycle()
     val tabTitles = viewModel.tabTitles
-    val placeholderBook = viewModel.kind == LibraryKind.AUDIOBOOKS
+    val isMusic = viewModel.kind == LibraryKind.MUSIC
+    val placeholderBook = !isMusic
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showNameDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
+    }
+    // Selection is per-tab (albums vs artists differ); leaving a tab clears it.
+    LaunchedEffect(selectedTab) { viewModel.exitSelection() }
 
     Scaffold(
         modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_launcher_foreground),
-                        contentDescription = null,
-                        tint = Color.Unspecified,
-                        modifier = Modifier.size(40.dp),
-                    )
-                },
-                title = { Text(viewModel.title) },
-                actions = {
-                    ViewToggleAction(listView = listView, onToggle = viewModel::toggleListView)
-                    // TODO(M2+): wire library search + sort/filter overflow.
-                    IconButton(onClick = {}) { Icon(Icons.Default.Search, contentDescription = "Search") }
-                    IconButton(onClick = {}) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
-                },
-            )
+            if (selectionMode) {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::exitSelection) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel selection")
+                        }
+                    },
+                    title = { Text("${selectedIds.size} selected") },
+                    actions = {
+                        IconButton(
+                            onClick = { showNameDialog = true },
+                            enabled = selectedIds.isNotEmpty(),
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = "Create playlist")
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    navigationIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_launcher_foreground),
+                            contentDescription = null,
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(40.dp),
+                        )
+                    },
+                    title = { Text(viewModel.title) },
+                    actions = {
+                        ViewToggleAction(listView = listView, onToggle = viewModel::toggleListView)
+                        if (isMusic) {
+                            IconButton(onClick = viewModel::enterSelection) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.PlaylistAdd,
+                                    contentDescription = "Make playlist",
+                                )
+                            }
+                        }
+                        // TODO(M2+): wire library search + sort/filter overflow.
+                        IconButton(onClick = {}) { Icon(Icons.Default.Search, contentDescription = "Search") }
+                        IconButton(onClick = {}) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -77,18 +127,52 @@ fun LibraryScreen(
                     )
                 }
             }
-            // Tab 0 = Artists/Authors, Tab 1 = Albums/Books. Tapping a cell drills down.
+            // Tab 0 = Artists/Authors, Tab 1 = Albums/Books. Tapping a cell drills down,
+            // or toggles selection while building a playlist.
             val detailKind = viewModel.kind.detailKindFor(selectedTab)
             val tabState = if (selectedTab == 0) state.artists else state.albums
             StateContent(tabState) { items ->
-                val onClick = { item: LibraryItem -> onOpenItem(item.id, item.title, detailKind) }
+                val onClick = { item: LibraryItem ->
+                    if (selectionMode) viewModel.toggleSelected(item.id)
+                    else onOpenItem(item.id, item.title, detailKind)
+                }
+                val selection = if (selectionMode) selectedIds else emptySet()
                 if (listView) {
-                    CollectionList(items, placeholderBook = placeholderBook, onItemClick = onClick)
+                    CollectionList(items, placeholderBook, onClick, selection)
                 } else {
-                    CardGrid(items, placeholderBook = placeholderBook, onItemClick = onClick)
+                    CardGrid(items, placeholderBook, onClick, selection)
                 }
             }
         }
+    }
+
+    if (showNameDialog) {
+        val defaultName = "New playlist"
+        var name by remember { mutableStateOf(defaultName) }
+        AlertDialog(
+            onDismissRequest = { showNameDialog = false },
+            title = { Text("Save playlist") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    singleLine = true,
+                    label = { Text("Name") },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showNameDialog = false
+                    viewModel.createPlaylistFromSelection(
+                        name.ifBlank { defaultName },
+                        areAlbums = selectedTab == 1,
+                    )
+                }) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNameDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
