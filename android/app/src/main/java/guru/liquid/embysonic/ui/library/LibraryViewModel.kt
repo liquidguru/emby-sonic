@@ -24,7 +24,6 @@ sealed interface TabState {
 data class LibraryUiState(
     val artists: TabState = TabState.Loading,
     val albums: TabState = TabState.Loading,
-    val tracks: TabState = TabState.Loading,
 )
 
 @HiltViewModel
@@ -38,10 +37,13 @@ class LibraryViewModel @Inject constructor(
         LibraryKind.valueOf(savedStateHandle.get<String>(Routes.ARG_KIND) ?: LibraryKind.MUSIC.name)
     }.getOrDefault(LibraryKind.MUSIC)
 
-    /** Tab labels differ by library type: music vs audiobooks. */
+    /**
+     * Two entry tabs only. Tracks/chapters are no longer flat tabs — they live
+     * inside a drill-down (Artist→Albums→Tracks, Author→Books→Chapters).
+     */
     val tabTitles: List<String> = when (kind) {
-        LibraryKind.MUSIC -> listOf("Artists", "Albums", "Tracks")
-        LibraryKind.AUDIOBOOKS -> listOf("Authors", "Books", "Chapters")
+        LibraryKind.MUSIC -> listOf("Artists", "Albums")
+        LibraryKind.AUDIOBOOKS -> listOf("Authors", "Books")
     }
 
     val title: String = when (kind) {
@@ -55,7 +57,6 @@ class LibraryViewModel @Inject constructor(
     init {
         loadArtists()
         loadAlbums()
-        loadTracks()
     }
 
     fun loadArtists() = load(
@@ -66,11 +67,6 @@ class LibraryViewModel @Inject constructor(
     fun loadAlbums() = load(
         block = { repository.albums(libraryId) },
         onResult = { tab -> _state.update { it.copy(albums = tab) } },
-    )
-
-    fun loadTracks() = load(
-        block = { repository.tracks(libraryId) },
-        onResult = { tab -> _state.update { it.copy(tracks = tab) } },
     )
 
     private fun load(
