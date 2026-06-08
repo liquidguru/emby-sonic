@@ -7,12 +7,16 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.ui.nav.Routes
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -32,6 +36,7 @@ data class LibraryUiState(
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    private val playlists: PlaylistRepository,
     private val settings: SettingsRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -96,6 +101,49 @@ class LibraryViewModel @Inject constructor(
             runCatching { block() }.fold(
                 onSuccess = { onResult(TabState.Data(it)) },
                 onFailure = { onResult(TabState.Error(it.message ?: "Failed to load")) },
+            )
+        }
+    }
+
+    // ---- Manual multi-select → playlist (music only) ---------------------------
+
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode: StateFlow<Boolean> = _selectionMode.asStateFlow()
+
+    private val _selectedIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedIds: StateFlow<Set<String>> = _selectedIds.asStateFlow()
+
+    private val _messages = Channel<String>(Channel.BUFFERED)
+    val messages: Flow<String> = _messages.receiveAsFlow()
+
+    fun enterSelection() { _selectionMode.value = true }
+
+    fun exitSelection() {
+        _selectionMode.value = false
+        _selectedIds.value = emptySet()
+    }
+
+    fun toggleSelected(id: String) =
+        _selectedIds.update { if (id in it) it - id else it + id }
+
+    /**
+     * Gathers the tracks of every selected collection and saves them as an Emby
+     * playlist. [areAlbums] true → the selection is albums (scope by ParentId);
+     * false → artists (scope by AlbumArtistIds).
+     */
+    fun createPlaylistFromSelection(name: String, areAlbums: Boolean) {
+        val collectionIds = _selectedIds.value.toList()
+        if (collectionIds.isEmpty()) return
+        viewModelScope.launch {
+            runCatching {
+                val trackIds = playlists.trackIdsForCollections(collectionIds, areAlbums)
+                playlists.createPlaylist(name, trackIds)
+            }.fold(
+                onSuccess = {
+                    _messages.send("Saved \"$name\" to Emby ($it tracks)")
+                    exitSelection()
+                },
+                onFailure = { _messages.send("Couldn't create playlist: ${it.message}") },
             )
         }
     }

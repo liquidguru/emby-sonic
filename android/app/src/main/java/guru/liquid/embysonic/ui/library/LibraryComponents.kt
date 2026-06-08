@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
@@ -86,6 +87,7 @@ internal fun CardGrid(
     items: List<LibraryItem>,
     placeholderBook: Boolean,
     onItemClick: (LibraryItem) -> Unit,
+    selectedIds: Set<String> = emptySet(),
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -105,19 +107,24 @@ internal fun CardGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         items(items, key = { it.id }) { item ->
+            val selected = item.id in selectedIds
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surface,
                 ),
                 modifier = Modifier.clickable { onItemClick(item) },
             ) {
-                Artwork(
-                    item.imageUrl,
-                    item.title,
-                    Modifier.fillMaxWidth().aspectRatio(1f),
-                    placeholderBook = placeholderBook,
-                )
+                Box {
+                    Artwork(
+                        item.imageUrl,
+                        item.title,
+                        Modifier.fillMaxWidth().aspectRatio(1f),
+                        placeholderBook = placeholderBook,
+                    )
+                    if (selected) SelectedBadge(Modifier.align(Alignment.TopEnd).padding(8.dp))
+                }
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         item.title,
@@ -163,6 +170,7 @@ internal fun CollectionList(
     items: List<LibraryItem>,
     placeholderBook: Boolean,
     onItemClick: (LibraryItem) -> Unit,
+    selectedIds: Set<String> = emptySet(),
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -174,9 +182,13 @@ internal fun CollectionList(
             modifier = Modifier.fillMaxSize(),
         ) {
             items(items, key = { it.id }) { item ->
+                val selected = item.id in selectedIds
                 ListItem(
                     modifier = Modifier.clickable { onItemClick(item) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    colors = ListItemDefaults.colors(
+                        containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                        else Color.Transparent,
+                    ),
                     leadingContent = {
                         Artwork(
                             item.imageUrl,
@@ -190,6 +202,11 @@ internal fun CollectionList(
                     },
                     supportingContent = item.subtitle?.let {
                         { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    },
+                    trailingContent = if (selected) {
+                        { SelectedBadge() }
+                    } else {
+                        null
                     },
                 )
             }
@@ -248,6 +265,17 @@ internal fun letterIndex(items: List<LibraryItem>): LinkedHashMap<Char, Int> {
         if (!map.containsKey(key)) map[key] = i
     }
     return map
+}
+
+/** Selection check badge shown on a chosen collection (multi-select playlist mode). */
+@Composable
+private fun SelectedBadge(modifier: Modifier = Modifier) {
+    Icon(
+        Icons.Filled.CheckCircle,
+        contentDescription = "Selected",
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = modifier,
+    )
 }
 
 /** A row-overflow action, e.g. "More like this" / "Start radio". */
