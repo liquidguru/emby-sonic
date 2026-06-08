@@ -70,7 +70,11 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun loadArtists() = load(
-        block = { repository.artists(libraryId) },
+        block = {
+            // Audiobook authors need cover resolution from their chapters too.
+            if (kind == LibraryKind.AUDIOBOOKS) repository.authors(libraryId)
+            else repository.artists(libraryId)
+        },
         onResult = { tab -> _state.update { it.copy(artists = tab) } },
     )
 

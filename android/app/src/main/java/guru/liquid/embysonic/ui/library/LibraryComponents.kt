@@ -2,21 +2,28 @@ package guru.liquid.embysonic.ui.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -34,15 +41,19 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import guru.liquid.embysonic.data.emby.LibraryItem
+import kotlinx.coroutines.launch
 
 internal val ScreenPadding = 20.dp
 internal val GridSpacing = 16.dp
@@ -71,9 +82,19 @@ internal fun CardGrid(
     placeholderBook: Boolean,
     onItemClick: (LibraryItem) -> Unit,
 ) {
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    val index = remember(items) { letterIndex(items) }
+    Box(modifier = Modifier.fillMaxSize()) {
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(horizontal = ScreenPadding, vertical = GridSpacing),
+        contentPadding = PaddingValues(
+            start = ScreenPadding,
+            end = ScreenPadding + 8.dp,
+            top = GridSpacing,
+            bottom = GridSpacing,
+        ),
         horizontalArrangement = Arrangement.spacedBy(GridSpacing),
         verticalArrangement = Arrangement.spacedBy(GridSpacing),
         modifier = Modifier.fillMaxSize(),
@@ -113,6 +134,10 @@ internal fun CardGrid(
             }
         }
     }
+        AzIndexBar(index.keys.toList()) { letter ->
+            scope.launch { gridState.scrollToItem(index[letter] ?: 0) }
+        }
+    }
 }
 
 /** Top-bar action that toggles between card and list view, showing the target mode's icon. */
@@ -134,31 +159,90 @@ internal fun CollectionList(
     placeholderBook: Boolean,
     onItemClick: (LibraryItem) -> Unit,
 ) {
-    LazyColumn(
-        contentPadding = PaddingValues(vertical = 8.dp),
-        modifier = Modifier.fillMaxSize(),
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val index = remember(items) { letterIndex(items) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp, end = 24.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            items(items, key = { it.id }) { item ->
+                ListItem(
+                    modifier = Modifier.clickable { onItemClick(item) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    leadingContent = {
+                        Artwork(
+                            item.imageUrl,
+                            item.title,
+                            Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
+                            placeholderBook = placeholderBook,
+                        )
+                    },
+                    headlineContent = {
+                        Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    supportingContent = item.subtitle?.let {
+                        { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    },
+                )
+            }
+        }
+        AzIndexBar(index.keys.toList()) { letter ->
+            scope.launch { listState.scrollToItem(index[letter] ?: 0) }
+        }
+    }
+}
+
+/**
+ * Right-edge A–Z fast-scroll index. Tap or drag to jump to the first item whose
+ * title starts with that letter. Only the letters actually present are shown.
+ */
+@Composable
+private fun BoxScope.AzIndexBar(letters: List<Char>, onSelect: (Char) -> Unit) {
+    if (letters.size < 2) return
+    fun pick(y: Float, height: Int) {
+        if (height <= 0) return
+        val idx = ((y / height) * letters.size).toInt().coerceIn(0, letters.size - 1)
+        onSelect(letters[idx])
+    }
+    Column(
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .width(24.dp)
+            .pointerInput(letters) {
+                detectTapGestures { pick(it.y, size.height) }
+            }
+            .pointerInput(letters) {
+                detectVerticalDragGestures { change, _ ->
+                    change.consume()
+                    pick(change.position.y, size.height)
+                }
+            },
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        items(items, key = { it.id }) { item ->
-            ListItem(
-                modifier = Modifier.clickable { onItemClick(item) },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                leadingContent = {
-                    Artwork(
-                        item.imageUrl,
-                        item.title,
-                        Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
-                        placeholderBook = placeholderBook,
-                    )
-                },
-                headlineContent = {
-                    Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                },
-                supportingContent = item.subtitle?.let {
-                    { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                },
+        letters.forEach { c ->
+            Text(
+                c.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
     }
+}
+
+/** First index of each leading letter in a (server-sorted) list; non-letters bucket under '#'. */
+internal fun letterIndex(items: List<LibraryItem>): LinkedHashMap<Char, Int> {
+    val map = LinkedHashMap<Char, Int>()
+    items.forEachIndexed { i, item ->
+        val ch = item.title.firstOrNull()?.uppercaseChar()
+        val key = if (ch != null && ch.isLetter()) ch else '#'
+        if (!map.containsKey(key)) map[key] = i
+    }
+    return map
 }
 
 /** Track/chapter list. Leaf level; row playback wiring comes in M3. */
