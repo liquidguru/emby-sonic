@@ -1,5 +1,7 @@
 package guru.liquid.embysonic.ui.nav
 
+import android.net.Uri
+
 object Routes {
     const val LOGIN = "login"
     const val MAIN = "main"
@@ -27,4 +29,18 @@ object Routes {
     /** Route pattern (for nav-selection comparison) for a given library kind. */
     fun libraryPattern(kind: String): String =
         if (kind == "AUDIOBOOKS") LIBRARY_AUDIOBOOKS else LIBRARY_MUSIC
+
+    // Drill-down detail screen. One parameterised route serves every level
+    // (artist→albums, album→tracks, author→books, book→chapters); stacking two
+    // instances with different args is plain forward navigation, so it's safe —
+    // the save/restore-state collision only bites bottom-nav tabs.
+    const val ARG_ITEM_ID = "itemId"
+    const val ARG_DETAIL_KIND = "detailKind"
+    const val ARG_TITLE = "title"
+    const val DETAIL =
+        "detail?$ARG_ITEM_ID={$ARG_ITEM_ID}&$ARG_DETAIL_KIND={$ARG_DETAIL_KIND}&$ARG_TITLE={$ARG_TITLE}"
+
+    /** Concrete detail route. [detailKind] is a [DetailKind] name; [title] is shown in the bar. */
+    fun detail(itemId: String, detailKind: String, title: String): String =
+        "detail?$ARG_ITEM_ID=$itemId&$ARG_DETAIL_KIND=$detailKind&$ARG_TITLE=${Uri.encode(title)}"
 }

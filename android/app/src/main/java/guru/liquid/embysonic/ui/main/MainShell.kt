@@ -25,6 +25,7 @@ import androidx.navigation.navArgument
 import guru.liquid.embysonic.data.emby.AudioLibrary
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.ui.home.HomeScreen
+import guru.liquid.embysonic.ui.library.DetailScreen
 import guru.liquid.embysonic.ui.library.LibraryScreen
 import guru.liquid.embysonic.ui.mixes.MixesScreen
 import guru.liquid.embysonic.ui.nav.Routes
@@ -75,6 +76,11 @@ fun MainShell(
             }
         },
     ) { padding ->
+        // Pushes a drill-down level onto the shell back stack (bottom nav stays visible).
+        val openDetail = { id: String, title: String, kind: guru.liquid.embysonic.data.emby.DetailKind ->
+            navController.navigate(Routes.detail(id, kind.name, title))
+        }
+
         NavHost(navController = navController, startDestination = Routes.HOME) {
             composable(Routes.HOME) {
                 HomeScreen(onOpenSettings = onOpenSettings, contentPadding = padding)
@@ -89,7 +95,7 @@ fun MainShell(
                     },
                 ),
             ) {
-                LibraryScreen(contentPadding = padding)
+                LibraryScreen(contentPadding = padding, onOpenItem = openDetail)
             }
             composable(
                 route = Routes.LIBRARY_AUDIOBOOKS,
@@ -101,7 +107,24 @@ fun MainShell(
                     },
                 ),
             ) {
-                LibraryScreen(contentPadding = padding)
+                LibraryScreen(contentPadding = padding, onOpenItem = openDetail)
+            }
+            composable(
+                route = Routes.DETAIL,
+                arguments = listOf(
+                    navArgument(Routes.ARG_ITEM_ID) { type = NavType.StringType },
+                    navArgument(Routes.ARG_DETAIL_KIND) { type = NavType.StringType },
+                    navArgument(Routes.ARG_TITLE) {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) {
+                DetailScreen(
+                    contentPadding = padding,
+                    onBack = { navController.popBackStack() },
+                    onOpenItem = openDetail,
+                )
             }
             composable(Routes.MIXES) { MixesScreen(contentPadding = padding) }
         }
