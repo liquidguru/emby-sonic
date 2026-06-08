@@ -3,6 +3,7 @@ package guru.liquid.embysonic.data.emby
 import guru.liquid.embysonic.data.emby.dto.AuthenticateRequest
 import guru.liquid.embysonic.data.emby.dto.AuthenticateResponse
 import guru.liquid.embysonic.data.emby.dto.EmbyItemDto
+import guru.liquid.embysonic.data.emby.dto.PlaylistCreationResultDto
 import guru.liquid.embysonic.data.emby.dto.QueryResult
 import guru.liquid.embysonic.data.emby.dto.SystemInfo
 import retrofit2.http.Body
@@ -43,6 +44,18 @@ interface EmbyApi {
         @Query("ParentId") parentId: String? = null,
         @Query("AlbumArtistIds") albumArtistIds: String? = null,
     ): QueryResult<EmbyItemDto>
+
+    /**
+     * Creates an Emby playlist owned by [userId] with the given comma-separated
+     * item [ids]. Persists server-side and appears in every Emby client.
+     */
+    @POST("Playlists")
+    suspend fun createPlaylist(
+        @Query("Name") name: String,
+        @Query("Ids") ids: String,
+        @Query("UserId") userId: String,
+        @Query("MediaType") mediaType: String = "Audio",
+    ): PlaylistCreationResultDto
 
     /** Album artists within a library ([parentId] scopes to that library). */
     @GET("Artists/AlbumArtists")
