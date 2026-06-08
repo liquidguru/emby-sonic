@@ -29,6 +29,7 @@ import guru.liquid.embysonic.ui.library.DetailScreen
 import guru.liquid.embysonic.ui.library.LibraryScreen
 import guru.liquid.embysonic.ui.mixes.MixesScreen
 import guru.liquid.embysonic.ui.nav.Routes
+import guru.liquid.embysonic.ui.playback.NowPlayingScreen
 
 /**
  * Bottom-navigation shell. The middle tabs are built from the user's discovered
@@ -42,37 +43,38 @@ fun MainShell(
 ) {
     val navController = rememberNavController()
     val libraries by shellViewModel.libraries.collectAsStateWithLifecycle()
+    val current by navController.currentBackStackEntryAsState()
+    val currentRoute = current?.destination?.route
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                val current by navController.currentBackStackEntryAsState()
-                val currentRoute = current?.destination?.route
-
-                NavigationBarItem(
-                    selected = currentRoute == Routes.HOME,
-                    onClick = { navController.navigateTab(Routes.HOME) },
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                    label = { Text("Home") },
-                )
-
-                libraries.forEach { library ->
+            if (currentRoute != Routes.NOW_PLAYING) {
+                NavigationBar {
                     NavigationBarItem(
-                        selected = currentRoute == Routes.libraryPattern(library.kind.name),
-                        onClick = {
-                            navController.navigateTab(Routes.library(library.id, library.kind.name))
-                        },
-                        icon = { Icon(library.icon(), contentDescription = library.name) },
-                        label = { Text(library.shortLabel()) },
+                        selected = currentRoute == Routes.HOME,
+                        onClick = { navController.navigateTab(Routes.HOME) },
+                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                        label = { Text("Home") },
+                    )
+
+                    libraries.forEach { library ->
+                        NavigationBarItem(
+                            selected = currentRoute == Routes.libraryPattern(library.kind.name),
+                            onClick = {
+                                navController.navigateTab(Routes.library(library.id, library.kind.name))
+                            },
+                            icon = { Icon(library.icon(), contentDescription = library.name) },
+                            label = { Text(library.shortLabel()) },
+                        )
+                    }
+
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.MIXES,
+                        onClick = { navController.navigateTab(Routes.MIXES) },
+                        icon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Mixes") },
+                        label = { Text("Mixes") },
                     )
                 }
-
-                NavigationBarItem(
-                    selected = currentRoute == Routes.MIXES,
-                    onClick = { navController.navigateTab(Routes.MIXES) },
-                    icon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Mixes") },
-                    label = { Text("Mixes") },
-                )
             }
         },
     ) { padding ->
@@ -124,10 +126,14 @@ fun MainShell(
                     contentPadding = padding,
                     onBack = { navController.popBackStack() },
                     onOpenItem = openDetail,
+                    onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
                 )
             }
             composable(Routes.MIXES) {
                 MixesScreen(contentPadding = padding, onOpenItem = openDetail)
+            }
+            composable(Routes.NOW_PLAYING) {
+                NowPlayingScreen(onCollapse = { navController.popBackStack() })
             }
         }
     }

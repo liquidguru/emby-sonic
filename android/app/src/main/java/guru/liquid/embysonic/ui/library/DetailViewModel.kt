@@ -9,6 +9,7 @@ import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
+import guru.liquid.embysonic.playback.PlaybackController
 import kotlinx.coroutines.channels.Channel
 import guru.liquid.embysonic.ui.nav.Routes
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,7 @@ class DetailViewModel @Inject constructor(
     private val repository: LibraryRepository,
     private val playlists: PlaylistRepository,
     private val settings: SettingsRepository,
+    private val playback: PlaybackController,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -77,6 +79,11 @@ class DetailViewModel @Inject constructor(
         name = "${seed.title} Radio",
         build = { playlists.radioTrackIds(seed.id) },
     )
+
+    fun playFrom(seed: LibraryItem) {
+        val items = (state.value as? TabState.Data)?.items.orEmpty().ifEmpty { listOf(seed) }
+        playback.playQueue(items, seed)
+    }
 
     private fun generate(name: String, build: suspend () -> List<String>) {
         viewModelScope.launch {

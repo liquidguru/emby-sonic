@@ -1,7 +1,7 @@
 # Emby Sonic — Project Specification
 **Version:** 0.2
 **Author:** Kaj Maney
-**Status:** Phase 1 & 2 COMPLETE — Phase 3 (Android app) next
+**Status:** Phase 1 & 2 COMPLETE — Phase 3 (Android app) M3 complete
 
 ---
 
@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08).*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09.*
 
 Kotlin / Jetpack Compose. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -308,14 +308,27 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   `/sonic/status` check).
 - **M2 — Browse:** Library tabs (Artists/Albums/Tracks via Emby API), Artist
   detail, Album detail + track list.
-- **M3 — Playback:** Now Playing, ExoPlayer (Media3), MediaSession, queue. Transport
-  uses a plain progress bar (`TrackProgress` interface — see waveform decision).
+- **M3 — Playback:** ✅ Now Playing, ExoPlayer (Media3), MediaSession, queue.
+  Album/playlist track rows start an authenticated Emby `/Items/{id}/Download`
+  stream and open the Now Playing screen. Transport uses a 96dp tap-to-seek
+  progress module behind the `TrackProgress` interface (the future waveform slot;
+  see waveform decision).
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Home (recents + mixes), icon/theming. Real waveform
   (Option A) considered here, dropped in behind the `TrackProgress` interface.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
+
+**M3 verification (dev-pc / Pixel_3a_API_36, 2026-06-09):**
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- Verified on emulator by tapping Music → Albums → album track. Now Playing opened,
+  ExoPlayer advanced the timer, the play button showed pause state, and
+  `adb shell cmd media_session list-sessions` reported
+  `package=guru.liquid.embysonic`.
+- Screenshots captured in `android/verify-m3-nowplaying-final.png` and
+  `android/verify-m3-media-session.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*

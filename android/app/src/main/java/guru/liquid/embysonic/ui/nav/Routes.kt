@@ -10,6 +10,7 @@ object Routes {
     // Tabs inside the main bottom-nav shell.
     const val HOME = "home"
     const val MIXES = "mixes"
+    const val NOW_PLAYING = "now_playing"
 
     // Library tabs. Music and audiobooks are SEPARATE nav destinations (distinct
     // route prefixes) so the bottom nav's save/restore-state — which keys by route
