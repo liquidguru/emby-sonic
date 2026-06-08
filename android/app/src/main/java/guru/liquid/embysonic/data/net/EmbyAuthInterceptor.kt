@@ -20,7 +20,7 @@ class EmbyAuthInterceptor(
         val snap = settings.snapshot()
         val authHeader = buildString {
             append("MediaBrowser ")
-            append("Client=\"Emby Sonic\", ")
+            append("Client=\"liquidWave\", ")
             append("Device=\"${Build.MODEL}\", ")
             append("DeviceId=\"${snap.deviceId}\", ")
             append("Version=\"${BuildConfig.VERSION_NAME}\"")

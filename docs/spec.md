@@ -297,7 +297,7 @@ dashboard config page, and triggers scans on library changes.
 ### Phase 3 — Android App
 *Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09.*
 
-Kotlin / Jetpack Compose. Browse/stream/auth go to the **Emby API directly**; all
+Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
 Stack: Compose + Hilt (DI) + Retrofit/OkHttp (two clients: Emby + coordinator) +
 Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
@@ -431,6 +431,21 @@ The app is **designed so real waveforms drop in later (Option A)** without rewor
 - Option C (compute during analysis) stays rejected: it would force a 27k re-scan.
 - Slim-image caveat for A: the coordinator-only Docker image would need a minimal
   decoder (`soundfile`/`audioread`) added before the waveform route works there.
+
+### Android brand: liquidWave
+
+Decided 2026-06-09. The Android app is branded **liquidWave** while the broader
+repo/service remains Emby Sonic for now. Brand assets use a premium dark Material
+3 style:
+
+- Static launcher/logo mark: liquid cyan W over subtle amplitude bars, based on
+  `C:\Users\liqui\liquidwave-icon-static.svg`.
+- Compose loading/splash mark uses the same W and highlight geometry; the W stays
+  static and only the background amplitude bars gently undulate.
+- The Android 12 platform splash uses only the dark background so its adaptive-icon
+  mask does not distort the mark before the controlled Compose splash appears.
+- No music notes, headphones, speaker icons, or droplets are part of the liquidWave
+  brand mark.
 
 ### Cross-platform portability
 

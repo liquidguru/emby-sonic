@@ -32,15 +32,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import guru.liquid.embysonic.R
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
+import guru.liquid.embysonic.ui.brand.LiquidWaveLogo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,10 +89,7 @@ fun LibraryScreen(
             } else {
                 TopAppBar(
                     navigationIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_launcher_foreground),
-                            contentDescription = null,
-                            tint = Color.Unspecified,
+                        LiquidWaveLogo(
                             modifier = Modifier.size(40.dp),
                         )
                     },
