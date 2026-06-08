@@ -6,10 +6,13 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.ui.nav.Routes
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -20,6 +23,7 @@ import javax.inject.Inject
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    private val settings: SettingsRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -28,6 +32,12 @@ class DetailViewModel @Inject constructor(
         DetailKind.valueOf(savedStateHandle.get<String>(Routes.ARG_DETAIL_KIND).orEmpty())
     }.getOrDefault(DetailKind.ALBUM_TRACKS)
     val title: String = savedStateHandle.get<String>(Routes.ARG_TITLE).orEmpty()
+
+    /** Card grid vs. list, persisted and shared across library/detail screens. */
+    val listView: StateFlow<Boolean> =
+        settings.libraryListView.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun toggleListView() = viewModelScope.launch { settings.setLibraryListView(!listView.value) }
 
     private val _state = MutableStateFlow<TabState>(TabState.Loading)
     val state: StateFlow<TabState> = _state.asStateFlow()

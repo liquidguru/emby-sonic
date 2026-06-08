@@ -29,6 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import guru.liquid.embysonic.R
 import guru.liquid.embysonic.data.emby.DetailKind
+import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +41,7 @@ fun LibraryScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val listView by viewModel.listView.collectAsStateWithLifecycle()
     val tabTitles = viewModel.tabTitles
     val placeholderBook = viewModel.kind == LibraryKind.AUDIOBOOKS
 
@@ -57,6 +59,7 @@ fun LibraryScreen(
                 },
                 title = { Text(viewModel.title) },
                 actions = {
+                    ViewToggleAction(listView = listView, onToggle = viewModel::toggleListView)
                     // TODO(M2+): wire library search + sort/filter overflow.
                     IconButton(onClick = {}) { Icon(Icons.Default.Search, contentDescription = "Search") }
                     IconButton(onClick = {}) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
@@ -78,8 +81,11 @@ fun LibraryScreen(
             val detailKind = viewModel.kind.detailKindFor(selectedTab)
             val tabState = if (selectedTab == 0) state.artists else state.albums
             StateContent(tabState) { items ->
-                CardGrid(items, placeholderBook = placeholderBook) { item ->
-                    onOpenItem(item.id, item.title, detailKind)
+                val onClick = { item: LibraryItem -> onOpenItem(item.id, item.title, detailKind) }
+                if (listView) {
+                    CollectionList(items, placeholderBook = placeholderBook, onItemClick = onClick)
+                } else {
+                    CardGrid(items, placeholderBook = placeholderBook, onItemClick = onClick)
                 }
             }
         }
