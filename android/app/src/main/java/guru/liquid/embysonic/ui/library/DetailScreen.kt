@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +45,8 @@ fun DetailScreen(
     val listView by viewModel.listView.collectAsStateWithLifecycle()
     val kind = viewModel.kind
     val snackbarHostState = remember { SnackbarHostState() }
+    val hasPlayableItems = (state as? TabState.Data)?.items?.isNotEmpty() == true
+    val canShuffle = kind == DetailKind.ALBUM_TRACKS || kind == DetailKind.PLAYLIST_TRACKS
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -75,6 +79,25 @@ fun DetailScreen(
                     // The toggle only applies to grid levels (albums/books), not leaf lists.
                     if (kind.isGrid) {
                         ViewToggleAction(listView = listView, onToggle = viewModel::toggleListView)
+                    } else if (hasPlayableItems) {
+                        IconButton(
+                            onClick = {
+                                viewModel.playFirst()
+                                onOpenNowPlaying()
+                            },
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Play")
+                        }
+                        if (canShuffle) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.shuffleAll()
+                                    onOpenNowPlaying()
+                                },
+                            ) {
+                                Icon(Icons.Default.Shuffle, contentDescription = "Shuffle")
+                            }
+                        }
                     }
                 },
             )

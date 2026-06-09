@@ -85,6 +85,18 @@ class DetailViewModel @Inject constructor(
         playback.playQueue(items, seed)
     }
 
+    fun playFirst() {
+        val items = (state.value as? TabState.Data)?.items.orEmpty()
+        val seed = items.firstOrNull() ?: return
+        playback.playQueue(items, seed)
+    }
+
+    fun shuffleAll() {
+        val items = (state.value as? TabState.Data)?.items.orEmpty()
+        val seed = items.randomOrNull() ?: return
+        playback.playQueue(items, seed, shuffled = true)
+    }
+
     private fun generate(name: String, build: suspend () -> List<String>) {
         viewModelScope.launch {
             runCatching { playlists.createPlaylist(name, build()) }.fold(
