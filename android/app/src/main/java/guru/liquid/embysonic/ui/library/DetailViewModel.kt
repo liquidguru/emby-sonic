@@ -19,7 +19,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 import javax.inject.Inject
 
 /**
@@ -94,7 +96,11 @@ class DetailViewModel @Inject constructor(
     fun shuffleAll() {
         val items = (state.value as? TabState.Data)?.items.orEmpty()
         if (items.isEmpty()) return
-        playback.prepareShuffledQueue(items)
+        val shuffled = items.shuffledMovingFirst()
+        _state.update { current ->
+            if (current is TabState.Data) current.copy(items = shuffled) else current
+        }
+        playback.prepareQueue(shuffled, shuffled = true)
     }
 
     fun playCollection(item: LibraryItem) {
@@ -120,5 +126,15 @@ class DetailViewModel @Inject constructor(
                 onFailure = { _messages.send("Couldn't create playlist: ${it.message}") },
             )
         }
+    }
+}
+
+private fun List<LibraryItem>.shuffledMovingFirst(): List<LibraryItem> {
+    if (size < 2) return this
+    val shuffled = shuffled(Random(System.nanoTime()))
+    return if (shuffled.first().id != first().id) {
+        shuffled
+    } else {
+        shuffled.drop(1) + shuffled.first()
     }
 }
