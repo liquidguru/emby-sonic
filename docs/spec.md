@@ -336,10 +336,11 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - **M3.7 — Mini player:** ✅ The main shell now shows a persistent mini player
   above the bottom navigation whenever a track is loaded and the full Now Playing
   screen is collapsed. The mini player shows artwork, title, artist, progress,
-  play/pause, and stop/close; tapping the bar opens Now Playing. Stop clears the
-  ExoPlayer queue, removes the mini player, and stops the playback service. The
-  bottom Home tab now returns from drill-down detail screens to the existing Home
-  root instead of restoring/staying on a stale detail screen.
+  play/pause, and stop/close; tapping the bar opens Now Playing, while tapping
+  the progress strip seeks within the track. Stop clears the ExoPlayer queue,
+  removes the mini player, and stops the playback service. The bottom Home tab
+  now returns from drill-down detail screens to the existing Home root instead
+  of restoring/staying on a stale detail screen.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
@@ -403,6 +404,8 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - User-confirmed the mini player appears after starting playback and returning to
   the shell, its bar opens Now Playing, play/pause works, and stop removes the
   bar/stops playback.
+- User-confirmed the mini-player progress strip seeks within the current track,
+  matching the main Now Playing seek behavior.
 - Screenshot captured in `android/verify-mini-player.png`.
 
 ### Phase 4 — iOS App
