@@ -440,6 +440,10 @@ repo/service remains Emby Sonic for now. Brand assets use a premium dark Materia
 
 - Static launcher/logo mark: liquid cyan W over subtle amplitude bars, based on
   `C:\Users\liqui\liquidwave-icon-static.svg`.
+- Launcher icons use density-specific PNG foreground assets rendered from the
+  original static SVG and inset for Android adaptive-icon safe area. Avoid
+  hand-tuned VectorDrawable replacements for the launcher unless the source SVG
+  changes and the rendered PNGs are regenerated.
 - Compose loading/splash mark uses the same W and highlight geometry; the W stays
   static and only the background amplitude bars gently undulate.
 - The Android 12 platform splash uses only the dark background so its adaptive-icon
