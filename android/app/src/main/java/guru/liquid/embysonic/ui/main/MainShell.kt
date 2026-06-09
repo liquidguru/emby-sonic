@@ -95,7 +95,12 @@ fun MainShell(
 
         NavHost(navController = navController, startDestination = Routes.HOME) {
             composable(Routes.HOME) {
-                HomeScreen(onOpenSettings = onOpenSettings, contentPadding = padding)
+                HomeScreen(
+                    onOpenSettings = onOpenSettings,
+                    onOpenItem = openDetail,
+                    onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
+                    contentPadding = padding,
+                )
             }
             composable(
                 route = Routes.LIBRARY_MUSIC,

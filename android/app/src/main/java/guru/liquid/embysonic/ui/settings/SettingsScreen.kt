@@ -5,12 +5,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -19,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -71,6 +77,64 @@ fun SettingsScreen(
             }
             Button(onClick = viewModel::saveCoordinatorUrl, modifier = Modifier.fillMaxWidth()) {
                 Text("Save coordinator URL")
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Analysis status", style = MaterialTheme.typography.titleMedium)
+                        IconButton(onClick = viewModel::refreshAnalysisStatus) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh analysis status")
+                        }
+                    }
+
+                    when (val status = state.analysisStatus) {
+                        AnalysisStatusUiState.Loading -> Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+
+                        is AnalysisStatusUiState.Error -> {
+                            Text(
+                                "Coordinator unreachable",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(status.message, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Trying: ${state.coordinatorUrl}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        is AnalysisStatusUiState.Ready -> {
+                            val st = status.status
+                            LinearProgressIndicator(
+                                progress = { st.progressFraction },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                "${st.analysed} / ${st.total} tracks analysed",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                "${st.pending} pending - ${if (st.scanRunning) "scan running" else "idle"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
 
             OutlinedButton(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {

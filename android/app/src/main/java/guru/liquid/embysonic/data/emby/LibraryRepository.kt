@@ -137,6 +137,16 @@ class LibraryRepository @Inject constructor(
         embyApi.getItems(userId(), parentId = libraryId, includeItemTypes = "MusicAlbum", limit = BROWSE_LIMIT)
             .items.map { it.toCollectionItem() }
 
+    suspend fun recentlyAddedAlbums(libraryId: String, limit: Int): List<LibraryItem> =
+        embyApi.getItems(
+            userId = userId(),
+            parentId = libraryId,
+            includeItemTypes = "MusicAlbum",
+            sortBy = "DateCreated",
+            sortOrder = "Descending",
+            limit = limit,
+        ).items.map { it.toCollectionItem() }
+
     /**
      * Audiobook "books" (MusicAlbum items). Most books have no album-level cover —
      * the art is embedded on the child Audio item — so we resolve each book's cover

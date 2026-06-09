@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -327,9 +327,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   normalized sorted collection list they scroll, so jumps land on the expected
   section. Tapping a bottom library tab from a drill-down detail pops back to the
   existing library root when present, preserving the user's scroll position.
+- **M3.6 — Home landing polish:** ✅ Home is now the liquidWave user landing
+  screen instead of an analysis/admin status page. It shows scrollable playlist,
+  recently added album, and artist sections backed by existing Emby browse data;
+  playlist/album/artist tiles drill into the existing detail screens, and tile
+  play buttons start playback only after a playable queue is successfully loaded.
+  Coordinator analysis progress moved to Settings with a refreshable status card.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
-- **M5 — Waveform + polish:** Home (recents + mixes), icon/theming. Real waveform
+- **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
   (Option A) considered here, dropped in behind the `TrackProgress` interface.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
@@ -370,6 +376,18 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - Regression screenshots captured in `android/verify-az-picker-fixed.png`,
   `android/verify-az-picker-jump-fixed.png`, and
   `android/verify-m35-tab-return-preserves-scroll.png`.
+
+**M3.6 verification (liquidHulk / Pixel_3a_API_36, 2026-06-09):**
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- Verified Home renders as the liquidWave landing screen with playlists and
+  recently added album sections instead of coordinator analysis status.
+- Verified Settings contains the refreshable analysis status card.
+- Verified tapping a Home album tile drills into the existing album track-list
+  detail screen with top-bar play/shuffle and per-row play actions intact.
+- Screenshots captured in `android/verify-home-discovery.png`,
+  `android/verify-settings-analysis-status.png`, and
+  `android/verify-home-album-drilldown.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
@@ -515,16 +533,16 @@ Leaning A (community) + B (power users). C rejected.
 
 Implemented via Media3 ExoPlayer with MediaSession for Android auto support.
 **PlaybackController** (singleton) owns the player, manages the queue (with
-shuffle/repeat), and publishes UI state. Tracks stream directly from Emby
-(`/Items/{id}/Download`) with proper User-Agent headers.
+shuffle/repeat), and publishes UI state. Tracks stream through Emby's
+authenticated universal audio endpoint (`/Audio/{id}/universal`) with proper
+User-Agent headers so Emby can transcode unsupported codecs such as WMA/ASF.
 
 **M3 Polish & Known Refinements:**
-- Home screen currently shows analysis status (coordinator progress). This is
-  operational/admin detail and should move to Settings. Home should be a user-facing
-  **landing/discovery screen** with scrollable playlists, mixes, recent listens,
-  featured artists, sonic features (similar, radio, adventure). Build this before
-  M4 so Mixes has a proper home context. Note: analysis status in Settings is still
-  useful for debugging scan progress.
+- Home now has its user-facing landing shell with playlists, recently added
+  albums, and artist shortcuts. Analysis status lives in Settings. Follow-up:
+  replace placeholder browse-backed rows with true recent listens, sonic mixes,
+  radio/adventure entries, and other M4 discovery surfaces as those APIs/UI flows
+  land.
 - Play buttons on grids (CardGrid, DetailScreen) are live; all playlists/albums/
   artists now have play actions wired to the playback queue.
 - Shuffle and repeat modes are visible in Now Playing (not just toggles).
