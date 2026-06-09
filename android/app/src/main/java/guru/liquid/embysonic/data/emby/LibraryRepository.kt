@@ -50,7 +50,18 @@ data class LibraryItem(
     val trailingText: String? = null,
     val album: String? = null,
     val durationMs: Long? = null,
+    val playbackPositionMs: Long = 0,
 )
+
+fun List<LibraryItem>.resumeStartItem(): LibraryItem? =
+    firstOrNull { item ->
+        val duration = item.durationMs
+        item.playbackPositionMs > RESUME_MIN_POSITION_MS &&
+            (duration == null || item.playbackPositionMs < duration - RESUME_END_PADDING_MS)
+    } ?: firstOrNull()
+
+private const val RESUME_MIN_POSITION_MS = 5_000L
+private const val RESUME_END_PADDING_MS = 5_000L
 
 /**
  * Browse fetch cap. Set high so the full sorted list loads in one query — the A-Z
@@ -120,6 +131,7 @@ class LibraryRepository @Inject constructor(
             includeItemTypes = "Audio",
             parentId = libraryId,
             limit = 3000,
+            fields = "UserData,PrimaryImageAspectRatio",
         ).items
         val covers = HashMap<String, String>()
         for (c in chapters) {
@@ -146,6 +158,30 @@ class LibraryRepository @Inject constructor(
             sortOrder = "Descending",
             limit = limit,
         ).items.map { it.toCollectionItem() }
+
+    suspend fun resumeAudiobooks(libraryId: String, limit: Int): List<LibraryItem> {
+        val chapters = embyApi.getItems(
+            userId = userId(),
+            parentId = libraryId,
+            includeItemTypes = "Audio",
+            sortBy = "DatePlayed",
+            sortOrder = "Descending",
+            fields = "UserData,PrimaryImageAspectRatio",
+            limit = BROWSE_LIMIT,
+        ).items
+        val seenBooks = HashSet<String>()
+        return chapters
+            .asSequence()
+            .filter { it.hasResumePosition() }
+            .sortedByDescending { it.userData?.lastPlayedDate.orEmpty() }
+            .mapNotNull { chapter ->
+                val bookId = chapter.albumId ?: chapter.id ?: return@mapNotNull null
+                if (!seenBooks.add(bookId)) return@mapNotNull null
+                chapter.toResumeBookItem(bookId)
+            }
+            .take(limit)
+            .toList()
+    }
 
     /**
      * Audiobook "books" (MusicAlbum items). Most books have no album-level cover —
@@ -195,7 +231,7 @@ class LibraryRepository @Inject constructor(
         embyApi.getItems(
             userId = userId(),
             includeItemTypes = "Playlist",
-            fields = "ChildCount,PrimaryImageAspectRatio",
+            fields = "ChildCount,UserData,PrimaryImageAspectRatio",
             limit = BROWSE_LIMIT,
         ).items.map { it.toPlaylistItem() }
 
@@ -295,6 +331,30 @@ class LibraryRepository @Inject constructor(
             trailingText = formatDuration(durationMs),
             album = album,
             durationMs = durationMs,
+            playbackPositionMs = userData?.playbackPositionTicks?.ticksToMs() ?: 0,
         )
     }
+
+    private fun EmbyItemDto.toResumeBookItem(bookId: String): LibraryItem {
+        val positionMs = userData?.playbackPositionTicks?.ticksToMs() ?: 0
+        val art = imageTags["Primary"]?.let { imageUrls.primary(id.orEmpty(), it) }
+            ?: albumPrimaryImageTag?.let { imageUrls.primary(bookId, it) }
+        return LibraryItem(
+            id = bookId,
+            title = album ?: name.orEmpty(),
+            subtitle = formatDuration(positionMs)?.let { "Resume at $it" },
+            imageUrl = art,
+            durationMs = durationMs,
+            playbackPositionMs = positionMs,
+        )
+    }
+
+    private fun EmbyItemDto.hasResumePosition(): Boolean {
+        val position = userData?.playbackPositionTicks?.ticksToMs() ?: return false
+        val duration = durationMs
+        return position > RESUME_MIN_POSITION_MS &&
+            (duration == null || position < duration - RESUME_END_PADDING_MS)
+    }
+
+    private fun Long.ticksToMs(): Long = this / 10_000
 }

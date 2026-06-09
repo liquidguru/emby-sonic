@@ -16,4 +16,7 @@ data class UserDataDto(
 
     @SerialName("IsFavorite")
     val isFavorite: Boolean? = null,
+
+    @SerialName("LastPlayedDate")
+    val lastPlayedDate: String? = null,
 )

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.Badge
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -185,6 +186,14 @@ private fun PlayerContent(
             }
             Spacer(Modifier.height(22.dp))
             progress.Render(state, onSeek, Modifier.fillMaxWidth())
+            state.playbackError?.let { message ->
+                Text(
+                    message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+            }
             Spacer(Modifier.height(18.dp))
             TransportControls(state, onPrevious, onToggle, onNext)
             Spacer(Modifier.height(8.dp))
@@ -270,12 +279,20 @@ private fun TransportControls(
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary),
         ) {
-            Icon(
-                if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (state.isPlaying) "Pause" else "Play",
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(48.dp),
-            )
+            if (state.isBuffering) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(38.dp),
+                )
+            } else {
+                Icon(
+                    if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (state.isPlaying) "Pause" else "Play",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(48.dp),
+                )
+            }
         }
         IconButton(onClick = onNext, enabled = state.hasNext) {
             Icon(Icons.Default.SkipNext, contentDescription = "Next", modifier = Modifier.size(42.dp))

@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
@@ -70,6 +71,9 @@ class DetailViewModel @Inject constructor(
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
+    private val _openNowPlaying = Channel<Unit>(Channel.BUFFERED)
+    val openNowPlaying: Flow<Unit> = _openNowPlaying.receiveAsFlow()
+
     /** Sonic "more like this": seed track + its nearest neighbours → Emby playlist. */
     fun createSimilarPlaylist(seed: LibraryItem) = generate(
         name = "Similar to ${seed.title}",
@@ -85,12 +89,18 @@ class DetailViewModel @Inject constructor(
     fun playFrom(seed: LibraryItem) {
         val items = (state.value as? TabState.Data)?.items.orEmpty().ifEmpty { listOf(seed) }
         playback.playQueue(items, seed)
+        viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 
     fun playFirst() {
         val items = (state.value as? TabState.Data)?.items.orEmpty()
-        val seed = items.firstOrNull() ?: return
+        val seed = if (kind == DetailKind.BOOK_CHAPTERS) items.resumeStartItem() else items.firstOrNull()
+        if (seed == null) {
+            viewModelScope.launch { _messages.send("Nothing playable here") }
+            return
+        }
         playback.playQueue(items, seed)
+        viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 
     fun shuffleAll() {
@@ -105,13 +115,15 @@ class DetailViewModel @Inject constructor(
 
     fun playCollection(item: LibraryItem) {
         viewModelScope.launch {
-            runCatching { repository.playableItems(item.id, kind.childKind ?: kind) }.fold(
+            val targetKind = kind.childKind ?: kind
+            runCatching { repository.playableItems(item.id, targetKind) }.fold(
                 onSuccess = { items ->
-                    val first = items.firstOrNull()
+                    val first = if (targetKind == DetailKind.BOOK_CHAPTERS) items.resumeStartItem() else items.firstOrNull()
                     if (first == null) {
                         _messages.send("Nothing playable in \"${item.title}\"")
                     } else {
                         playback.playQueue(items, first)
+                        _openNowPlaying.send(Unit)
                     }
                 },
                 onFailure = { _messages.send("Couldn't start playback: ${it.message}") },

@@ -51,6 +51,9 @@ fun DetailScreen(
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
+    LaunchedEffect(Unit) {
+        viewModel.openNowPlaying.collect { onOpenNowPlaying() }
+    }
 
     // Sonic playlist actions belong to music tracks only, not audiobook chapters.
     val trackActions = if (kind == DetailKind.ALBUM_TRACKS) {
@@ -83,7 +86,6 @@ fun DetailScreen(
                         IconButton(
                             onClick = {
                                 viewModel.playFirst()
-                                onOpenNowPlaying()
                             },
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = "Play")
@@ -111,7 +113,6 @@ fun DetailScreen(
                     }
                     val onPlay = { item: LibraryItem ->
                         viewModel.playCollection(item)
-                        onOpenNowPlaying()
                     }
                     if (listView) {
                         CollectionList(
@@ -135,7 +136,6 @@ fun DetailScreen(
                         actions = trackActions,
                         onTrackClick = {
                             viewModel.playFrom(it)
-                            onOpenNowPlaying()
                         },
                     )
                 }

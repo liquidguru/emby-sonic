@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -341,6 +341,24 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   removes the mini player, and stops the playback service. The bottom Home tab
   now returns from drill-down detail screens to the existing Home root instead
   of restoring/staying on a stale detail screen.
+- **M3.8 — Audiobook resume:** ✅ Playback progress now syncs durable resume
+  position back to Emby user data (`Users/{userId}/Items/{itemId}/UserData`) in
+  addition to normal session check-ins, because the session endpoints returned
+  success on Emby 4.10 but did not persist `PlaybackPositionTicks` for tested
+  audiobook audio items. Home now shows a `Resume audiobooks` row sourced from
+  audiobook chapters with meaningful `UserData.PlaybackPositionTicks`, grouped
+  back to book cards; tapping a tile opens the book, and the play affordance
+  resumes from the saved chapter/offset. Home also refreshes the resume row on
+  `ON_RESUME`, so returning Home after listening should no longer require the
+  manual refresh button. Long-form resumed audio (20+ minutes, including
+  single-file MP3/M4B audiobooks) uses Emby's `/Audio/{id}/stream` endpoint with
+  `StartTimeTicks` and a 5-second pre-roll, while normal playback still uses
+  `/Audio/{id}/universal`. This matters because `/universal` ignored
+  `StartTimeTicks` on tested long files and could make the app counter appear
+  resumed while audio started from the beginning. `/stream` was verified to emit
+  non-intro audio for both a resumed 18h MP3 (`The Bladed Faith`) and a resumed
+  26h M4B (`The Eye of the Bedlam Bride`), and user-confirmed the installed app
+  resumed correctly.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
@@ -407,6 +425,30 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - User-confirmed the mini-player progress strip seeks within the current track,
   matching the main Now Playing seek behavior.
 - Screenshot captured in `android/verify-mini-player.png`.
+
+**M3.8 verification (liquidHulk / Pixel_3a_API_36, 2026-06-09/10):**
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- Verified Emby direct user-data resume persistence by posting an audiobook
+  `PlaybackPositionTicks` update and reading the same value back from
+  `/Users/{userId}/Items/{itemId}?Fields=UserData`.
+- Verified Home renders a `Resume audiobooks` row with book artwork and
+  `Resume at ...` subtitles.
+- User confirmed saved audiobook position appears on other Emby devices, so
+  server-side sync via `UserData` is working.
+- User found the Home resume row initially required pressing refresh after
+  returning from playback; a Home lifecycle `ON_RESUME` refresh was added and
+  installed, but needs user confirmation.
+- Diagnosed the long-form resume failure with ffmpeg against Emby:
+  `/Audio/{id}/universal` produced identical first-six-second audio with and
+  without `StartTimeTicks`, proving it ignored the resume offset for tested long
+  files. `/Audio/{id}/stream` with `StartTimeTicks` produced different audio
+  from the intro for both `The Bladed Faith` (18h MP3, resume ~4:45:30) and
+  `The Eye of the Bedlam Bride` (26h M4B, resume ~6:05:27).
+- Installed the `/stream` long-form resume build and user-confirmed resume now
+  works.
+- Screenshots captured in `android/verify-resume-audiobooks-home.png` and
+  `android/verify-resume-audiobook-playing.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
@@ -564,6 +606,11 @@ User-Agent headers so Emby can transcode unsupported codecs such as WMA/ASF.
   land.
 - Mini player exists in the shell for active playback; follow-up polish could add
   skip-next/previous, swipe-to-dismiss, or queue context if desired.
+- Audiobook resume sync uses direct Emby user-data writes as the durable source
+  of truth; normal session check-ins remain for active playback/session metadata.
+  Long-form resume must use `/Audio/{id}/stream` with `StartTimeTicks`; do not
+  use `/Audio/{id}/universal` for server-offset resume because Emby 4.10 accepted
+  `StartTimeTicks` there while still serving audio from the beginning.
 - Play buttons on grids (CardGrid, DetailScreen) are live; all playlists/albums/
   artists now have play actions wired to the playback queue.
 - Shuffle and repeat modes are visible in Now Playing (not just toggles).

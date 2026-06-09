@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
@@ -118,6 +119,9 @@ class LibraryViewModel @Inject constructor(
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
+    private val _openNowPlaying = Channel<Unit>(Channel.BUFFERED)
+    val openNowPlaying: Flow<Unit> = _openNowPlaying.receiveAsFlow()
+
     fun enterSelection() { _selectionMode.value = true }
 
     fun exitSelection() {
@@ -154,11 +158,16 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { repository.playableItems(item.id, detailKind) }.fold(
                 onSuccess = { items ->
-                    val first = items.firstOrNull()
+                    val first = if (detailKind == guru.liquid.embysonic.data.emby.DetailKind.BOOK_CHAPTERS) {
+                        items.resumeStartItem()
+                    } else {
+                        items.firstOrNull()
+                    }
                     if (first == null) {
                         _messages.send("Nothing playable in \"${item.title}\"")
                     } else {
                         playback.playQueue(items, first)
+                        _openNowPlaying.send(Unit)
                     }
                 },
                 onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
