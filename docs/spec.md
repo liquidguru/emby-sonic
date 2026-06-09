@@ -511,6 +511,25 @@ provisioned separately. Options for Phase 2:
 
 Leaning A (community) + B (power users). C rejected.
 
+### M3 playback — Now Playing + ExoPlayer + MediaSession (Phase 3)
+
+Implemented via Media3 ExoPlayer with MediaSession for Android auto support.
+**PlaybackController** (singleton) owns the player, manages the queue (with
+shuffle/repeat), and publishes UI state. Tracks stream directly from Emby
+(`/Items/{id}/Download`) with proper User-Agent headers.
+
+**M3 Polish & Known Refinements:**
+- Home screen currently shows analysis status (coordinator progress). This is
+  operational/admin detail and should move to Settings. Home should be a user-facing
+  **landing/discovery screen** with scrollable playlists, mixes, recent listens,
+  featured artists, sonic features (similar, radio, adventure). Build this before
+  M4 so Mixes has a proper home context. Note: analysis status in Settings is still
+  useful for debugging scan progress.
+- Play buttons on grids (CardGrid, DetailScreen) are live; all playlists/albums/
+  artists now have play actions wired to the playback queue.
+- Shuffle and repeat modes are visible in Now Playing (not just toggles).
+- App rebranded to **liquidWave** (custom logo with animated bars).
+
 ---
 
 ## Conversation & Tool Map
