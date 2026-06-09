@@ -11,17 +11,27 @@ data class PlaybackTrack(
     val durationMs: Long?,
 )
 
+enum class PlaybackRepeatMode {
+    OFF,
+    ALL,
+    ONE,
+}
+
 data class PlaybackUiState(
     val currentTrack: PlaybackTrack? = null,
     val queue: List<PlaybackTrack> = emptyList(),
     val currentIndex: Int = 0,
     val isPlaying: Boolean = false,
+    val shuffleEnabled: Boolean = false,
+    val repeatMode: PlaybackRepeatMode = PlaybackRepeatMode.OFF,
+    val canSkipPrevious: Boolean = false,
+    val canSkipNext: Boolean = false,
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val bufferedMs: Long = 0,
 ) {
-    val hasPrevious: Boolean get() = currentIndex > 0
-    val hasNext: Boolean get() = currentIndex < queue.lastIndex
+    val hasPrevious: Boolean get() = canSkipPrevious || positionMs > 3000
+    val hasNext: Boolean get() = canSkipNext
 }
 
 fun LibraryItem.toPlaybackTrack(): PlaybackTrack = PlaybackTrack(

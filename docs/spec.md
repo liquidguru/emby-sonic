@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -313,6 +313,10 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   stream and open the Now Playing screen. Transport uses a 96dp tap-to-seek
   progress module behind the `TrackProgress` interface (the future waveform slot;
   see waveform decision).
+- **M3.5 — Playback controls:** ✅ Album/playlist leaf screens expose top-bar
+  play and shuffle actions; track rows have explicit play buttons. Now Playing
+  exposes shuffle and repeat off/all/one, keeps those states in the shared
+  `PlaybackController`, and lets queue rows jump directly to a track.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Home (recents + mixes), icon/theming. Real waveform
@@ -329,6 +333,19 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   `package=guru.liquid.embysonic`.
 - Screenshots captured in `android/verify-m3-nowplaying-final.png` and
   `android/verify-m3-media-session.png`.
+
+**M3.5 verification (liquidHulk / Pixel_3a_API_36, 2026-06-09):**
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- Verified on emulator by opening Music → artist → album. The album track-list
+  top bar showed Play + Shuffle actions, and the track row showed its explicit
+  play button.
+- Started playback from the row play button. Now Playing opened, playback
+  advanced, shuffle/repeat controls rendered below transport, and
+  `adb shell cmd media_session list-sessions` reported
+  `package=guru.liquid.embysonic`.
+- Screenshots captured in `android/verify-m35-tracklist.png` and
+  `android/verify-m35-nowplaying-controls.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*

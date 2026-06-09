@@ -1,6 +1,7 @@
 package guru.liquid.embysonic.ui.playback
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,9 +27,13 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Waves
+import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import guru.liquid.embysonic.playback.PlaybackRepeatMode
 import guru.liquid.embysonic.playback.PlaybackTrack
 import guru.liquid.embysonic.playback.PlaybackUiState
 
@@ -119,6 +125,9 @@ fun NowPlayingScreen(
                     onToggle = viewModel::togglePlayPause,
                     onPrevious = viewModel::skipPrevious,
                     onNext = viewModel::skipNext,
+                    onToggleShuffle = viewModel::toggleShuffle,
+                    onCycleRepeat = viewModel::cycleRepeatMode,
+                    onQueueItemClick = viewModel::seekToQueueIndex,
                 )
             } ?: EmptyPlayer(onCollapse)
         }
@@ -134,6 +143,9 @@ private fun PlayerContent(
     onToggle: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeat: () -> Unit,
+    onQueueItemClick: (Int) -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     LazyColumn(
@@ -175,6 +187,12 @@ private fun PlayerContent(
             progress.Render(state, onSeek, Modifier.fillMaxWidth())
             Spacer(Modifier.height(18.dp))
             TransportControls(state, onPrevious, onToggle, onNext)
+            Spacer(Modifier.height(8.dp))
+            PlaybackModeControls(
+                state = state,
+                onToggleShuffle = onToggleShuffle,
+                onCycleRepeat = onCycleRepeat,
+            )
             Spacer(Modifier.height(18.dp))
             GuestDjRow()
             Spacer(Modifier.height(20.dp))
@@ -183,7 +201,12 @@ private fun PlayerContent(
         }
         if (tab == 0) {
             itemsIndexed(state.queue, key = { _, item -> item.id }) { index, item ->
-                QueueRow(item = item, index = index, selected = index == state.currentIndex)
+                QueueRow(
+                    item = item,
+                    index = index,
+                    selected = index == state.currentIndex,
+                    onClick = { onQueueItemClick(index) },
+                )
             }
         } else {
             item {
@@ -261,6 +284,47 @@ private fun TransportControls(
 }
 
 @Composable
+private fun PlaybackModeControls(
+    state: PlaybackUiState,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeat: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onToggleShuffle, enabled = state.queue.size > 1) {
+            Icon(
+                Icons.Default.Shuffle,
+                contentDescription = if (state.shuffleEnabled) "Shuffle on" else "Shuffle off",
+                tint = if (state.shuffleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onCycleRepeat, enabled = state.queue.isNotEmpty()) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    if (state.repeatMode == PlaybackRepeatMode.ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                    contentDescription = when (state.repeatMode) {
+                        PlaybackRepeatMode.OFF -> "Repeat off"
+                        PlaybackRepeatMode.ALL -> "Repeat all"
+                        PlaybackRepeatMode.ONE -> "Repeat one"
+                    },
+                    tint = if (state.repeatMode == PlaybackRepeatMode.OFF) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                )
+                if (state.repeatMode == PlaybackRepeatMode.ALL) {
+                    Badge(modifier = Modifier.align(Alignment.TopEnd))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun GuestDjRow() {
     Row(
         modifier = Modifier
@@ -315,18 +379,35 @@ private fun PlaybackTabs(selected: Int, onSelect: (Int) -> Unit) {
 }
 
 @Composable
-private fun QueueRow(item: PlaybackTrack, index: Int, selected: Boolean) {
+private fun QueueRow(item: PlaybackTrack, index: Int, selected: Boolean, onClick: () -> Unit) {
     ListItem(
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 1.dp),
         colors = ListItemDefaults.colors(
             containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
         ),
         headlineContent = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = item.artist?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
         leadingContent = {
-            Text(
-                (index + 1).toString(),
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (selected) {
+                Icon(Icons.Default.GraphicEq, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            } else {
+                Text(
+                    (index + 1).toString(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        trailingContent = if (!selected) {
+            {
+                IconButton(onClick = onClick) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                }
+            }
+        } else {
+            null
         },
     )
 }

@@ -60,13 +60,14 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    fun playQueue(items: List<LibraryItem>, startItem: LibraryItem) {
+    fun playQueue(items: List<LibraryItem>, startItem: LibraryItem, shuffled: Boolean = false) {
         val startIndex = items.indexOfFirst { it.id == startItem.id }.coerceAtLeast(0)
         val tracks = items.map { it.toPlaybackTrack() }
         if (tracks.isEmpty()) return
         startService()
         refreshHeaders()
         queue = tracks
+        player.shuffleModeEnabled = shuffled
         player.setMediaItems(tracks.map(::mediaItem), startIndex, C.TIME_UNSET)
         player.prepare()
         player.play()
@@ -90,6 +91,27 @@ class PlaybackController @Inject constructor(
 
     fun skipNext() {
         if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+        publishState()
+    }
+
+    fun seekToQueueIndex(index: Int) {
+        if (index !in queue.indices) return
+        player.seekTo(index, 0L)
+        player.play()
+        publishState()
+    }
+
+    fun toggleShuffle() {
+        player.shuffleModeEnabled = !player.shuffleModeEnabled
+        publishState()
+    }
+
+    fun cycleRepeatMode() {
+        player.repeatMode = when (player.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
         publishState()
     }
 
@@ -142,9 +164,19 @@ class PlaybackController @Inject constructor(
             queue = queue,
             currentIndex = index,
             isPlaying = player.isPlaying,
+            shuffleEnabled = player.shuffleModeEnabled,
+            repeatMode = player.repeatMode.toPlaybackRepeatMode(),
+            canSkipPrevious = player.hasPreviousMediaItem(),
+            canSkipNext = player.hasNextMediaItem(),
             positionMs = player.currentPosition.coerceAtLeast(0),
             durationMs = duration.coerceAtLeast(0),
             bufferedMs = player.bufferedPosition.coerceAtLeast(0),
         )
+    }
+
+    private fun Int.toPlaybackRepeatMode(): PlaybackRepeatMode = when (this) {
+        Player.REPEAT_MODE_ALL -> PlaybackRepeatMode.ALL
+        Player.REPEAT_MODE_ONE -> PlaybackRepeatMode.ONE
+        else -> PlaybackRepeatMode.OFF
     }
 }

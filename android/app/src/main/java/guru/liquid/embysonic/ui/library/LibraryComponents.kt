@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -318,6 +319,9 @@ internal fun TrackList(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         item.trailingText?.let {
                             Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
+                        IconButton(onClick = { onTrackClick(item) }) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
                         }
                         // Only render the overflow when there's something in it
                         // (music tracks have sonic actions; chapters/playlists don't).
