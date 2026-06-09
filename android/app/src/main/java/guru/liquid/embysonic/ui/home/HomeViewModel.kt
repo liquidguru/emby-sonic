@@ -11,6 +11,7 @@ import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,10 +25,43 @@ data class HomeUiState(
     val userName: String? = null,
     val loading: Boolean = true,
     val error: String? = null,
+    val compactCards: Boolean = false,
+    val sectionPreferences: List<HomeSectionPreference> = HomeSectionKind.defaultPreferences(),
     val resumeAudiobooks: List<LibraryItem> = emptyList(),
     val playlists: List<LibraryItem> = emptyList(),
     val recentAlbums: List<LibraryItem> = emptyList(),
     val artists: List<LibraryItem> = emptyList(),
+)
+
+enum class HomeSectionKind(val id: String, val label: String) {
+    RESUME_AUDIOBOOKS("resume_audiobooks", "Resume audiobooks"),
+    PLAYLISTS("playlists", "Playlists"),
+    RECENT_ALBUMS("recent_albums", "Recently added albums"),
+    ARTISTS("artists", "Artists");
+
+    companion object {
+        val defaultOrder: List<HomeSectionKind> = listOf(
+            RESUME_AUDIOBOOKS,
+            PLAYLISTS,
+            RECENT_ALBUMS,
+            ARTISTS,
+        )
+
+        fun fromId(id: String): HomeSectionKind? = entries.firstOrNull { it.id == id }
+
+        fun ordered(sectionIds: List<String>): List<HomeSectionKind> {
+            val configured = sectionIds.mapNotNull(::fromId)
+            return (configured + defaultOrder).distinct()
+        }
+
+        fun defaultPreferences(): List<HomeSectionPreference> =
+            defaultOrder.map { HomeSectionPreference(kind = it, visible = true) }
+    }
+}
+
+data class HomeSectionPreference(
+    val kind: HomeSectionKind,
+    val visible: Boolean,
 )
 
 @HiltViewModel
@@ -49,6 +83,7 @@ class HomeViewModel @Inject constructor(
     init {
         val snap = settings.snapshot()
         _state.update { it.copy(userName = snap.userName) }
+        observeHomePreferences()
         refresh()
     }
 
@@ -78,6 +113,8 @@ class HomeViewModel @Inject constructor(
                 HomeUiState(
                     userName = settings.snapshot().userName,
                     loading = false,
+                    compactCards = _state.value.compactCards,
+                    sectionPreferences = _state.value.sectionPreferences,
                     resumeAudiobooks = resumeAudiobooks,
                     playlists = playlists,
                     recentAlbums = albums,
@@ -105,6 +142,24 @@ class HomeViewModel @Inject constructor(
 
     fun playResumeAudiobook(item: LibraryItem) = playCollection(item, DetailKind.BOOK_CHAPTERS)
 
+    fun setCompactCards(value: Boolean) {
+        viewModelScope.launch { settings.setHomeCompactCards(value) }
+    }
+
+    fun setSectionVisible(kind: HomeSectionKind, visible: Boolean) {
+        viewModelScope.launch { settings.setHomeSectionVisible(kind.id, visible) }
+    }
+
+    fun moveSection(kind: HomeSectionKind, direction: Int) {
+        val current = _state.value.sectionPreferences.map { it.kind }.toMutableList()
+        val index = current.indexOf(kind)
+        val nextIndex = (index + direction).coerceIn(current.indices)
+        if (index == -1 || index == nextIndex) return
+        current.removeAt(index)
+        current.add(nextIndex, kind)
+        viewModelScope.launch { settings.setHomeSectionOrder(current.map { it.id }) }
+    }
+
     private fun playCollection(item: LibraryItem, detailKind: DetailKind) {
         viewModelScope.launch {
             runCatching { repository.playableItems(item.id, detailKind) }.fold(
@@ -123,6 +178,27 @@ class HomeViewModel @Inject constructor(
                 },
                 onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
             )
+        }
+    }
+
+    private fun observeHomePreferences() {
+        viewModelScope.launch {
+            combine(
+                settings.homeCompactCards,
+                settings.homeSectionOrder,
+                settings.homeHiddenSections,
+            ) { compact, order, hidden ->
+                val preferences = HomeSectionKind.ordered(order)
+                    .map { HomeSectionPreference(kind = it, visible = it.id !in hidden) }
+                compact to preferences
+            }.collect { (compact, preferences) ->
+                _state.update {
+                    it.copy(
+                        compactCards = compact,
+                        sectionPreferences = preferences,
+                    )
+                }
+            }
         }
     }
 

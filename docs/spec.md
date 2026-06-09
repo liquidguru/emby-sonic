@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -359,6 +359,12 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   non-intro audio for both a resumed 18h MP3 (`The Bladed Faith`) and a resumed
   26h M4B (`The Eye of the Bedlam Bride`), and user-confirmed the installed app
   resumed correctly.
+- **M3.9 — Home customization:** ✅ Home now has a customize sheet opened from
+  the top-bar tune icon. Users can switch between regular and small Home cards,
+  choose which Home sections are visible, and reorder sections with up/down
+  controls. Preferences persist in DataStore (`home_compact_cards`,
+  `home_section_order`, `home_hidden_sections`) and apply to the existing
+  sections: Resume audiobooks, Playlists, Recently added albums, and Artists.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
@@ -449,6 +455,14 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   works.
 - Screenshots captured in `android/verify-resume-audiobooks-home.png` and
   `android/verify-resume-audiobook-playing.png`.
+
+**M3.9 verification (liquidHulk / Pixel_3a_API_36, 2026-06-10):**
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- User-confirmed Home customization works.
+- Verified screenshot shows the customize sheet with small cards enabled,
+  section visibility toggles, and reordered sections.
+- Screenshot captured in `android/verify-home-customize-sheet.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
