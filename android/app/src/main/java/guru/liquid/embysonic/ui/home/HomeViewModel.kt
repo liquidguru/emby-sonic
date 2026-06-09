@@ -7,6 +7,7 @@ import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import kotlinx.coroutines.channels.Channel
@@ -23,6 +24,7 @@ data class HomeUiState(
     val userName: String? = null,
     val loading: Boolean = true,
     val error: String? = null,
+    val resumeAudiobooks: List<LibraryItem> = emptyList(),
     val playlists: List<LibraryItem> = emptyList(),
     val recentAlbums: List<LibraryItem> = emptyList(),
     val artists: List<LibraryItem> = emptyList(),
@@ -50,11 +52,22 @@ class HomeViewModel @Inject constructor(
         refresh()
     }
 
-    fun refresh() {
-        _state.update { it.copy(loading = true, error = null) }
+    fun refresh(showLoading: Boolean = true) {
+        _state.update {
+            if (showLoading) {
+                it.copy(loading = true, error = null)
+            } else {
+                it.copy(error = null)
+            }
+        }
         viewModelScope.launch {
             runCatching {
-                val musicLibrary = repository.audioLibraries().firstOrNull { it.kind == LibraryKind.MUSIC }
+                val libraries = repository.audioLibraries()
+                val musicLibrary = libraries.firstOrNull { it.kind == LibraryKind.MUSIC }
+                val audiobookLibrary = libraries.firstOrNull { it.kind == LibraryKind.AUDIOBOOKS }
+                val resumeAudiobooks = audiobookLibrary
+                    ?.let { repository.resumeAudiobooks(it.id, HOME_SECTION_LIMIT) }
+                    .orEmpty()
                 val playlists = repository.playlists().take(HOME_SECTION_LIMIT)
                 val albums = musicLibrary
                     ?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }
@@ -65,6 +78,7 @@ class HomeViewModel @Inject constructor(
                 HomeUiState(
                     userName = settings.snapshot().userName,
                     loading = false,
+                    resumeAudiobooks = resumeAudiobooks,
                     playlists = playlists,
                     recentAlbums = albums,
                     artists = artists,
@@ -89,11 +103,17 @@ class HomeViewModel @Inject constructor(
 
     fun playArtist(item: LibraryItem) = playCollection(item, DetailKind.ARTIST_ALBUMS)
 
+    fun playResumeAudiobook(item: LibraryItem) = playCollection(item, DetailKind.BOOK_CHAPTERS)
+
     private fun playCollection(item: LibraryItem, detailKind: DetailKind) {
         viewModelScope.launch {
             runCatching { repository.playableItems(item.id, detailKind) }.fold(
                 onSuccess = { items ->
-                    val first = items.firstOrNull()
+                    val first = if (detailKind == DetailKind.BOOK_CHAPTERS) {
+                        items.resumeStartItem()
+                    } else {
+                        items.firstOrNull()
+                    }
                     if (first == null) {
                         _messages.send("Nothing playable in \"${item.title}\"")
                     } else {

@@ -9,6 +9,7 @@ data class PlaybackTrack(
     val album: String?,
     val imageUrl: String?,
     val durationMs: Long?,
+    val playbackPositionMs: Long = 0,
 )
 
 enum class PlaybackRepeatMode {
@@ -22,6 +23,8 @@ data class PlaybackUiState(
     val queue: List<PlaybackTrack> = emptyList(),
     val currentIndex: Int = 0,
     val isPlaying: Boolean = false,
+    val isBuffering: Boolean = false,
+    val playbackError: String? = null,
     val shuffleEnabled: Boolean = false,
     val repeatMode: PlaybackRepeatMode = PlaybackRepeatMode.OFF,
     val canSkipPrevious: Boolean = false,
@@ -41,4 +44,5 @@ fun LibraryItem.toPlaybackTrack(): PlaybackTrack = PlaybackTrack(
     album = album,
     imageUrl = imageUrl,
     durationMs = durationMs,
+    playbackPositionMs = playbackPositionMs,
 )

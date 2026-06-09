@@ -63,6 +63,9 @@ fun LibraryScreen(
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
+    LaunchedEffect(Unit) {
+        viewModel.openNowPlaying.collect { onOpenNowPlaying() }
+    }
     // Selection is per-tab (albums vs artists differ); leaving a tab clears it.
     LaunchedEffect(selectedTab) { viewModel.exitSelection() }
 
@@ -137,7 +140,6 @@ fun LibraryScreen(
                 } else {
                     { item: LibraryItem ->
                         viewModel.playCollection(item, detailKind)
-                        onOpenNowPlaying()
                     }
                 }
                 val selection = if (selectionMode) selectedIds else emptySet()

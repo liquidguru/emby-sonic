@@ -3,9 +3,11 @@ package guru.liquid.embysonic.data.emby
 import guru.liquid.embysonic.data.emby.dto.AuthenticateRequest
 import guru.liquid.embysonic.data.emby.dto.AuthenticateResponse
 import guru.liquid.embysonic.data.emby.dto.EmbyItemDto
+import guru.liquid.embysonic.data.emby.dto.PlaybackReportDto
 import guru.liquid.embysonic.data.emby.dto.PlaylistCreationResultDto
 import guru.liquid.embysonic.data.emby.dto.QueryResult
 import guru.liquid.embysonic.data.emby.dto.SystemInfo
+import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -38,7 +40,7 @@ interface EmbyApi {
         @Query("Recursive") recursive: Boolean = true,
         @Query("SortBy") sortBy: String = "SortName",
         @Query("SortOrder") sortOrder: String = "Ascending",
-        @Query("Fields") fields: String = "PrimaryImageAspectRatio",
+        @Query("Fields") fields: String = "UserData,PrimaryImageAspectRatio",
         @Query("StartIndex") startIndex: Int = 0,
         @Query("Limit") limit: Int = 200,
         @Query("ParentId") parentId: String? = null,
@@ -53,7 +55,7 @@ interface EmbyApi {
     suspend fun getPlaylistItems(
         @Path("playlistId") playlistId: String,
         @Query("UserId") userId: String,
-        @Query("Fields") fields: String = "PrimaryImageAspectRatio",
+        @Query("Fields") fields: String = "UserData,PrimaryImageAspectRatio",
         @Query("Limit") limit: Int = 2000,
     ): QueryResult<EmbyItemDto>
 
@@ -69,6 +71,22 @@ interface EmbyApi {
         @Query("MediaType") mediaType: String = "Audio",
     ): PlaylistCreationResultDto
 
+    @POST("Sessions/Playing")
+    suspend fun reportPlaybackStarted(@Body body: PlaybackReportDto)
+
+    @POST("Sessions/Playing/Progress")
+    suspend fun reportPlaybackProgress(@Body body: PlaybackReportDto)
+
+    @POST("Sessions/Playing/Stopped")
+    suspend fun reportPlaybackStopped(@Body body: PlaybackReportDto)
+
+    @POST("Users/{userId}/Items/{itemId}/UserData")
+    suspend fun updateUserData(
+        @Path("userId") userId: String,
+        @Path("itemId") itemId: String,
+        @Body body: UserDataUpdateDto,
+    )
+
     /** Album artists within a library ([parentId] scopes to that library). */
     @GET("Artists/AlbumArtists")
     suspend fun getAlbumArtists(
@@ -76,7 +94,7 @@ interface EmbyApi {
         @Query("ParentId") parentId: String? = null,
         @Query("SortBy") sortBy: String = "SortName",
         @Query("SortOrder") sortOrder: String = "Ascending",
-        @Query("Fields") fields: String = "PrimaryImageAspectRatio",
+        @Query("Fields") fields: String = "UserData,PrimaryImageAspectRatio",
         @Query("StartIndex") startIndex: Int = 0,
         @Query("Limit") limit: Int = 200,
     ): QueryResult<EmbyItemDto>

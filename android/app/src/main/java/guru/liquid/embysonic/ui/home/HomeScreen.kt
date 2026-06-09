@@ -35,6 +35,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -44,7 +45,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.ui.library.Artwork
@@ -60,12 +64,22 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
     LaunchedEffect(viewModel) {
         viewModel.openNowPlaying.collect { onOpenNowPlaying() }
+    }
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refresh(showLoading = false)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -106,6 +120,7 @@ fun HomeScreen(
                 onPlayPlaylist = viewModel::playPlaylist,
                 onPlayAlbum = viewModel::playAlbum,
                 onPlayArtist = viewModel::playArtist,
+                onPlayResumeAudiobook = viewModel::playResumeAudiobook,
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
         }
@@ -119,6 +134,7 @@ private fun HomeContent(
     onPlayPlaylist: (LibraryItem) -> Unit,
     onPlayAlbum: (LibraryItem) -> Unit,
     onPlayArtist: (LibraryItem) -> Unit,
+    onPlayResumeAudiobook: (LibraryItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -136,6 +152,17 @@ private fun HomeContent(
                     "Browse, queue, and keep the music moving.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (state.resumeAudiobooks.isNotEmpty()) {
+            item {
+                HomeSection(
+                    title = "Resume audiobooks",
+                    items = state.resumeAudiobooks,
+                    onClick = { onOpenItem(it.id, it.title, DetailKind.BOOK_CHAPTERS) },
+                    onPlay = onPlayResumeAudiobook,
                 )
             }
         }
@@ -173,7 +200,12 @@ private fun HomeContent(
             }
         }
 
-        if (state.playlists.isEmpty() && state.recentAlbums.isEmpty() && state.artists.isEmpty()) {
+        if (
+            state.resumeAudiobooks.isEmpty() &&
+            state.playlists.isEmpty() &&
+            state.recentAlbums.isEmpty() &&
+            state.artists.isEmpty()
+        ) {
             item {
                 Text(
                     "Nothing to show yet.",
