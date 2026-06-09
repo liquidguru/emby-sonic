@@ -319,8 +319,12 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   `PlaybackController`, and lets queue rows jump directly to a track. Follow-up:
   shuffle is queue-order shuffle, not "start a random song"; it preserves
   play/pause state, so shuffling while paused prepares a shuffled queue without
-  starting playback. Collection cards/list rows expose explicit play affordances
-  for artists/albums/books/playlists.
+  starting playback and does not open Now Playing from collection/detail shuffle
+  actions. Collection cards/list rows expose explicit play affordances for
+  artists/albums/books/playlists. Library A-Z indexes now derive from the same
+  normalized sorted collection list they scroll, so jumps land on the expected
+  section. Tapping a bottom library tab from a drill-down detail pops back to the
+  existing library root when present, preserving the user's scroll position.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Home (recents + mixes), icon/theming. Real waveform
@@ -348,8 +352,17 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   advanced, shuffle/repeat controls rendered below transport, and
   `adb shell cmd media_session list-sessions` reported
   `package=guru.liquid.embysonic`.
+- Regression-checked A-Z picker and shuffle behavior: A-Z now shows
+  `# A B C ... Z` and tapping `T` jumps to T artists; detail shuffle prepares a
+  shuffled queue without navigating away or starting playback when paused.
+- Regression-checked bottom Music tab from artist/album drill-down: tapping the
+  tab pops back to the existing Music root and preserves the prior scroll section
+  (user-confirmed on emulator after jumping to `M`).
 - Screenshots captured in `android/verify-m35-tracklist.png` and
   `android/verify-m35-nowplaying-controls.png`.
+- Regression screenshots captured in `android/verify-az-picker-fixed.png`,
+  `android/verify-az-picker-jump-fixed.png`, and
+  `android/verify-m35-tab-return-preserves-scroll.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*

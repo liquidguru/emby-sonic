@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import guru.liquid.embysonic.data.emby.LibraryItem
+import java.text.Normalizer
 import kotlinx.coroutines.launch
 
 internal val ScreenPadding = 20.dp
@@ -93,7 +94,8 @@ internal fun CardGrid(
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
-    val index = remember(items) { letterIndex(items) }
+    val sortedItems = remember(items) { items.sortedWith(collectionItemComparator) }
+    val index = remember(sortedItems) { letterIndex(sortedItems) }
     Box(modifier = Modifier.fillMaxSize()) {
     LazyVerticalGrid(
         state = gridState,
@@ -108,7 +110,7 @@ internal fun CardGrid(
         verticalArrangement = Arrangement.spacedBy(GridSpacing),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(items, key = { it.id }) { item ->
+        items(sortedItems, key = { it.id }) { item ->
             val selected = item.id in selectedIds
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -185,14 +187,15 @@ internal fun CollectionList(
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val index = remember(items) { letterIndex(items) }
+    val sortedItems = remember(items) { items.sortedWith(collectionItemComparator) }
+    val index = remember(sortedItems) { letterIndex(sortedItems) }
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp, end = 24.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(items, key = { it.id }) { item ->
+            items(sortedItems, key = { it.id }) { item ->
                 val selected = item.id in selectedIds
                 ListItem(
                     modifier = Modifier.clickable { onItemClick(item) },
@@ -273,15 +276,30 @@ private fun BoxScope.AzIndexBar(letters: List<Char>, onSelect: (Char) -> Unit) {
     }
 }
 
-/** First index of each leading letter in a (server-sorted) list; non-letters bucket under '#'. */
+/** First index of each leading letter in a sorted list; non-letters bucket under '#'. */
 internal fun letterIndex(items: List<LibraryItem>): LinkedHashMap<Char, Int> {
     val map = LinkedHashMap<Char, Int>()
     items.forEachIndexed { i, item ->
-        val ch = item.title.firstOrNull()?.uppercaseChar()
-        val key = if (ch != null && ch.isLetter()) ch else '#'
+        val ch = collectionSortKey(item.title).firstOrNull()?.uppercaseChar()
+        val key = if (ch != null && ch in 'A'..'Z') ch else '#'
         if (!map.containsKey(key)) map[key] = i
     }
     return map
+}
+
+private val collectionItemComparator = compareBy<LibraryItem>(
+    { collectionSortKey(it.title) },
+    { it.title.lowercase() },
+)
+
+private val diacriticsRegex = "\\p{Mn}+".toRegex()
+
+private fun collectionSortKey(title: String): String {
+    val trimmed = title.trim().trimStart { !it.isLetterOrDigit() }
+    val withoutArticle = trimmed.removePrefix("The ").removePrefix("the ")
+    return Normalizer.normalize(withoutArticle, Normalizer.Form.NFD)
+        .replace(diacriticsRegex, "")
+        .lowercase()
 }
 
 /** Selection check badge shown on a chosen collection (multi-select playlist mode). */

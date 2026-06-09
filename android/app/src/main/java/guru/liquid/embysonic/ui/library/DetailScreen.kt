@@ -92,7 +92,6 @@ fun DetailScreen(
                             IconButton(
                                 onClick = {
                                     viewModel.shuffleAll()
-                                    onOpenNowPlaying()
                                 },
                             ) {
                                 Icon(Icons.Default.Shuffle, contentDescription = "Shuffle")
