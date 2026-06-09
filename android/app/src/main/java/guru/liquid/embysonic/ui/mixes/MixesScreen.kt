@@ -38,6 +38,7 @@ import guru.liquid.embysonic.ui.library.ViewToggleAction
 fun MixesScreen(
     contentPadding: PaddingValues = PaddingValues(),
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit = { _, _, _ -> },
+    onOpenNowPlaying: () -> Unit = {},
     playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(0) }
@@ -69,7 +70,7 @@ fun MixesScreen(
             }
             Box(modifier = Modifier.fillMaxSize()) {
                 when (selectedTab) {
-                    0 -> PlaylistsTab(playlistsViewModel, listView, onOpenItem)
+                    0 -> PlaylistsTab(playlistsViewModel, listView, onOpenItem, onOpenNowPlaying)
                     else -> MixesPlaceholder()
                 }
             }
@@ -82,16 +83,21 @@ private fun PlaylistsTab(
     viewModel: PlaylistsViewModel,
     listView: Boolean,
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit,
+    onOpenNowPlaying: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     StateContent(state) { items ->
         val onClick = { item: LibraryItem ->
             onOpenItem(item.id, item.title, DetailKind.PLAYLIST_TRACKS)
         }
+        val onPlay = { item: LibraryItem ->
+            viewModel.playPlaylist(item)
+            onOpenNowPlaying()
+        }
         if (listView) {
-            CollectionList(items, placeholderBook = false, onItemClick = onClick)
+            CollectionList(items, placeholderBook = false, onItemClick = onClick, onPlayItem = onPlay)
         } else {
-            CardGrid(items, placeholderBook = false, onItemClick = onClick)
+            CardGrid(items, placeholderBook = false, onItemClick = onClick, onPlayItem = onPlay)
         }
     }
 }

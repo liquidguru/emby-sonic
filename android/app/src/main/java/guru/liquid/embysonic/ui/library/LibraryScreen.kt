@@ -45,6 +45,7 @@ import guru.liquid.embysonic.ui.brand.LiquidWaveLogo
 fun LibraryScreen(
     contentPadding: PaddingValues = PaddingValues(),
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit = { _, _, _ -> },
+    onOpenNowPlaying: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -131,11 +132,19 @@ fun LibraryScreen(
                     if (selectionMode) viewModel.toggleSelected(item.id)
                     else onOpenItem(item.id, item.title, detailKind)
                 }
+                val onPlay = if (selectionMode) {
+                    null
+                } else {
+                    { item: LibraryItem ->
+                        viewModel.playCollection(item, detailKind)
+                        onOpenNowPlaying()
+                    }
+                }
                 val selection = if (selectionMode) selectedIds else emptySet()
                 if (listView) {
-                    CollectionList(items, placeholderBook, onClick, selection)
+                    CollectionList(items, placeholderBook, onClick, selection, onPlay)
                 } else {
-                    CardGrid(items, placeholderBook, onClick, selection)
+                    CardGrid(items, placeholderBook, onClick, selection, onPlay)
                 }
             }
         }

@@ -9,6 +9,7 @@ import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
+import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.ui.nav.Routes
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +39,7 @@ class LibraryViewModel @Inject constructor(
     private val repository: LibraryRepository,
     private val playlists: PlaylistRepository,
     private val settings: SettingsRepository,
+    private val playback: PlaybackController,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -144,6 +146,37 @@ class LibraryViewModel @Inject constructor(
                     exitSelection()
                 },
                 onFailure = { _messages.send("Couldn't create playlist: ${it.message}") },
+            )
+        }
+    }
+
+    fun playCollection(item: LibraryItem, detailKind: guru.liquid.embysonic.data.emby.DetailKind) {
+        viewModelScope.launch {
+            runCatching { repository.playableItems(item.id, detailKind) }.fold(
+                onSuccess = { items ->
+                    val first = items.firstOrNull()
+                    if (first == null) {
+                        _messages.send("Nothing playable in \"${item.title}\"")
+                    } else {
+                        playback.playQueue(items, first)
+                    }
+                },
+                onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
+            )
+        }
+    }
+
+    fun shuffleCollection(item: LibraryItem, detailKind: guru.liquid.embysonic.data.emby.DetailKind) {
+        viewModelScope.launch {
+            runCatching { repository.playableItems(item.id, detailKind) }.fold(
+                onSuccess = { items ->
+                    if (items.isEmpty()) {
+                        _messages.send("Nothing playable in \"${item.title}\"")
+                    } else {
+                        playback.prepareShuffledQueue(items)
+                    }
+                },
+                onFailure = { _messages.send("Couldn't shuffle: ${it.message}") },
             )
         }
     }

@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.settings.SettingsRepository
+import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.ui.library.TabState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,6 +21,7 @@ import javax.inject.Inject
 class PlaylistsViewModel @Inject constructor(
     private val repository: LibraryRepository,
     private val settings: SettingsRepository,
+    private val playback: PlaybackController,
 ) : ViewModel() {
 
     /** Card grid vs. list, persisted and shared with the library/detail screens. */
@@ -40,6 +43,17 @@ class PlaylistsViewModel @Inject constructor(
             runCatching { repository.playlists() }.fold(
                 onSuccess = { _state.value = TabState.Data(it) },
                 onFailure = { _state.value = TabState.Error(it.message ?: "Failed to load") },
+            )
+        }
+    }
+
+    fun playPlaylist(item: LibraryItem) {
+        viewModelScope.launch {
+            runCatching { repository.playableItems(item.id, guru.liquid.embysonic.data.emby.DetailKind.PLAYLIST_TRACKS) }.fold(
+                onSuccess = { items ->
+                    items.firstOrNull()?.let { playback.playQueue(items, it) }
+                },
+                onFailure = {},
             )
         }
     }

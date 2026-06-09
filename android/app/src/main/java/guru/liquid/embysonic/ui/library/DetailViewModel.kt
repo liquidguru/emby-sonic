@@ -93,8 +93,24 @@ class DetailViewModel @Inject constructor(
 
     fun shuffleAll() {
         val items = (state.value as? TabState.Data)?.items.orEmpty()
-        val seed = items.randomOrNull() ?: return
-        playback.playQueue(items, seed, shuffled = true)
+        if (items.isEmpty()) return
+        playback.prepareShuffledQueue(items)
+    }
+
+    fun playCollection(item: LibraryItem) {
+        viewModelScope.launch {
+            runCatching { repository.playableItems(item.id, kind.childKind ?: kind) }.fold(
+                onSuccess = { items ->
+                    val first = items.firstOrNull()
+                    if (first == null) {
+                        _messages.send("Nothing playable in \"${item.title}\"")
+                    } else {
+                        playback.playQueue(items, first)
+                    }
+                },
+                onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
+            )
+        }
     }
 
     private fun generate(name: String, build: suspend () -> List<String>) {

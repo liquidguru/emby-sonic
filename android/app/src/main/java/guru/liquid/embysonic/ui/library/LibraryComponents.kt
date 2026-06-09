@@ -89,6 +89,7 @@ internal fun CardGrid(
     placeholderBook: Boolean,
     onItemClick: (LibraryItem) -> Unit,
     selectedIds: Set<String> = emptySet(),
+    onPlayItem: ((LibraryItem) -> Unit)? = null,
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -125,6 +126,14 @@ internal fun CardGrid(
                         placeholderBook = placeholderBook,
                     )
                     if (selected) SelectedBadge(Modifier.align(Alignment.TopEnd).padding(8.dp))
+                    if (!selected && onPlayItem != null) {
+                        IconButton(
+                            onClick = { onPlayItem(item) },
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                        }
+                    }
                 }
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -172,6 +181,7 @@ internal fun CollectionList(
     placeholderBook: Boolean,
     onItemClick: (LibraryItem) -> Unit,
     selectedIds: Set<String> = emptySet(),
+    onPlayItem: ((LibraryItem) -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -206,6 +216,12 @@ internal fun CollectionList(
                     },
                     trailingContent = if (selected) {
                         { SelectedBadge() }
+                    } else if (onPlayItem != null) {
+                        {
+                            IconButton(onClick = { onPlayItem(item) }) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                            }
+                        }
                     } else {
                         null
                     },

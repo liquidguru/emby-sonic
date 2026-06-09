@@ -97,7 +97,11 @@ fun MainShell(
                     },
                 ),
             ) {
-                LibraryScreen(contentPadding = padding, onOpenItem = openDetail)
+                LibraryScreen(
+                    contentPadding = padding,
+                    onOpenItem = openDetail,
+                    onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
+                )
             }
             composable(
                 route = Routes.LIBRARY_AUDIOBOOKS,
@@ -109,7 +113,11 @@ fun MainShell(
                     },
                 ),
             ) {
-                LibraryScreen(contentPadding = padding, onOpenItem = openDetail)
+                LibraryScreen(
+                    contentPadding = padding,
+                    onOpenItem = openDetail,
+                    onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
+                )
             }
             composable(
                 route = Routes.DETAIL,
@@ -130,7 +138,11 @@ fun MainShell(
                 )
             }
             composable(Routes.MIXES) {
-                MixesScreen(contentPadding = padding, onOpenItem = openDetail)
+                MixesScreen(
+                    contentPadding = padding,
+                    onOpenItem = openDetail,
+                    onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
+                )
             }
             composable(Routes.NOW_PLAYING) {
                 NowPlayingScreen(onCollapse = { navController.popBackStack() })
