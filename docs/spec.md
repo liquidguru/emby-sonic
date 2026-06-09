@@ -309,18 +309,20 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - **M2 — Browse:** Library tabs (Artists/Albums/Tracks via Emby API), Artist
   detail, Album detail + track list.
 - **M3 — Playback:** ✅ Now Playing, ExoPlayer (Media3), MediaSession, queue.
-  Album/playlist track rows start an authenticated Emby `/Items/{id}/Download`
-  stream and open the Now Playing screen. Transport uses a 96dp tap-to-seek
-  progress module behind the `TrackProgress` interface (the future waveform slot;
-  see waveform decision).
+  Album/playlist track rows start an authenticated Emby universal audio stream
+  (`/Audio/{id}/universal`) and open the Now Playing screen. Universal streaming
+  is used instead of direct `/Items/{id}/Download` so Emby can transcode files
+  ExoPlayer cannot parse directly, such as WMA/ASF. Transport uses a 96dp
+  tap-to-seek progress module behind the `TrackProgress` interface (the future
+  waveform slot; see waveform decision).
 - **M3.5 — Playback controls:** ✅ Album/playlist leaf screens expose top-bar
   play and shuffle actions; track rows have explicit play buttons. Now Playing
   exposes shuffle and repeat off/all/one, keeps those states in the shared
   `PlaybackController`, and lets queue rows jump directly to a track. Follow-up:
-  shuffle is queue-order shuffle, not "start a random song"; it preserves
-  play/pause state, so shuffling while paused prepares a shuffled queue without
-  starting playback and does not open Now Playing from collection/detail shuffle
-  actions. Collection cards/list rows expose explicit play affordances for
+  shuffle is queue-order shuffle, not "start a random song"; leaf track-list
+  shuffle visibly reorders the list in place, moves the first visible row too,
+  preserves play/pause state, and does not open Now Playing or start playback
+  while paused. Collection cards/list rows expose explicit play affordances for
   artists/albums/books/playlists. Library A-Z indexes now derive from the same
   normalized sorted collection list they scroll, so jumps land on the expected
   section. Tapping a bottom library tab from a drill-down detail pops back to the
@@ -353,8 +355,13 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   `adb shell cmd media_session list-sessions` reported
   `package=guru.liquid.embysonic`.
 - Regression-checked A-Z picker and shuffle behavior: A-Z now shows
-  `# A B C ... Z` and tapping `T` jumps to T artists; detail shuffle prepares a
-  shuffled queue without navigating away or starting playback when paused.
+  `# A B C ... Z` and tapping `T` jumps to T artists; detail shuffle visibly
+  reorders the leaf track list, changes the first row, prepares the matching
+  shuffled queue, and does not navigate away or start playback when paused.
+- Regression-checked playback on direct-play and transcode-needed tracks. A
+  Radiohead track direct-played, while R.E.M. "Electrolite" was identified as
+  WMA/ASF; switching to Emby universal audio streaming made the WMA track play
+  successfully (user-confirmed on emulator).
 - Regression-checked bottom Music tab from artist/album drill-down: tapping the
   tab pops back to the existing Music root and preserves the prior scroll section
   (user-confirmed on emulator after jumping to `M`).

@@ -45,6 +45,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -327,7 +328,12 @@ internal fun TrackList(
     actions: List<TrackAction> = emptyList(),
     onTrackClick: (LibraryItem) -> Unit = {},
 ) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(items.firstOrNull()?.id) {
+        listState.scrollToItem(0)
+    }
     LazyColumn(
+        state = listState,
         contentPadding = PaddingValues(vertical = 8.dp),
         modifier = Modifier.fillMaxSize(),
     ) {

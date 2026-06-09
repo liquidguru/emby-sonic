@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -68,8 +67,12 @@ class PlaybackController @Inject constructor(
 
     fun prepareShuffledQueue(items: List<LibraryItem>) {
         val tracks = items.shuffled(Random(System.nanoTime()))
-        val startItem = tracks.firstOrNull() ?: return
-        setQueue(items = tracks, startItem = startItem, shuffled = true, playWhenReady = player.isPlaying)
+        prepareQueue(items = tracks, shuffled = true)
+    }
+
+    fun prepareQueue(items: List<LibraryItem>, shuffled: Boolean) {
+        val startItem = items.firstOrNull() ?: return
+        setQueue(items = items, startItem = startItem, shuffled = shuffled, playWhenReady = player.isPlaying)
     }
 
     private fun setQueue(
@@ -81,13 +84,17 @@ class PlaybackController @Inject constructor(
         val startIndex = items.indexOfFirst { it.id == startItem.id }.coerceAtLeast(0)
         val tracks = items.map { it.toPlaybackTrack() }
         if (tracks.isEmpty()) return
-        startService()
+        if (playWhenReady) startService()
         refreshHeaders()
         queue = tracks
         queueShuffled = shuffled
         player.setMediaItems(tracks.map(::mediaItem), startIndex, C.TIME_UNSET)
-        player.prepare()
-        if (playWhenReady) player.play() else player.pause()
+        if (playWhenReady) {
+            player.prepare()
+            player.play()
+        } else {
+            player.pause()
+        }
         publishState()
     }
 
@@ -160,9 +167,21 @@ class PlaybackController @Inject constructor(
     }
 
     private fun streamUrl(itemId: String): String {
-        val base = settings.snapshot().serverUrl?.trimEnd('/')
+        val snap = settings.snapshot()
+        val base = snap.serverUrl?.trimEnd('/')
             ?: throw IllegalStateException("No Emby server configured")
-        return "$base/Items/${Uri.encode(itemId)}/Download"
+        val userId = snap.userId?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Not signed in")
+        return Uri.parse("$base/Audio/${Uri.encode(itemId)}/universal")
+            .buildUpon()
+            .appendQueryParameter("UserId", userId)
+            .appendQueryParameter("MaxStreamingBitrate", "140000000")
+            .appendQueryParameter("Container", "mp3,aac,m4a,flac,webma,webm,wav,ogg")
+            .appendQueryParameter("AudioCodec", "mp3,aac,flac,vorbis,opus")
+            .appendQueryParameter("TranscodingContainer", "mp3")
+            .appendQueryParameter("TranscodingProtocol", "http")
+            .build()
+            .toString()
     }
 
     private fun refreshHeaders() {
@@ -182,7 +201,7 @@ class PlaybackController @Inject constructor(
 
     private fun startService() {
         val intent = Intent(context, SonicPlaybackService::class.java)
-        ContextCompat.startForegroundService(context, intent)
+        context.startService(intent)
     }
 
     private fun publishState() {
