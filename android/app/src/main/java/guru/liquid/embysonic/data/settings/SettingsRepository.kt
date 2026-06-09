@@ -38,6 +38,9 @@ class SettingsRepository @Inject constructor(
         val USER_NAME = stringPreferencesKey("user_name")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val LIBRARY_LIST_VIEW = booleanPreferencesKey("library_list_view")
+        val HOME_COMPACT_CARDS = booleanPreferencesKey("home_compact_cards")
+        val HOME_SECTION_ORDER = stringPreferencesKey("home_section_order")
+        val HOME_HIDDEN_SECTIONS = stringPreferencesKey("home_hidden_sections")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -46,8 +49,45 @@ class SettingsRepository @Inject constructor(
     val libraryListView: Flow<Boolean> =
         context.dataStore.data.map { it[Keys.LIBRARY_LIST_VIEW] ?: false }
 
+    val homeCompactCards: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.HOME_COMPACT_CARDS] ?: false }
+
+    val homeSectionOrder: Flow<List<String>> =
+        context.dataStore.data.map { prefs ->
+            prefs[Keys.HOME_SECTION_ORDER]?.splitCsv().orEmpty()
+        }
+
+    val homeHiddenSections: Flow<Set<String>> =
+        context.dataStore.data.map { prefs ->
+            prefs[Keys.HOME_HIDDEN_SECTIONS]?.splitCsv()?.toSet().orEmpty()
+        }
+
     suspend fun setLibraryListView(value: Boolean) {
         context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
+    }
+
+    suspend fun setHomeCompactCards(value: Boolean) {
+        context.dataStore.edit { it[Keys.HOME_COMPACT_CARDS] = value }
+    }
+
+    suspend fun setHomeSectionOrder(sectionIds: List<String>) {
+        context.dataStore.edit { it[Keys.HOME_SECTION_ORDER] = sectionIds.joinToString(",") }
+    }
+
+    suspend fun setHomeSectionVisible(sectionId: String, visible: Boolean) {
+        context.dataStore.edit { prefs ->
+            val hidden = prefs[Keys.HOME_HIDDEN_SECTIONS]?.splitCsv()?.toMutableSet() ?: mutableSetOf()
+            if (visible) {
+                hidden.remove(sectionId)
+            } else {
+                hidden.add(sectionId)
+            }
+            if (hidden.isEmpty()) {
+                prefs.remove(Keys.HOME_HIDDEN_SECTIONS)
+            } else {
+                prefs[Keys.HOME_HIDDEN_SECTIONS] = hidden.joinToString(",")
+            }
+        }
     }
 
     @Volatile
@@ -114,4 +154,7 @@ class SettingsRepository @Inject constructor(
 
     private suspend fun refreshCache(): AppSettings =
         settings.first().also { cached = it }
+
+    private fun String.splitCsv(): List<String> =
+        split(',').map { it.trim() }.filter { it.isNotEmpty() }
 }
