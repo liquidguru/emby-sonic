@@ -125,7 +125,7 @@ fun NowPlayingScreen(
                     onToggle = viewModel::togglePlayPause,
                     onPrevious = viewModel::skipPrevious,
                     onNext = viewModel::skipNext,
-                    onToggleShuffle = viewModel::toggleShuffle,
+                    onShuffleQueue = viewModel::shuffleQueue,
                     onCycleRepeat = viewModel::cycleRepeatMode,
                     onQueueItemClick = viewModel::seekToQueueIndex,
                 )
@@ -143,7 +143,7 @@ private fun PlayerContent(
     onToggle: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    onToggleShuffle: () -> Unit,
+    onShuffleQueue: () -> Unit,
     onCycleRepeat: () -> Unit,
     onQueueItemClick: (Int) -> Unit,
 ) {
@@ -190,7 +190,7 @@ private fun PlayerContent(
             Spacer(Modifier.height(8.dp))
             PlaybackModeControls(
                 state = state,
-                onToggleShuffle = onToggleShuffle,
+                onShuffleQueue = onShuffleQueue,
                 onCycleRepeat = onCycleRepeat,
             )
             Spacer(Modifier.height(18.dp))
@@ -286,7 +286,7 @@ private fun TransportControls(
 @Composable
 private fun PlaybackModeControls(
     state: PlaybackUiState,
-    onToggleShuffle: () -> Unit,
+    onShuffleQueue: () -> Unit,
     onCycleRepeat: () -> Unit,
 ) {
     Row(
@@ -294,10 +294,10 @@ private fun PlaybackModeControls(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onToggleShuffle, enabled = state.queue.size > 1) {
+        IconButton(onClick = onShuffleQueue, enabled = state.queue.size > 1) {
             Icon(
                 Icons.Default.Shuffle,
-                contentDescription = if (state.shuffleEnabled) "Shuffle on" else "Shuffle off",
+                contentDescription = "Shuffle queue",
                 tint = if (state.shuffleEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

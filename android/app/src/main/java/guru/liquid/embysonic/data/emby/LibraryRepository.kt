@@ -230,6 +230,22 @@ class LibraryRepository @Inject constructor(
                 ).items.map { it.toTrackItem() }
         }
 
+    /** Tracks/chapters represented by a collection tile, suitable for direct playback. */
+    suspend fun playableItems(collectionId: String, kind: DetailKind): List<LibraryItem> =
+        when (kind) {
+            DetailKind.ARTIST_ALBUMS, DetailKind.AUTHOR_BOOKS ->
+                embyApi.getItems(
+                    userId = userId(),
+                    includeItemTypes = "Audio",
+                    albumArtistIds = collectionId,
+                    sortBy = "Album,ParentIndexNumber,IndexNumber,SortName",
+                    limit = BROWSE_LIMIT,
+                ).items.map { it.toTrackItem() }
+
+            DetailKind.ALBUM_TRACKS, DetailKind.BOOK_CHAPTERS, DetailKind.PLAYLIST_TRACKS ->
+                childItems(collectionId, kind)
+        }
+
     /**
      * Artist or album cell: art comes from the item's own Primary image. The URL is
      * built ONLY when the item actually has a Primary tag — otherwise it stays null so

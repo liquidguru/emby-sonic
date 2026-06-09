@@ -316,7 +316,11 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - **M3.5 — Playback controls:** ✅ Album/playlist leaf screens expose top-bar
   play and shuffle actions; track rows have explicit play buttons. Now Playing
   exposes shuffle and repeat off/all/one, keeps those states in the shared
-  `PlaybackController`, and lets queue rows jump directly to a track.
+  `PlaybackController`, and lets queue rows jump directly to a track. Follow-up:
+  shuffle is queue-order shuffle, not "start a random song"; it preserves
+  play/pause state, so shuffling while paused prepares a shuffled queue without
+  starting playback. Collection cards/list rows expose explicit play affordances
+  for artists/albums/books/playlists.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Home (recents + mixes), icon/theming. Real waveform

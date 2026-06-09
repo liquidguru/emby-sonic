@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,6 +46,7 @@ class PlaybackController @Inject constructor(
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
 
     private var queue: List<PlaybackTrack> = emptyList()
+    private var queueShuffled: Boolean = false
 
     init {
         player.addListener(object : Player.Listener {
@@ -60,17 +62,32 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    fun playQueue(items: List<LibraryItem>, startItem: LibraryItem, shuffled: Boolean = false) {
+    fun playQueue(items: List<LibraryItem>, startItem: LibraryItem) {
+        setQueue(items = items, startItem = startItem, shuffled = false, playWhenReady = true)
+    }
+
+    fun prepareShuffledQueue(items: List<LibraryItem>) {
+        val tracks = items.shuffled(Random(System.nanoTime()))
+        val startItem = tracks.firstOrNull() ?: return
+        setQueue(items = tracks, startItem = startItem, shuffled = true, playWhenReady = player.isPlaying)
+    }
+
+    private fun setQueue(
+        items: List<LibraryItem>,
+        startItem: LibraryItem,
+        shuffled: Boolean,
+        playWhenReady: Boolean,
+    ) {
         val startIndex = items.indexOfFirst { it.id == startItem.id }.coerceAtLeast(0)
         val tracks = items.map { it.toPlaybackTrack() }
         if (tracks.isEmpty()) return
         startService()
         refreshHeaders()
         queue = tracks
-        player.shuffleModeEnabled = shuffled
+        queueShuffled = shuffled
         player.setMediaItems(tracks.map(::mediaItem), startIndex, C.TIME_UNSET)
         player.prepare()
-        player.play()
+        if (playWhenReady) player.play() else player.pause()
         publishState()
     }
 
@@ -101,8 +118,20 @@ class PlaybackController @Inject constructor(
         publishState()
     }
 
-    fun toggleShuffle() {
-        player.shuffleModeEnabled = !player.shuffleModeEnabled
+    fun shuffleQueue() {
+        if (queue.size < 2) return
+        val currentIndex = player.currentMediaItemIndex.coerceAtLeast(0)
+        val currentTrack = queue.getOrNull(currentIndex)
+        val currentPosition = player.currentPosition.coerceAtLeast(0)
+        val wasPlaying = player.isPlaying
+        val shuffledTail = queue
+            .filterNot { it.id == currentTrack?.id }
+            .shuffled(Random(System.nanoTime()))
+        queue = if (currentTrack != null) listOf(currentTrack) + shuffledTail else shuffledTail
+        queueShuffled = true
+        player.setMediaItems(queue.map(::mediaItem), 0, currentPosition)
+        player.prepare()
+        if (wasPlaying) player.play() else player.pause()
         publishState()
     }
 
@@ -164,7 +193,7 @@ class PlaybackController @Inject constructor(
             queue = queue,
             currentIndex = index,
             isPlaying = player.isPlaying,
-            shuffleEnabled = player.shuffleModeEnabled,
+            shuffleEnabled = queueShuffled,
             repeatMode = player.repeatMode.toPlaybackRepeatMode(),
             canSkipPrevious = player.hasPreviousMediaItem(),
             canSkipNext = player.hasNextMediaItem(),

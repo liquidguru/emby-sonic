@@ -110,10 +110,24 @@ fun DetailScreen(
                         kind.childKind?.let { child -> onOpenItem(item.id, item.title, child) }
                         Unit
                     }
+                    val onPlay = { item: LibraryItem ->
+                        viewModel.playCollection(item)
+                        onOpenNowPlaying()
+                    }
                     if (listView) {
-                        CollectionList(items, placeholderBook = kind.usesBookIcon, onItemClick = onClick)
+                        CollectionList(
+                            items,
+                            placeholderBook = kind.usesBookIcon,
+                            onItemClick = onClick,
+                            onPlayItem = onPlay,
+                        )
                     } else {
-                        CardGrid(items, placeholderBook = kind.usesBookIcon, onItemClick = onClick)
+                        CardGrid(
+                            items,
+                            placeholderBook = kind.usesBookIcon,
+                            onItemClick = onClick,
+                            onPlayItem = onPlay,
+                        )
                     }
                 } else {
                     TrackList(
