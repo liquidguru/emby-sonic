@@ -58,10 +58,20 @@ fun MainShell(
                     )
 
                     libraries.forEach { library ->
+                        val libraryRoute = Routes.library(library.id, library.kind.name)
+                        val libraryPattern = Routes.libraryPattern(library.kind.name)
                         NavigationBarItem(
-                            selected = currentRoute == Routes.libraryPattern(library.kind.name),
+                            selected = currentRoute == libraryPattern,
                             onClick = {
-                                navController.navigateTab(Routes.library(library.id, library.kind.name))
+                                if (currentRoute == Routes.DETAIL) {
+                                    navController.popBackStack(libraryPattern, inclusive = false).also { found ->
+                                        if (!found) navController.navigateRootTab(libraryRoute)
+                                    }
+                                } else if (currentRoute == libraryPattern) {
+                                    navController.navigateRootTab(libraryRoute)
+                                } else {
+                                    navController.navigateTab(libraryRoute)
+                                }
                             },
                             icon = { Icon(library.icon(), contentDescription = library.name) },
                             label = { Text(library.shortLabel()) },
@@ -156,6 +166,14 @@ private fun androidx.navigation.NavController.navigateTab(route: String) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+private fun androidx.navigation.NavController.navigateRootTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id)
+        launchSingleTop = true
+        restoreState = false
     }
 }
 
