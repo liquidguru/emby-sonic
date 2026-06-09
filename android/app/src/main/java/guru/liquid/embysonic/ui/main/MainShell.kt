@@ -1,5 +1,6 @@
 package guru.liquid.embysonic.ui.main
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -49,41 +50,54 @@ fun MainShell(
     Scaffold(
         bottomBar = {
             if (currentRoute != Routes.NOW_PLAYING) {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.HOME,
-                        onClick = { navController.navigateTab(Routes.HOME) },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home") },
-                    )
-
-                    libraries.forEach { library ->
-                        val libraryRoute = Routes.library(library.id, library.kind.name)
-                        val libraryPattern = Routes.libraryPattern(library.kind.name)
+                Column {
+                    MiniPlayerBar(onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) })
+                    NavigationBar {
                         NavigationBarItem(
-                            selected = currentRoute == libraryPattern,
+                            selected = currentRoute == Routes.HOME,
                             onClick = {
                                 if (currentRoute == Routes.DETAIL) {
-                                    navController.popBackStack(libraryPattern, inclusive = false).also { found ->
-                                        if (!found) navController.navigateRootTab(libraryRoute)
+                                    navController.popBackStack(Routes.HOME, inclusive = false).also { found ->
+                                        if (!found) navController.navigateRootTab(Routes.HOME)
                                     }
-                                } else if (currentRoute == libraryPattern) {
-                                    navController.navigateRootTab(libraryRoute)
+                                } else if (currentRoute == Routes.HOME) {
+                                    navController.navigateRootTab(Routes.HOME)
                                 } else {
-                                    navController.navigateTab(libraryRoute)
+                                    navController.navigateTab(Routes.HOME)
                                 }
                             },
-                            icon = { Icon(library.icon(), contentDescription = library.name) },
-                            label = { Text(library.shortLabel()) },
+                            icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                            label = { Text("Home") },
+                        )
+
+                        libraries.forEach { library ->
+                            val libraryRoute = Routes.library(library.id, library.kind.name)
+                            val libraryPattern = Routes.libraryPattern(library.kind.name)
+                            NavigationBarItem(
+                                selected = currentRoute == libraryPattern,
+                                onClick = {
+                                    if (currentRoute == Routes.DETAIL) {
+                                        navController.popBackStack(libraryPattern, inclusive = false).also { found ->
+                                            if (!found) navController.navigateRootTab(libraryRoute)
+                                        }
+                                    } else if (currentRoute == libraryPattern) {
+                                        navController.navigateRootTab(libraryRoute)
+                                    } else {
+                                        navController.navigateTab(libraryRoute)
+                                    }
+                                },
+                                icon = { Icon(library.icon(), contentDescription = library.name) },
+                                label = { Text(library.shortLabel()) },
+                            )
+                        }
+
+                        NavigationBarItem(
+                            selected = currentRoute == Routes.MIXES,
+                            onClick = { navController.navigateTab(Routes.MIXES) },
+                            icon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Mixes") },
+                            label = { Text("Mixes") },
                         )
                     }
-
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.MIXES,
-                        onClick = { navController.navigateTab(Routes.MIXES) },
-                        icon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Mixes") },
-                        label = { Text("Mixes") },
-                    )
                 }
             }
         },

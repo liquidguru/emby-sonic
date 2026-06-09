@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -333,6 +333,13 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   playlist/album/artist tiles drill into the existing detail screens, and tile
   play buttons start playback only after a playable queue is successfully loaded.
   Coordinator analysis progress moved to Settings with a refreshable status card.
+- **M3.7 — Mini player:** ✅ The main shell now shows a persistent mini player
+  above the bottom navigation whenever a track is loaded and the full Now Playing
+  screen is collapsed. The mini player shows artwork, title, artist, progress,
+  play/pause, and stop/close; tapping the bar opens Now Playing. Stop clears the
+  ExoPlayer queue, removes the mini player, and stops the playback service. The
+  bottom Home tab now returns from drill-down detail screens to the existing Home
+  root instead of restoring/staying on a stale detail screen.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
@@ -388,6 +395,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - Screenshots captured in `android/verify-home-discovery.png`,
   `android/verify-settings-analysis-status.png`, and
   `android/verify-home-album-drilldown.png`.
+
+**M3.7 verification (dev-pc / Pixel_3a_API_36, 2026-06-09):**
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- User-confirmed the bottom Home tab now returns correctly from detail screens.
+- User-confirmed the mini player appears after starting playback and returning to
+  the shell, its bar opens Now Playing, play/pause works, and stop removes the
+  bar/stops playback.
+- Screenshot captured in `android/verify-mini-player.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
@@ -543,6 +559,8 @@ User-Agent headers so Emby can transcode unsupported codecs such as WMA/ASF.
   replace placeholder browse-backed rows with true recent listens, sonic mixes,
   radio/adventure entries, and other M4 discovery surfaces as those APIs/UI flows
   land.
+- Mini player exists in the shell for active playback; follow-up polish could add
+  skip-next/previous, swipe-to-dismiss, or queue context if desired.
 - Play buttons on grids (CardGrid, DetailScreen) are live; all playlists/albums/
   artists now have play actions wired to the playback queue.
 - Shuffle and repeat modes are visible in Now Playing (not just toggles).
