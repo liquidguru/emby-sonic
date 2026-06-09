@@ -103,6 +103,15 @@ class PlaybackController @Inject constructor(
         publishState()
     }
 
+    fun stopPlayback() {
+        player.stop()
+        player.clearMediaItems()
+        queue = emptyList()
+        queueShuffled = false
+        context.stopService(Intent(context, SonicPlaybackService::class.java))
+        publishState()
+    }
+
     fun seekTo(positionMs: Long) {
         player.seekTo(positionMs.coerceAtLeast(0))
         publishState()

@@ -20,4 +20,5 @@ class NowPlayingViewModel @Inject constructor(
     fun seekToQueueIndex(index: Int) = playback.seekToQueueIndex(index)
     fun shuffleQueue() = playback.shuffleQueue()
     fun cycleRepeatMode() = playback.cycleRepeatMode()
+    fun stopPlayback() = playback.stopPlayback()
 }
