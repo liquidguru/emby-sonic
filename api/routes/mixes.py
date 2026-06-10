@@ -67,9 +67,11 @@ async def regenerate_mix(
 ) -> MixDetail:
     """Refresh one mix's track selection using its stored centroid.
 
-    Re-ranks all current embeddings against the centroid and picks the closest
-    `tracks_per_mix` tracks, so new library additions are automatically included
-    without running a full k-means rebuild.
+    Ranks all eligible embeddings against the centroid, then *samples*
+    `tracks_per_mix` tracks from a pool of the closest matches (weighted toward
+    the closest). This keeps the mix on-theme while giving a genuinely different
+    selection on each refresh, and picks up new library additions without a full
+    k-means rebuild.
     """
     mix = await db.get(Mix, mix_id)
     if mix is None:
@@ -96,8 +98,25 @@ async def regenerate_mix(
         dtype=np.float32,
     )
     scores = vecs @ centroid_norm
-    top_indices = np.argsort(-scores)[: body.tracks_per_mix]
-    selected_ids = [track_ids[i] for i in top_indices]
+    n = min(body.tracks_per_mix, len(scores))
+
+    # Candidate pool: the closest matches, then weighted-sample N from them so
+    # repeated refreshes vary while staying on-theme. Weights are a softmax of
+    # the pool's similarity scores; temperature tunes how far we roam.
+    pool_size = min(
+        len(scores),
+        max(n * settings.refresh_pool_multiplier, settings.refresh_pool_min),
+    )
+    pool_idx = np.argsort(-scores)[:pool_size]
+    pool_scores = scores[pool_idx]
+    temp = max(settings.refresh_temperature, 1e-6)
+    weights = np.exp((pool_scores - pool_scores.max()) / temp)
+    weights /= weights.sum()
+    chosen = np.random.choice(len(pool_idx), size=n, replace=False, p=weights)
+    # Lead with the closest of the chosen so the first track is representative.
+    chosen_idx = pool_idx[chosen]
+    chosen_idx = chosen_idx[np.argsort(-scores[chosen_idx])]
+    selected_ids = [track_ids[i] for i in chosen_idx]
 
     await db.execute(delete(MixTrack).where(MixTrack.mix_id == mix_id))
     for position, tid in enumerate(selected_ids):
