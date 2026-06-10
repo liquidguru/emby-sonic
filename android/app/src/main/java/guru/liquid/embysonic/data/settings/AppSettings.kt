@@ -14,6 +14,8 @@ data class AppSettings(
     val userId: String? = null,
     val userName: String? = null,
     val deviceId: String,
+    val crossfadeEnabled: Boolean = false,
+    val crossfadeDurationMs: Int = 6_000,
 ) {
     val isLoggedIn: Boolean
         get() = !serverUrl.isNullOrBlank() && !accessToken.isNullOrBlank()

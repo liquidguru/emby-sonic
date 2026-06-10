@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -42,6 +43,8 @@ class SettingsRepository @Inject constructor(
         val HOME_SECTION_ORDER = stringPreferencesKey("home_section_order")
         val HOME_HIDDEN_SECTIONS = stringPreferencesKey("home_hidden_sections")
         val PLAYBACK_REPEAT_MODE = stringPreferencesKey("playback_repeat_mode")
+        val CROSSFADE_ENABLED = booleanPreferencesKey("crossfade_enabled")
+        val CROSSFADE_DURATION_MS = intPreferencesKey("crossfade_duration_ms")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -65,6 +68,14 @@ class SettingsRepository @Inject constructor(
 
     val playbackRepeatMode: Flow<String> =
         context.dataStore.data.map { it[Keys.PLAYBACK_REPEAT_MODE] ?: "OFF" }
+
+    /** Whether music tracks crossfade into each other. Never applies to audiobooks. */
+    val crossfadeEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.CROSSFADE_ENABLED] ?: false }
+
+    /** Crossfade overlap length in milliseconds (both tracks audible together). */
+    val crossfadeDurationMs: Flow<Int> =
+        context.dataStore.data.map { it[Keys.CROSSFADE_DURATION_MS] ?: DEFAULT_CROSSFADE_MS }
 
     suspend fun setLibraryListView(value: Boolean) {
         context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
@@ -98,6 +109,16 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { it[Keys.PLAYBACK_REPEAT_MODE] = mode }
     }
 
+    suspend fun setCrossfadeEnabled(value: Boolean) {
+        context.dataStore.edit { it[Keys.CROSSFADE_ENABLED] = value }
+        refreshCache()
+    }
+
+    suspend fun setCrossfadeDurationMs(value: Int) {
+        context.dataStore.edit { it[Keys.CROSSFADE_DURATION_MS] = value }
+        refreshCache()
+    }
+
     @Volatile
     private var cached: AppSettings? = null
 
@@ -116,6 +137,8 @@ class SettingsRepository @Inject constructor(
             userId = this[Keys.USER_ID],
             userName = this[Keys.USER_NAME],
             deviceId = deviceId,
+            crossfadeEnabled = this[Keys.CROSSFADE_ENABLED] ?: false,
+            crossfadeDurationMs = this[Keys.CROSSFADE_DURATION_MS] ?: DEFAULT_CROSSFADE_MS,
         )
     }
 
@@ -165,4 +188,8 @@ class SettingsRepository @Inject constructor(
 
     private fun String.splitCsv(): List<String> =
         split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    private companion object {
+        const val DEFAULT_CROSSFADE_MS = 6_000
+    }
 }
