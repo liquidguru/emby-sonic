@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import select, delete
 from api.deps import DB, AuthToken
 from api.schemas import MixOut, MixDetail, RegenerateMixRequest, TrackOut
+from analysis.mixes import is_mix_excluded
 from db.models import Embedding, Mix, MixTrack, Track
 
 router = APIRouter(tags=["mixes"])
@@ -79,7 +80,13 @@ async def regenerate_mix(
     centroid = np.frombuffer(mix.centroid, dtype=np.float32)
     centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
 
-    rows = (await db.execute(select(Embedding.track_id, Embedding.vector))).all()
+    rows = (
+        await db.execute(
+            select(Embedding.track_id, Embedding.vector, Track.file_path)
+            .join(Track, Track.id == Embedding.track_id)
+        )
+    ).all()
+    rows = [r for r in rows if not is_mix_excluded(r.file_path)]
     if not rows:
         raise HTTPException(409, "No embeddings in library")
 

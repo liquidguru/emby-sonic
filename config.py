@@ -39,6 +39,11 @@ class Settings(BaseSettings):
 
     analysis_workers: int = 2
 
+    # Tracks whose Emby file path contains any of these (case-insensitive)
+    # substrings are excluded from sonic mixes. Audiobooks live under
+    # \Videos\Audio\ but Emby types them as "Audio", so they otherwise leak in.
+    mix_exclude_path_markers: list[str] = ["\\Videos\\Audio\\"]
+
     @property
     def db_url(self) -> str:
         # as_posix() forces forward slashes — backslashes from a Windows Path

@@ -21,9 +21,23 @@ import numpy as np
 from sklearn.cluster import MiniBatchKMeans
 from sqlalchemy import select, delete
 
+from config import settings
+
 logger = logging.getLogger(__name__)
 
 _build_running = False
+
+
+def is_mix_excluded(file_path: str | None) -> bool:
+    """True if a track should be kept out of sonic mixes (e.g. audiobooks).
+
+    Matches its Emby file path against settings.mix_exclude_path_markers,
+    case-insensitively. Shared by build_mixes and the regenerate endpoint.
+    """
+    if not file_path:
+        return False
+    lowered = file_path.lower()
+    return any(marker.lower() in lowered for marker in settings.mix_exclude_path_markers)
 
 # Mood grid indexed by (tempo_level, energy_level), each 0=low / 1=mid / 2=high
 # relative to the library's own distribution.
@@ -126,12 +140,22 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
                     Embedding.tempo,
                     Embedding.energy,
                     Track.artist,
+                    Track.file_path,
                 ).join(Track, Track.id == Embedding.track_id)
             )
         ).all()
 
     if not rows:
         logger.warning("build_mixes: no embeddings found")
+        return 0
+
+    # Keep audiobooks (and any other excluded paths) out of the clustering.
+    excluded = sum(1 for r in rows if is_mix_excluded(r.file_path))
+    rows = [r for r in rows if not is_mix_excluded(r.file_path)]
+    if excluded:
+        logger.info("build_mixes: excluded %d audiobook/other tracks", excluded)
+    if not rows:
+        logger.warning("build_mixes: no eligible tracks after exclusions")
         return 0
 
     track_ids = [r.track_id for r in rows]
