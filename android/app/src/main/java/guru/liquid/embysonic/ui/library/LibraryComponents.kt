@@ -92,6 +92,7 @@ internal fun CardGrid(
     onItemClick: (LibraryItem) -> Unit,
     selectedIds: Set<String> = emptySet(),
     onPlayItem: ((LibraryItem) -> Unit)? = null,
+    onDeleteItem: ((LibraryItem) -> Unit)? = null,
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -113,6 +114,7 @@ internal fun CardGrid(
     ) {
         items(sortedItems, key = { it.id }) { item ->
             val selected = item.id in selectedIds
+            var showMenu by remember { mutableStateOf(false) }
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
@@ -129,12 +131,28 @@ internal fun CardGrid(
                         placeholderBook = placeholderBook,
                     )
                     if (selected) SelectedBadge(Modifier.align(Alignment.TopEnd).padding(8.dp))
-                    if (!selected && onPlayItem != null) {
-                        IconButton(
-                            onClick = { onPlayItem(item) },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                    if (!selected) {
+                        if (onDeleteItem != null) {
+                            IconButton(
+                                onClick = { showMenu = true },
+                                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                            ) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Delete") },
+                                    onClick = { showMenu = false; onDeleteItem(item) },
+                                )
+                            }
+                        }
+                        if (onPlayItem != null) {
+                            IconButton(
+                                onClick = { onPlayItem(item) },
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                            }
                         }
                     }
                 }
@@ -185,6 +203,7 @@ internal fun CollectionList(
     onItemClick: (LibraryItem) -> Unit,
     selectedIds: Set<String> = emptySet(),
     onPlayItem: ((LibraryItem) -> Unit)? = null,
+    onDeleteItem: ((LibraryItem) -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -198,6 +217,7 @@ internal fun CollectionList(
         ) {
             items(sortedItems, key = { it.id }) { item ->
                 val selected = item.id in selectedIds
+                var showMenu by remember { mutableStateOf(false) }
                 ListItem(
                     modifier = Modifier.clickable { onItemClick(item) },
                     colors = ListItemDefaults.colors(
@@ -220,10 +240,27 @@ internal fun CollectionList(
                     },
                     trailingContent = if (selected) {
                         { SelectedBadge() }
-                    } else if (onPlayItem != null) {
+                    } else if (onPlayItem != null || onDeleteItem != null) {
                         {
-                            IconButton(onClick = { onPlayItem(item) }) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (onPlayItem != null) {
+                                    IconButton(onClick = { onPlayItem(item) }) {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                                    }
+                                }
+                                if (onDeleteItem != null) {
+                                    Box {
+                                        IconButton(onClick = { showMenu = true }) {
+                                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                        }
+                                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                            DropdownMenuItem(
+                                                text = { Text("Delete") },
+                                                onClick = { showMenu = false; onDeleteItem(item) },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else {

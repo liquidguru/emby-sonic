@@ -1,4 +1,4 @@
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from config import settings
@@ -29,6 +29,11 @@ async def init_db() -> None:
     from db import models  # noqa: F401 — side-effect: registers all ORM classes
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add centroid column to existing DBs (SQLite has no ADD COLUMN IF NOT EXISTS).
+        result = await conn.execute(text("PRAGMA table_info(mixes)"))
+        existing_cols = {row[1] for row in result.fetchall()}
+        if "centroid" not in existing_cols:
+            await conn.execute(text("ALTER TABLE mixes ADD COLUMN centroid BLOB"))
 
 
 async def get_db() -> AsyncSession:

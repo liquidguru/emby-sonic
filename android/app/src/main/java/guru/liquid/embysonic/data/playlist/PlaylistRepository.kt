@@ -70,4 +70,9 @@ class PlaylistRepository @Inject constructor(
             userId = userId(),
         ).itemAddedCount
     }
+
+    /** Deletes an Emby playlist permanently from the server. */
+    suspend fun deletePlaylist(itemId: String) {
+        embyApi.deleteItem(itemId)
+    }
 }

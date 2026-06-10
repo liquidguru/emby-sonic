@@ -1,8 +1,11 @@
+from datetime import datetime, timezone
+
+import numpy as np
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from api.deps import DB, AuthToken
-from api.schemas import MixOut, MixDetail, TrackOut
-from db.models import Mix, MixTrack, Track
+from api.schemas import MixOut, MixDetail, RegenerateMixRequest, TrackOut
+from db.models import Embedding, Mix, MixTrack, Track
 
 router = APIRouter(tags=["mixes"])
 
@@ -41,6 +44,64 @@ async def get_mix(mix_id: str, db: DB, _token: AuthToken) -> MixDetail:
     tracks = []
     for mt in mix_tracks:
         track = await db.get(Track, mt.track_id)
+        if track:
+            tracks.append(TrackOut.model_validate(track))
+
+    mix_out = MixOut(
+        id=mix.id,
+        name=mix.name,
+        created_at=mix.created_at,
+        cluster_id=mix.cluster_id,
+        track_count=len(tracks),
+    )
+    return MixDetail(mix=mix_out, tracks=tracks)
+
+
+@router.post("/mixes/{mix_id}/regenerate", response_model=MixDetail)
+async def regenerate_mix(
+    mix_id: str,
+    body: RegenerateMixRequest,
+    db: DB,
+    _token: AuthToken,
+) -> MixDetail:
+    """Refresh one mix's track selection using its stored centroid.
+
+    Re-ranks all current embeddings against the centroid and picks the closest
+    `tracks_per_mix` tracks, so new library additions are automatically included
+    without running a full k-means rebuild.
+    """
+    mix = await db.get(Mix, mix_id)
+    if mix is None:
+        raise HTTPException(404, "Mix not found")
+    if mix.centroid is None:
+        raise HTTPException(409, "Mix has no stored centroid — run Build Mixes first")
+
+    centroid = np.frombuffer(mix.centroid, dtype=np.float32)
+    centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
+
+    rows = (await db.execute(select(Embedding.track_id, Embedding.vector))).all()
+    if not rows:
+        raise HTTPException(409, "No embeddings in library")
+
+    track_ids = [r.track_id for r in rows]
+    vecs = np.array(
+        [np.frombuffer(r.vector, dtype=np.float32) for r in rows],
+        dtype=np.float32,
+    )
+    scores = vecs @ centroid_norm
+    top_indices = np.argsort(-scores)[: body.tracks_per_mix]
+    selected_ids = [track_ids[i] for i in top_indices]
+
+    await db.execute(delete(MixTrack).where(MixTrack.mix_id == mix_id))
+    for position, tid in enumerate(selected_ids):
+        db.add(MixTrack(mix_id=mix_id, position=position, track_id=tid))
+    mix.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    await db.commit()
+    await db.refresh(mix)
+
+    tracks = []
+    for tid in selected_ids:
+        track = await db.get(Track, tid)
         if track:
             tracks.append(TrackOut.model_validate(track))
 

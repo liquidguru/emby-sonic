@@ -43,6 +43,11 @@ data class SonicMixDetailDto(
 )
 
 @Serializable
+data class RegenerateMixRequestDto(
+    @SerialName("tracks_per_mix") val tracksPerMix: Int = 50,
+)
+
+@Serializable
 data class BuildMixesRequestDto(
     @SerialName("n_clusters") val nClusters: Int = 30,
     @SerialName("tracks_per_mix") val tracksPerMix: Int = 50,

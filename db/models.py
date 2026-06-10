@@ -54,6 +54,7 @@ class Mix(Base):
     name: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime | None] = mapped_column(DateTime)
     cluster_id: Mapped[int | None] = mapped_column(Integer)
+    centroid: Mapped[bytes | None] = mapped_column(LargeBinary)  # 128-dim float32 k-means centroid
 
     mix_tracks: Mapped[list["MixTrack"]] = relationship(
         back_populates="mix", order_by="MixTrack.position"

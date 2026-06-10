@@ -170,6 +170,7 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
             "mean_tempo": _mean(sel_tempos),
             "mean_energy": _mean(sel_energies),
             "artists": [artists[mask[i]] for i in top_indices],
+            "centroid": centroids[cluster_id].tobytes(),
         })
 
     # Grade clusters RELATIVE TO EACH OTHER: terciles over the per-cluster means,
@@ -198,6 +199,7 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
                 name=c["name"],
                 created_at=_utcnow(),
                 cluster_id=c["cluster_id"],
+                centroid=c.get("centroid"),
             ))
             for position, tid in enumerate(c["track_ids"]):
                 db.add(MixTrack(mix_id=mix_id, position=position, track_id=tid))

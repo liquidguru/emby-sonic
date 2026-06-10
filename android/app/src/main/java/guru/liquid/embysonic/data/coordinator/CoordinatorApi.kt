@@ -3,6 +3,7 @@ package guru.liquid.embysonic.data.coordinator
 import guru.liquid.embysonic.data.coordinator.dto.RadioPlaylistDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesStartedDto
+import guru.liquid.embysonic.data.coordinator.dto.RegenerateMixRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.SimilarTrackDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDetailDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
@@ -41,6 +42,12 @@ interface CoordinatorApi {
     @GET("sonic/mixes/{id}")
     suspend fun mixDetail(
         @Path("id") mixId: String,
+    ): SonicMixDetailDto
+
+    @POST("sonic/mixes/{id}/regenerate")
+    suspend fun regenerateMix(
+        @Path("id") mixId: String,
+        @Body body: RegenerateMixRequestDto,
     ): SonicMixDetailDto
 
     @POST("sonic/library/build-mixes")
