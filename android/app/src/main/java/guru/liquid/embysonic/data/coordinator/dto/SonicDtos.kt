@@ -26,3 +26,18 @@ data class RadioPlaylistDto(
     @SerialName("seed_id") val seedId: String,
     @SerialName("tracks") val tracks: List<TrackOutDto> = emptyList(),
 )
+
+@Serializable
+data class SonicMixDto(
+    @SerialName("id") val id: String,
+    @SerialName("name") val name: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("cluster_id") val clusterId: Int? = null,
+    @SerialName("track_count") val trackCount: Int = 0,
+)
+
+@Serializable
+data class SonicMixDetailDto(
+    @SerialName("mix") val mix: SonicMixDto,
+    @SerialName("tracks") val tracks: List<TrackOutDto> = emptyList(),
+)
