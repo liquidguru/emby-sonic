@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -372,7 +372,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   (`playback_repeat_mode`) and is restored into Media3 on controller startup.
   The mini player now exposes previous and next controls alongside play/pause
   and stop, so collapsed playback can be controlled without opening Now Playing.
-- **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
+- **M4.1 — Sonic mixes list/player:** ✅ The Mixes tab now has a real `Mixes`
+  sub-tab backed by the coordinator's `/sonic/mixes` and `/sonic/mixes/{id}`
+  endpoints. Mix summaries show generated names and track counts, rows open an
+  in-place detail view, and play buttons queue the coordinator's Emby track ids
+  through the existing `PlaybackController`. Track artwork is currently absent
+  because the coordinator response only returns track metadata; placeholders are
+  expected until a richer Emby hydration step or coordinator artwork field is
+  added.
+- **M4 — Remaining sonic features:** Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
   (Option A) considered here, dropped in behind the `TrackProgress` interface.
@@ -479,6 +487,20 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - User-confirmed the queue focus/jump behavior, stop/clear behavior, and repeat
   persistence checks look good.
 - Screenshot captured in `android/verify-playback-queue-controls.png`.
+
+**M4.1 verification (dev-pc / Pixel_3a_API_36, 2026-06-10):**
+- Curled the live coordinator before writing Android DTOs. `/sonic/mixes`
+  returned generated mix summaries (`id`, `name`, `created_at`, `cluster_id`,
+  `track_count`), and `/sonic/mixes/{id}` returned `mix` plus ordered `tracks`
+  with Emby item ids.
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- Verified the Mixes sub-tab renders coordinator mixes, the first mix opens an
+  in-place detail list, and tapping the mix play button opens Now Playing with
+  playback advancing.
+- Screenshots captured in `android/verify-sonic-mixes-list.png`,
+  `android/verify-sonic-mix-detail.png`, and
+  `android/verify-sonic-mix-playing.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
