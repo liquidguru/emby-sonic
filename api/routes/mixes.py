@@ -110,8 +110,12 @@ async def regenerate_mix(
     )
     pool_idx = np.argsort(-scores)[:pool_size]
     pool_scores = scores[pool_idx]
-    temp = max(settings.refresh_temperature, 1e-6)
-    weights = np.exp((pool_scores - pool_scores.max()) / temp)
+    # Scale temperature by the pool's score spread so behaviour is independent of
+    # the raw similarity magnitude (embeddings aren't unit-normalised, so scores
+    # are unbounded dot products, not [0,1] cosine values).
+    spread = float(pool_scores.std()) or 1.0
+    scale = max(settings.refresh_temperature, 1e-6) * spread
+    weights = np.exp((pool_scores - pool_scores.max()) / scale)
     weights /= weights.sum()
     chosen = np.random.choice(len(pool_idx), size=n, replace=False, p=weights)
     # Lead with the closest of the chosen so the first track is representative.
