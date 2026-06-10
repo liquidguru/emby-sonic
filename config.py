@@ -51,11 +51,13 @@ class Settings(BaseSettings):
     # strict top-N closest to the centroid (which makes every refresh identical),
     # Refresh samples N tracks from a pool of the closest matches, weighted
     # toward the closest — so repeated refreshes give a fresh but on-theme mix.
-    # Pool size = max(N * multiplier, min); temperature controls adventurousness
-    # (lower = hug the centroid, higher = roam further from it).
+    # Pool size = max(N * multiplier, min). Temperature is expressed as a
+    # multiple of the pool's score spread (std), so it's robust to the raw
+    # similarity scale: ~1.0 changes about half the list each refresh; lower
+    # hugs the centroid (less variety), higher roams further (more variety).
     refresh_pool_multiplier: int = 5
     refresh_pool_min: int = 250
-    refresh_temperature: float = 0.08
+    refresh_temperature: float = 1.0
 
     @property
     def db_url(self) -> str:
