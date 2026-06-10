@@ -21,6 +21,7 @@ import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -30,6 +31,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -46,6 +50,22 @@ class PlaybackController @Inject constructor(
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
         .build()
+
+    // Secondary player used only to play the OUTGOING track's tail during a
+    // crossfade, so the primary can advance to the next track early. Created
+    // lazily; only ever active when crossfade is enabled for music.
+    private val fadePlayer: ExoPlayer by lazy {
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
+            .build()
+    }
+
+    @Volatile
+    private var crossfadeInProgress = false
+    @Volatile
+    private var crossfadeArmed = false
+    private var crossfadeArmedIndex = -1
+    private var crossfadeJob: Job? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(PlaybackUiState())
@@ -80,6 +100,12 @@ class PlaybackController @Inject constructor(
                 delay(500)
             }
         }
+        scope.launch {
+            while (isActive) {
+                maybeStartCrossfade()
+                delay(CROSSFADE_POLL_MS)
+            }
+        }
     }
 
     fun playQueue(items: List<LibraryItem>, startItem: LibraryItem) {
@@ -105,6 +131,7 @@ class PlaybackController @Inject constructor(
         val startIndex = items.indexOfFirst { it.id == startItem.id }.coerceAtLeast(0)
         val tracks = items.map { it.toPlaybackTrack() }
         if (tracks.isEmpty()) return
+        cancelCrossfade()
         reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
         if (playWhenReady) startService()
@@ -134,6 +161,7 @@ class PlaybackController @Inject constructor(
     }
 
     fun togglePlayPause() {
+        cancelCrossfade()
         if (player.isPlaying) {
             player.pause()
         } else {
@@ -151,7 +179,13 @@ class PlaybackController @Inject constructor(
     }
 
     fun stopPlayback() {
-        reportStopped(lastReportedState)
+        cancelCrossfade()
+        // Stopping (closing Now Playing / mini-bar) forgets a music track's
+        // position so it starts fresh next time. Audiobooks still keep their
+        // resume point — only pause-then-exit preserves resume for music.
+        val stoppedTrack = lastReportedState.currentTrack
+        val clearResume = stoppedTrack != null && !stoppedTrack.isLongForm
+        reportStopped(lastReportedState, clearResume = clearResume)
         lastReportedState = PlaybackUiState()
         player.stop()
         player.clearMediaItems()
@@ -164,6 +198,7 @@ class PlaybackController @Inject constructor(
     }
 
     fun seekTo(positionMs: Long) {
+        cancelCrossfade()
         val index = player.currentMediaItemIndex.coerceAtLeast(0)
         val track = queue.getOrNull(index)
         if (track != null && track.isLongForm) {
@@ -176,17 +211,20 @@ class PlaybackController @Inject constructor(
     }
 
     fun skipPrevious() {
+        cancelCrossfade()
         if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else player.seekTo(0)
         publishState()
     }
 
     fun skipNext() {
+        cancelCrossfade()
         if (player.hasNextMediaItem()) player.seekToNextMediaItem()
         publishState()
     }
 
     fun seekToQueueIndex(index: Int) {
         if (index !in queue.indices) return
+        cancelCrossfade()
         reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
         streamOffsetsByIndex.remove(index)
@@ -199,6 +237,7 @@ class PlaybackController @Inject constructor(
 
     fun shuffleQueue() {
         if (queue.size < 2) return
+        cancelCrossfade()
         val currentIndex = player.currentMediaItemIndex.coerceAtLeast(0)
         val currentTrack = queue.getOrNull(currentIndex)
         val currentPosition = player.currentPosition.coerceAtLeast(0)
@@ -384,6 +423,98 @@ class PlaybackController @Inject constructor(
         if (wasPlaying) player.play() else player.pause()
     }
 
+    /**
+     * Two-phase crossfade driver, polled while playing. Phase 1 *arms* a few
+     * seconds before the blend point by preloading the outgoing track's tail on
+     * the secondary player (buffered while paused, so there's no gap when it
+     * starts). Phase 2 *fires* at the blend point: it starts the buffered tail,
+     * advances the primary to the next track, and ramps their volumes past each
+     * other. Never runs for audiobooks (long-form), repeat-one, the last track,
+     * or a next track that is long-form.
+     */
+    private fun maybeStartCrossfade() {
+        if (crossfadeInProgress) return
+        val snap = settings.snapshot()
+        if (!snap.crossfadeEnabled) {
+            cancelCrossfade()
+            return
+        }
+        if (!player.isPlaying) return
+        if (player.repeatMode == Player.REPEAT_MODE_ONE) return
+        val index = player.currentMediaItemIndex.coerceAtLeast(0)
+        if (crossfadeArmed && crossfadeArmedIndex != index) {
+            cancelCrossfade()
+        }
+        val current = queue.getOrNull(index) ?: return
+        if (current.isLongForm) return
+        if ((streamOffsetsByIndex[index] ?: 0L) > 0L) return
+        val nextIndex = player.nextMediaItemIndex
+        if (nextIndex == C.INDEX_UNSET) return
+        val next = queue.getOrNull(nextIndex) ?: return
+        if (next.isLongForm) return
+        val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: return
+        val crossfadeMs = snap.crossfadeDurationMs.toLong()
+        val tailFromMs = (duration - crossfadeMs).coerceAtLeast(0)
+        val remaining = duration - player.currentPosition.coerceAtLeast(0)
+
+        if (!crossfadeArmed && remaining in 1..(crossfadeMs + CROSSFADE_PRELOAD_MS)) {
+            armCrossfade(current, tailFromMs, index)
+        }
+        if (crossfadeArmed && crossfadeArmedIndex == index && remaining in 1..crossfadeMs) {
+            fireCrossfade(crossfadeMs)
+        }
+    }
+
+    private fun armCrossfade(outgoing: PlaybackTrack, tailFromMs: Long, index: Int) {
+        crossfadeArmed = true
+        crossfadeArmedIndex = index
+        // Buffer the outgoing tail (paused) so it can start instantly at fire.
+        fadePlayer.setMediaItem(mediaItem(outgoing, tailFromMs))
+        fadePlayer.volume = 0f
+        fadePlayer.playWhenReady = false
+        fadePlayer.prepare()
+    }
+
+    private fun fireCrossfade(tailMs: Long) {
+        crossfadeInProgress = true
+        crossfadeArmed = false
+        fadePlayer.volume = 1f
+        fadePlayer.play()
+        // Advance the primary to the next track now; its gapless-preloaded buffer
+        // starts instantly, while the buffered tail keeps the outgoing audible.
+        player.volume = 0f
+        player.seekToNextMediaItem()
+        crossfadeJob?.cancel()
+        crossfadeJob = scope.launch {
+            val steps = (tailMs / CROSSFADE_RAMP_STEP_MS).toInt().coerceAtLeast(1)
+            for (step in 1..steps) {
+                val f = step.toFloat() / steps
+                // Equal-power curves avoid a perceived volume dip mid-blend.
+                player.volume = sin(f * (PI.toFloat() / 2f))
+                fadePlayer.volume = cos(f * (PI.toFloat() / 2f))
+                delay(CROSSFADE_RAMP_STEP_MS)
+            }
+            endCrossfade()
+        }
+    }
+
+    private fun endCrossfade() {
+        crossfadeJob?.cancel()
+        crossfadeJob = null
+        fadePlayer.stop()
+        fadePlayer.clearMediaItems()
+        player.volume = 1f
+        crossfadeInProgress = false
+        crossfadeArmed = false
+        crossfadeArmedIndex = -1
+    }
+
+    /** Aborts any armed or in-flight crossfade and restores the primary's volume. */
+    private fun cancelCrossfade() {
+        if (!crossfadeInProgress && !crossfadeArmed) return
+        endCrossfade()
+    }
+
     private fun reportStarted(track: PlaybackTrack, positionMs: Long) {
         lastStartedItemId = track.id
         scope.launch {
@@ -435,8 +566,9 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    private fun reportStopped(state: PlaybackUiState) {
+    private fun reportStopped(state: PlaybackUiState, clearResume: Boolean = false) {
         val track = state.currentTrack ?: return
+        val resumePositionMs = if (clearResume) 0L else state.positionMs
         scope.launch {
             runCatching {
                 embyApi.reportPlaybackStopped(
@@ -450,7 +582,7 @@ class PlaybackController @Inject constructor(
                     ),
                 )
             }
-            runCatching { syncResumePosition(track, state.positionMs) }
+            runCatching { syncResumePosition(track, resumePositionMs) }
         }
     }
 
@@ -490,5 +622,8 @@ class PlaybackController @Inject constructor(
         const val RESUME_END_PADDING_MS = 5_000L
         const val LONG_FORM_MIN_DURATION_MS = 20 * 60 * 1000L
         const val LONG_FORM_RESUME_PREROLL_MS = 5_000L
+        const val CROSSFADE_POLL_MS = 250L
+        const val CROSSFADE_RAMP_STEP_MS = 50L
+        const val CROSSFADE_PRELOAD_MS = 4_000L
     }
 }
