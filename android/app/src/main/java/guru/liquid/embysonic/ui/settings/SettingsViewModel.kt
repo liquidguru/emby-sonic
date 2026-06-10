@@ -27,6 +27,8 @@ data class SettingsUiState(
     val savedMessage: String? = null,
     val loggedOut: Boolean = false,
     val analysisStatus: AnalysisStatusUiState = AnalysisStatusUiState.Loading,
+    val crossfadeEnabled: Boolean = false,
+    val crossfadeSeconds: Int = 6,
 )
 
 @HiltViewModel
@@ -46,9 +48,21 @@ class SettingsViewModel @Inject constructor(
                 serverUrl = snap.serverUrl.orEmpty(),
                 coordinatorUrl = snap.coordinatorUrl.orEmpty(),
                 userName = snap.userName.orEmpty(),
+                crossfadeEnabled = snap.crossfadeEnabled,
+                crossfadeSeconds = snap.crossfadeDurationMs / 1000,
             )
         }
         refreshAnalysisStatus()
+    }
+
+    fun setCrossfadeEnabled(value: Boolean) {
+        _state.update { it.copy(crossfadeEnabled = value) }
+        viewModelScope.launch { settings.setCrossfadeEnabled(value) }
+    }
+
+    fun setCrossfadeSeconds(seconds: Int) {
+        _state.update { it.copy(crossfadeSeconds = seconds) }
+        viewModelScope.launch { settings.setCrossfadeDurationMs(seconds * 1000) }
     }
 
     fun onCoordinatorUrlChange(value: String) =
