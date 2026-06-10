@@ -68,11 +68,11 @@ async def regenerate_mix(
 ) -> MixDetail:
     """Refresh one mix's track selection using its stored centroid.
 
-    Ranks all eligible embeddings against the centroid, then *samples*
-    `tracks_per_mix` tracks from a pool of the closest matches (weighted toward
-    the closest). This keeps the mix on-theme while giving a genuinely different
-    selection on each refresh, and picks up new library additions without a full
-    k-means rebuild.
+    Excludes the mix's current tracks, then *samples* `tracks_per_mix` new tracks
+    from a pool of the closest remaining matches (weighted toward the closest).
+    So a refresh fully turns the mix over while staying on-theme; tracks from
+    earlier selections can return in later refreshes. Also picks up new library
+    additions without a full k-means rebuild.
     """
     mix = await db.get(Mix, mix_id)
     if mix is None:
@@ -83,13 +83,27 @@ async def regenerate_mix(
     centroid = np.frombuffer(mix.centroid, dtype=np.float32)
     centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
 
+    # The mix's current tracks, excluded below so a refresh fully turns the mix
+    # over. Only the *current* set is excluded (not all history), so tracks are
+    # free to return in a later refresh.
+    current_ids = set(
+        (
+            await db.execute(
+                select(MixTrack.track_id).where(MixTrack.mix_id == mix_id)
+            )
+        ).scalars().all()
+    )
+
     rows = (
         await db.execute(
             select(Embedding.track_id, Embedding.vector, Track.file_path)
             .join(Track, Track.id == Embedding.track_id)
         )
     ).all()
-    rows = [r for r in rows if not is_mix_excluded(r.file_path)]
+    rows = [
+        r for r in rows
+        if not is_mix_excluded(r.file_path) and r.track_id not in current_ids
+    ]
     if not rows:
         raise HTTPException(409, "No embeddings in library")
 
