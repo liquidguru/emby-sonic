@@ -7,7 +7,8 @@ discovery: similar tracks/artists/albums, track radio, sonic adventures, auto-cu
 mixes, and a Guest DJ.
 
 > **Status:** Phase 1 (Python analysis service) and Phase 2 (C# Emby plugin) complete.
-> Phase 3 (Android app) next. See [`docs/spec.md`](docs/spec.md) for the full architecture and roadmap.
+> Phase 3 (Android app, "liquidWave") in progress — browse, playback, sonic mixes
+> with per-mix refresh, and music crossfade. See [`docs/spec.md`](docs/spec.md) for the full architecture and roadmap.
 
 ## Architecture
 
