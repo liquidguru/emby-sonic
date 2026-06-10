@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -392,11 +392,25 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   the Playlists tab refreshes and the new playlist appears server-side. Home now
   has a `Sonic mixes` row backed by coordinator mixes, with play buttons and Home
   customization visibility/reorder controls alongside the existing Playlists row.
+- **M4.3 — Per-mix refresh + playlist delete + audiobook exclusion:** ✅
+  (verified 2026-06-10). `Mix.centroid` (128-dim float32 BLOB) is stored per mix
+  during `build_mixes`, enabling `POST /sonic/mixes/{id}/regenerate` to refresh a
+  single mix without touching the others. Refresh semantics are a *full
+  turnover*: it excludes the mix's current tracks, then weighted-samples
+  `tracks_per_mix` new tracks from a pool of the closest remaining matches
+  (softmax temperature scaled by the pool's score spread — the embeddings are
+  not unit-normalised, so raw scores are unbounded dot products), and shuffles
+  the result order. Consecutive refreshes share 0% of tracks; earlier tracks can
+  return in later refreshes. Tunable via `refresh_temperature` /
+  `refresh_pool_min` / `refresh_pool_multiplier`. Spoken-word content is excluded
+  from all mixes (build and refresh) via `is_mix_excluded()` —
+  `mix_exclude_path_markers` (`\Videos\Audio\`) plus `mix_exclude_extensions`
+  (`.m4b`, which catches audiobooks/radio dramas misfiled under `\music\BBC\`).
+  Android: mix detail gains a Refresh action with a track-count dialog (state in
+  the ViewModel so it survives reopen); Playlists tab gains per-item delete
+  (Emby playlists only, with confirmation) via `DELETE /Items/{itemId}`.
 - **M4 — Remaining sonic features:** Track radio, Sonic adventure,
-  sonic-similar sidebars on Artist/Album detail, Guest DJ toggle. TODO: add a
-  selected-mix regenerate flow that refreshes one chosen mix without deleting the
-  others, likely requiring a new coordinator endpoint; add playlist delete
-  actions for Emby playlists only (not generated sonic mixes), with confirmation.
+  sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
   (Option A) considered here, dropped in behind the `TrackProgress` interface.
 
