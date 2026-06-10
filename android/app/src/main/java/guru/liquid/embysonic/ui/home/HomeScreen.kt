@@ -70,6 +70,7 @@ import guru.liquid.embysonic.ui.library.Artwork
 fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit,
+    onOpenMixes: () -> Unit,
     onOpenNowPlaying: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(),
     viewModel: HomeViewModel = hiltViewModel(),
@@ -133,7 +134,9 @@ fun HomeScreen(
             else -> HomeContent(
                 state = state,
                 onOpenItem = onOpenItem,
+                onOpenMixes = onOpenMixes,
                 onPlayPlaylist = viewModel::playPlaylist,
+                onPlaySonicMix = viewModel::playSonicMix,
                 onPlayAlbum = viewModel::playAlbum,
                 onPlayArtist = viewModel::playArtist,
                 onPlayResumeAudiobook = viewModel::playResumeAudiobook,
@@ -159,7 +162,9 @@ fun HomeScreen(
 private fun HomeContent(
     state: HomeUiState,
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit,
+    onOpenMixes: () -> Unit,
     onPlayPlaylist: (LibraryItem) -> Unit,
+    onPlaySonicMix: (LibraryItem) -> Unit,
     onPlayAlbum: (LibraryItem) -> Unit,
     onPlayArtist: (LibraryItem) -> Unit,
     onPlayResumeAudiobook: (LibraryItem) -> Unit,
@@ -199,6 +204,11 @@ private fun HomeContent(
                         onClick = { onOpenItem(it.id, it.title, DetailKind.PLAYLIST_TRACKS) },
                         onPlay = onPlayPlaylist,
                     )
+                    HomeSectionKind.SONIC_MIXES -> HomeSectionData(
+                        items = state.sonicMixes,
+                        onClick = { onOpenMixes() },
+                        onPlay = onPlaySonicMix,
+                    )
                     HomeSectionKind.RECENT_ALBUMS -> HomeSectionData(
                         items = state.recentAlbums,
                         onClick = { onOpenItem(it.id, it.title, DetailKind.ALBUM_TRACKS) },
@@ -226,6 +236,7 @@ private fun HomeContent(
         if (
             state.resumeAudiobooks.isEmpty() &&
             state.playlists.isEmpty() &&
+            state.sonicMixes.isEmpty() &&
             state.recentAlbums.isEmpty() &&
             state.artists.isEmpty()
         ) {

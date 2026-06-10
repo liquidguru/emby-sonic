@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -380,8 +380,23 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   because the coordinator response only returns track metadata; placeholders are
   expected until a richer Emby hydration step or coordinator artwork field is
   added.
+- **M4.2 — Mix saving/options/Home:** ✅ Mix names are displayed with cleaned
+  title text on the first line and stable metadata on the second line
+  (`Mix N • track count`) so duplicate generated names are distinguishable
+  without relying on truncated suffixes. Starting a new playback queue resets
+  repeat mode to off so repeat-one/all does not leak from the previous session.
+  The Mixes options sheet exposes a `tracks_per_mix` selector (25/50/75/100) and
+  a global regenerate action backed by `/sonic/library/build-mixes`; this
+  coordinator endpoint still replaces all mixes. Mix detail screens can save the
+  current generated mix as a named Emby playlist before regeneration. After save,
+  the Playlists tab refreshes and the new playlist appears server-side. Home now
+  has a `Sonic mixes` row backed by coordinator mixes, with play buttons and Home
+  customization visibility/reorder controls alongside the existing Playlists row.
 - **M4 — Remaining sonic features:** Track radio, Sonic adventure,
-  sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
+  sonic-similar sidebars on Artist/Album detail, Guest DJ toggle. TODO: add a
+  selected-mix regenerate flow that refreshes one chosen mix without deleting the
+  others, likely requiring a new coordinator endpoint; add playlist delete
+  actions for Emby playlists only (not generated sonic mixes), with confirmation.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
   (Option A) considered here, dropped in behind the `TrackProgress` interface.
 
@@ -502,6 +517,16 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   `android/verify-sonic-mix-detail.png`, and
   `android/verify-sonic-mix-playing.png`.
 
+**M4.2 verification (dev-pc / Pixel_3a_API_36, 2026-06-10):**
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- User-confirmed repeat resets for new playback sessions, the Mix options sheet
+  shows track-count choices, mix list labels are clearer, and Save as playlist
+  works with a naming dialog.
+- Verified screenshot shows Home with `Sonic mixes` cards using `Mix N • track
+  count` metadata and the saved mix visible in the Playlists row.
+- Screenshot captured in `android/verify-mix-save-home-options.png`.
+
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
 
@@ -535,6 +560,14 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 
 - **Incremental scan:** webhook/poll fallback for setups without the plugin (the plugin already fires a scan on `ItemAdded`)?
 - **Worker token:** currently the shared `EMBY_API_KEY` — split into a dedicated `WORKER_SECRET` env var?
+- **Selected mix regeneration:** current `/sonic/library/build-mixes` rebuilds
+  all generated mixes and deletes/replaces the old set. Add a coordinator API
+  for refreshing selected mix ids/clusters while preserving the rest, then expose
+  multi-select or per-detail regenerate in Android.
+- **Playlist deletion:** add Android UI for deleting saved Emby playlists with a
+  confirmation dialog. This must target Emby playlist items only; generated
+  sonic mixes are ephemeral coordinator rows and should not be deleted through
+  the same action.
 
 ---
 

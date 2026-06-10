@@ -8,28 +8,39 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -70,6 +81,8 @@ fun MixesScreen(
     val tabs = listOf("Playlists", "Mixes")
     val listView by playlistsViewModel.listView.collectAsStateWithLifecycle()
     val sonicState by playlistsViewModel.sonicState.collectAsStateWithLifecycle()
+    val mixOptions by playlistsViewModel.mixOptions.collectAsStateWithLifecycle()
+    var showMixOptions by rememberSaveable { mutableStateOf(false) }
     val selectedMix = (sonicState as? SonicMixesState.DetailLoading)?.mix
         ?: (sonicState as? SonicMixesState.DetailData)?.mix
 
@@ -86,7 +99,7 @@ fun MixesScreen(
                 },
                 title = {
                     Text(
-                        selectedMix?.name ?: "Mixes",
+                        selectedMix?.displayTitle() ?: "Mixes",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -95,6 +108,9 @@ fun MixesScreen(
                     if (selectedTab == 0) {
                         ViewToggleAction(listView = listView, onToggle = playlistsViewModel::toggleListView)
                     } else if (selectedMix == null) {
+                        IconButton(onClick = { showMixOptions = true }) {
+                            Icon(Icons.Default.Tune, contentDescription = "Mix options")
+                        }
                         IconButton(onClick = playlistsViewModel::loadSonicMixes) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh mixes")
                         }
@@ -127,10 +143,20 @@ fun MixesScreen(
                             playlistsViewModel.playSonicTracks(tracks, start)
                             onOpenNowPlaying()
                         },
+                        onSaveMix = playlistsViewModel::saveSonicMixAsPlaylist,
+                        message = mixOptions.message,
                     )
                 }
             }
         }
+    }
+    if (showMixOptions) {
+        MixOptionsSheet(
+            options = mixOptions,
+            onTracksPerMixChange = playlistsViewModel::setTracksPerMix,
+            onGenerate = playlistsViewModel::generateSonicMixes,
+            onDismiss = { showMixOptions = false },
+        )
     }
 }
 
@@ -164,6 +190,8 @@ private fun SonicMixesTab(
     onOpenMix: (SonicMixDto) -> Unit,
     onPlayMix: (SonicMixDto) -> Unit,
     onPlayTracks: (tracks: List<LibraryItem>, start: LibraryItem) -> Unit,
+    onSaveMix: (name: String, tracks: List<LibraryItem>) -> Unit,
+    message: String?,
 ) {
     when (state) {
         SonicMixesState.Loading -> CenterMessage { CircularProgressIndicator() }
@@ -189,6 +217,8 @@ private fun SonicMixesTab(
             mix = state.mix,
             tracks = state.tracks,
             onPlayTracks = onPlayTracks,
+            onSaveMix = onSaveMix,
+            message = message,
         )
     }
 }
@@ -214,14 +244,14 @@ private fun SonicMixList(
                 leadingContent = { MixIcon() },
                 headlineContent = {
                     Text(
-                        mix.name ?: "Sonic mix",
+                        mix.displayTitle(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
                 supportingContent = {
                     Text(
-                        "${mix.trackCount} tracks",
+                        mix.displayMeta(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -229,7 +259,7 @@ private fun SonicMixList(
                 trailingContent = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { onPlayMix(mix) }) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Play ${mix.name ?: "mix"}")
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Play ${mix.displayTitle()}")
                         }
                     }
                 },
@@ -243,11 +273,14 @@ private fun SonicMixDetail(
     mix: SonicMixDto,
     tracks: List<LibraryItem>,
     onPlayTracks: (tracks: List<LibraryItem>, start: LibraryItem) -> Unit,
+    onSaveMix: (name: String, tracks: List<LibraryItem>) -> Unit,
+    message: String?,
 ) {
     if (tracks.isEmpty()) {
         CenterMessage { Text("No tracks in this mix") }
         return
     }
+    var saveDialogOpen by rememberSaveable(mix.id) { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
@@ -256,14 +289,14 @@ private fun SonicMixDetail(
             MixIcon(modifier = Modifier.size(64.dp))
             Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 Text(
-                    mix.name ?: "Sonic mix",
+                    mix.displayTitle(),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "${tracks.size} tracks",
+                    mix.displayMeta(trackCount = tracks.size),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -272,10 +305,34 @@ private fun SonicMixDetail(
                 Icon(Icons.Default.PlayArrow, contentDescription = "Play mix")
             }
         }
+        TextButton(
+            onClick = { saveDialogOpen = true },
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp).widthIn(min = 160.dp),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+            Text("Save as playlist", modifier = Modifier.padding(start = 8.dp))
+        }
+        message?.let {
+            AssistChip(
+                onClick = {},
+                label = { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+            )
+        }
         TrackList(
             items = tracks,
             placeholderBook = false,
             onTrackClick = { track -> onPlayTracks(tracks, track) },
+        )
+    }
+    if (saveDialogOpen) {
+        SaveMixDialog(
+            initialName = mix.displayTitle(),
+            onDismiss = { saveDialogOpen = false },
+            onSave = { name ->
+                saveDialogOpen = false
+                onSaveMix(name, tracks)
+            },
         )
     }
 }
@@ -299,6 +356,97 @@ private fun MixIcon(modifier: Modifier = Modifier.size(56.dp)) {
 }
 
 @Composable
+private fun SaveMixDialog(
+    initialName: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Save as playlist") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text("Playlist name") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name) }, enabled = name.isNotBlank()) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MixOptionsSheet(
+    options: SonicMixOptions,
+    onTracksPerMixChange: (Int) -> Unit,
+    onGenerate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+        ) {
+            Text("Mix options", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Tracks per mix",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 20.dp),
+            )
+            Row(modifier = Modifier.padding(top = 10.dp)) {
+                listOf(25, 50, 75, 100).forEach { count ->
+                    FilterChip(
+                        selected = options.tracksPerMix == count,
+                        onClick = { onTracksPerMixChange(count) },
+                        label = { Text(count.toString()) },
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = onGenerate,
+                    enabled = !options.generating,
+                ) {
+                    Text("Generate mixes")
+                }
+                if (options.generating) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.padding(start = 16.dp).size(24.dp),
+                    )
+                }
+            }
+            options.message?.let {
+                AssistChip(
+                    onClick = {},
+                    label = { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun CenterMessage(content: @Composable () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -306,4 +454,10 @@ private fun CenterMessage(content: @Composable () -> Unit) {
     ) {
         content()
     }
+}
+
+private fun SonicMixDto.displayMeta(trackCount: Int = this.trackCount): String {
+    val mixNumber = clusterId?.let { "Mix ${it + 1}" }
+    val count = "$trackCount tracks"
+    return listOfNotNull(mixNumber, count).joinToString(" • ")
 }
