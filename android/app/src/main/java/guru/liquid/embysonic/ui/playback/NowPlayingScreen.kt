@@ -17,13 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -47,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +79,8 @@ fun NowPlayingScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val progress = remember { SliderTrackProgress }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var queueFocusRequest by remember { mutableIntStateOf(0) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -96,11 +100,17 @@ fun NowPlayingScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = {}) {
+                    IconButton(
+                        onClick = {
+                            selectedTab = 0
+                            queueFocusRequest += 1
+                        },
+                        enabled = state.queue.isNotEmpty(),
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Queue")
                     }
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                    IconButton(onClick = viewModel::stopPlayback, enabled = state.currentTrack != null) {
+                        Icon(Icons.Default.Close, contentDescription = "Stop playback")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -129,6 +139,9 @@ fun NowPlayingScreen(
                     onShuffleQueue = viewModel::shuffleQueue,
                     onCycleRepeat = viewModel::cycleRepeatMode,
                     onQueueItemClick = viewModel::seekToQueueIndex,
+                    selectedTab = selectedTab,
+                    onSelectTab = { selectedTab = it },
+                    queueFocusRequest = queueFocusRequest,
                 )
             } ?: EmptyPlayer(onCollapse)
         }
@@ -147,9 +160,18 @@ private fun PlayerContent(
     onShuffleQueue: () -> Unit,
     onCycleRepeat: () -> Unit,
     onQueueItemClick: (Int) -> Unit,
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
+    queueFocusRequest: Int,
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(queueFocusRequest) {
+        if (queueFocusRequest > 0) {
+            listState.animateScrollToItem(1)
+        }
+    }
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -205,22 +227,26 @@ private fun PlayerContent(
             Spacer(Modifier.height(18.dp))
             GuestDjRow()
             Spacer(Modifier.height(20.dp))
-            PlaybackTabs(selected = tab, onSelect = { tab = it })
+            PlaybackTabs(selected = selectedTab, onSelect = onSelectTab)
             Spacer(Modifier.height(8.dp))
         }
-        if (tab == 0) {
+        if (selectedTab == 0) {
             itemsIndexed(state.queue, key = { _, item -> item.id }) { index, item ->
                 QueueRow(
                     item = item,
                     index = index,
                     selected = index == state.currentIndex,
-                    onClick = { onQueueItemClick(index) },
+                    onClick = {
+                        if (index != state.currentIndex) {
+                            onQueueItemClick(index)
+                        }
+                    },
                 )
             }
         } else {
             item {
                 Text(
-                    if (tab == 1) "Track radio arrives in M4" else "Similar tracks arrive in M4",
+                    if (selectedTab == 1) "Track radio arrives in M4" else "Similar tracks arrive in M4",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(24.dp),
                 )
