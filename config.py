@@ -39,10 +39,13 @@ class Settings(BaseSettings):
 
     analysis_workers: int = 2
 
-    # Tracks whose Emby file path contains any of these (case-insensitive)
-    # substrings are excluded from sonic mixes. Audiobooks live under
-    # \Videos\Audio\ but Emby types them as "Audio", so they otherwise leak in.
+    # Tracks excluded from sonic mixes. Spoken-word content (audiobooks, radio
+    # dramas) is typed as "Audio" by Emby and otherwise leaks in. Two signals:
+    # a path substring for the audiobook library (mixed .mp3/.m4b), and the
+    # .m4b container extension, which catches audiobooks misfiled under music\
+    # (e.g. the BBC radio dramas in \music\BBC\). Both case-insensitive.
     mix_exclude_path_markers: list[str] = ["\\Videos\\Audio\\"]
+    mix_exclude_extensions: list[str] = [".m4b"]
 
     @property
     def db_url(self) -> str:
