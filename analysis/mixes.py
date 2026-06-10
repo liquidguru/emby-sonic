@@ -31,13 +31,16 @@ _build_running = False
 def is_mix_excluded(file_path: str | None) -> bool:
     """True if a track should be kept out of sonic mixes (e.g. audiobooks).
 
-    Matches its Emby file path against settings.mix_exclude_path_markers,
+    Matches its Emby file path against settings.mix_exclude_path_markers
+    (substring) and settings.mix_exclude_extensions (suffix), both
     case-insensitively. Shared by build_mixes and the regenerate endpoint.
     """
     if not file_path:
         return False
     lowered = file_path.lower()
-    return any(marker.lower() in lowered for marker in settings.mix_exclude_path_markers)
+    if any(marker.lower() in lowered for marker in settings.mix_exclude_path_markers):
+        return True
+    return any(lowered.endswith(ext.lower()) for ext in settings.mix_exclude_extensions)
 
 # Mood grid indexed by (tempo_level, energy_level), each 0=low / 1=mid / 2=high
 # relative to the library's own distribution.
