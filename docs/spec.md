@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade (music only) in progress 2026-06-10.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -409,6 +409,22 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   Android: mix detail gains a Refresh action with a track-count dialog (state in
   the ViewModel so it survives reopen); Playlists tab gains per-item delete
   (Emby playlists only, with confirmation) via `DELETE /Items/{itemId}`.
+- **M4.4 — Crossfade (music only):** 🚧 in progress (2026-06-10). Settings toggle
+  + overlap duration (3/6/9/12s, default 6s), persisted via DataStore
+  (`crossfade_enabled` / `crossfade_duration_ms`, surfaced on `AppSettings`).
+  Engine in `PlaybackController`: the existing single `player` stays the sole
+  queue + MediaSession player (when crossfade is off the path is byte-for-byte
+  unchanged). A secondary `fadePlayer` plays the outgoing track's tail while the
+  primary advances early (its gapless-preloaded buffer starts instantly), with
+  equal-power (sin/cos) volume ramps. Two-phase: *arm* preloads/buffers the tail
+  via `stream?StartTimeTicks=` ~4s ahead so there's no gap, then *fire* at the
+  blend point. Never applies to audiobooks/long-form (either side), repeat-one,
+  the last track, or resumed/offset streams; cancelled cleanly on
+  pause/skip/seek/shuffle/stop/new-queue. Also: stopping playback now clears a
+  *music* track's resume position (starts fresh next time) while audiobooks keep
+  their resume point — only pause-then-exit preserves music resume. Open items:
+  tune preload window for slow networks; optionally hold the Now Playing label
+  until the blend completes (it currently flips to the next track ~Ns early).
 - **M4 — Remaining sonic features:** Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
