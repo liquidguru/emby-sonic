@@ -47,6 +47,16 @@ class Settings(BaseSettings):
     mix_exclude_path_markers: list[str] = ["\\Videos\\Audio\\"]
     mix_exclude_extensions: list[str] = [".m4b"]
 
+    # Refresh (per-mix regenerate) variety. Rather than always returning the
+    # strict top-N closest to the centroid (which makes every refresh identical),
+    # Refresh samples N tracks from a pool of the closest matches, weighted
+    # toward the closest — so repeated refreshes give a fresh but on-theme mix.
+    # Pool size = max(N * multiplier, min); temperature controls adventurousness
+    # (lower = hug the centroid, higher = roam further from it).
+    refresh_pool_multiplier: int = 5
+    refresh_pool_min: int = 250
+    refresh_temperature: float = 0.08
+
     @property
     def db_url(self) -> str:
         # as_posix() forces forward slashes — backslashes from a Windows Path
