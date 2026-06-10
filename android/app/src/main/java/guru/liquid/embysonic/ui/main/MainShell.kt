@@ -112,6 +112,7 @@ fun MainShell(
                 HomeScreen(
                     onOpenSettings = onOpenSettings,
                     onOpenItem = openDetail,
+                    onOpenMixes = { navController.navigateTab(Routes.MIXES) },
                     onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
                     contentPadding = padding,
                 )

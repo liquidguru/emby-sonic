@@ -112,6 +112,7 @@ class PlaybackController @Inject constructor(
         lastProgressReportMs = 0
         lastStartedItemId = null
         refreshHeaders()
+        resetRepeatForNewSession()
         queue = tracks
         queueShuffled = shuffled
         streamOffsetsByIndex = tracks
@@ -228,6 +229,11 @@ class PlaybackController @Inject constructor(
         player.repeatMode = nextMode.toPlayerRepeatMode()
         scope.launch { settings.setPlaybackRepeatMode(nextMode.name) }
         publishState()
+    }
+
+    private fun resetRepeatForNewSession() {
+        player.repeatMode = Player.REPEAT_MODE_OFF
+        scope.launch { settings.setPlaybackRepeatMode(PlaybackRepeatMode.OFF.name) }
     }
 
     private fun mediaItem(track: PlaybackTrack, startOffsetMs: Long): MediaItem {

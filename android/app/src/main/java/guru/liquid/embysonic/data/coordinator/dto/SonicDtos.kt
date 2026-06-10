@@ -41,3 +41,16 @@ data class SonicMixDetailDto(
     @SerialName("mix") val mix: SonicMixDto,
     @SerialName("tracks") val tracks: List<TrackOutDto> = emptyList(),
 )
+
+@Serializable
+data class BuildMixesRequestDto(
+    @SerialName("n_clusters") val nClusters: Int = 30,
+    @SerialName("tracks_per_mix") val tracksPerMix: Int = 50,
+)
+
+@Serializable
+data class BuildMixesStartedDto(
+    @SerialName("message") val message: String,
+    @SerialName("n_clusters") val nClusters: Int,
+    @SerialName("tracks_per_mix") val tracksPerMix: Int,
+)

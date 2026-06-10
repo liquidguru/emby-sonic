@@ -1,11 +1,15 @@
 package guru.liquid.embysonic.data.coordinator
 
 import guru.liquid.embysonic.data.coordinator.dto.RadioPlaylistDto
+import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
+import guru.liquid.embysonic.data.coordinator.dto.BuildMixesStartedDto
 import guru.liquid.embysonic.data.coordinator.dto.SimilarTrackDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDetailDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicStatus
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -38,6 +42,11 @@ interface CoordinatorApi {
     suspend fun mixDetail(
         @Path("id") mixId: String,
     ): SonicMixDetailDto
+
+    @POST("sonic/library/build-mixes")
+    suspend fun buildMixes(
+        @Body body: BuildMixesRequestDto,
+    ): BuildMixesStartedDto
 
     // --- Waveform (design-for-A placeholder; see docs/spec.md) -------------------
     // Reserved from day one so real waveforms drop in without restructuring the

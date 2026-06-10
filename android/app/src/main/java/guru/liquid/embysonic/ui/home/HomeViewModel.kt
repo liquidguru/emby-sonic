@@ -3,6 +3,9 @@ package guru.liquid.embysonic.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
+import guru.liquid.embysonic.data.coordinator.dto.TrackOutDto
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
@@ -29,6 +32,7 @@ data class HomeUiState(
     val sectionPreferences: List<HomeSectionPreference> = HomeSectionKind.defaultPreferences(),
     val resumeAudiobooks: List<LibraryItem> = emptyList(),
     val playlists: List<LibraryItem> = emptyList(),
+    val sonicMixes: List<LibraryItem> = emptyList(),
     val recentAlbums: List<LibraryItem> = emptyList(),
     val artists: List<LibraryItem> = emptyList(),
 )
@@ -36,6 +40,7 @@ data class HomeUiState(
 enum class HomeSectionKind(val id: String, val label: String) {
     RESUME_AUDIOBOOKS("resume_audiobooks", "Resume audiobooks"),
     PLAYLISTS("playlists", "Playlists"),
+    SONIC_MIXES("sonic_mixes", "Sonic mixes"),
     RECENT_ALBUMS("recent_albums", "Recently added albums"),
     ARTISTS("artists", "Artists");
 
@@ -43,6 +48,7 @@ enum class HomeSectionKind(val id: String, val label: String) {
         val defaultOrder: List<HomeSectionKind> = listOf(
             RESUME_AUDIOBOOKS,
             PLAYLISTS,
+            SONIC_MIXES,
             RECENT_ALBUMS,
             ARTISTS,
         )
@@ -67,6 +73,7 @@ data class HomeSectionPreference(
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    private val coordinator: CoordinatorApi,
     private val settings: SettingsRepository,
     private val playback: PlaybackController,
 ) : ViewModel() {
@@ -104,6 +111,7 @@ class HomeViewModel @Inject constructor(
                     ?.let { repository.resumeAudiobooks(it.id, HOME_SECTION_LIMIT) }
                     .orEmpty()
                 val playlists = repository.playlists().take(HOME_SECTION_LIMIT)
+                val sonicMixes = coordinator.mixes().take(HOME_SECTION_LIMIT).map { it.toLibraryItem() }
                 val albums = musicLibrary
                     ?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }
                     .orEmpty()
@@ -117,6 +125,7 @@ class HomeViewModel @Inject constructor(
                     sectionPreferences = _state.value.sectionPreferences,
                     resumeAudiobooks = resumeAudiobooks,
                     playlists = playlists,
+                    sonicMixes = sonicMixes,
                     recentAlbums = albums,
                     artists = artists,
                 )
@@ -135,6 +144,20 @@ class HomeViewModel @Inject constructor(
     }
 
     fun playPlaylist(item: LibraryItem) = playCollection(item, DetailKind.PLAYLIST_TRACKS)
+
+    fun playSonicMix(item: LibraryItem) {
+        viewModelScope.launch {
+            runCatching { coordinator.mixDetail(item.id).tracks.map { it.toLibraryItem() } }.fold(
+                onSuccess = { tracks ->
+                    tracks.firstOrNull()?.let {
+                        playback.playQueue(tracks, it)
+                        _openNowPlaying.send(Unit)
+                    } ?: _messages.send("Nothing playable in \"${item.title}\"")
+                },
+                onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
+            )
+        }
+    }
 
     fun playAlbum(item: LibraryItem) = playCollection(item, DetailKind.ALBUM_TRACKS)
 
@@ -178,6 +201,48 @@ class HomeViewModel @Inject constructor(
                 },
                 onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
             )
+        }
+    }
+
+    private fun SonicMixDto.toLibraryItem(): LibraryItem = LibraryItem(
+        id = id,
+        title = displayTitle(),
+        subtitle = displayMeta(),
+        imageUrl = null,
+    )
+
+    private fun TrackOutDto.toLibraryItem(): LibraryItem = LibraryItem(
+        id = id,
+        title = title.orEmpty().ifBlank { "Unknown track" },
+        subtitle = artist,
+        imageUrl = null,
+        trailingText = formatDuration(durationMs),
+        album = album,
+        durationMs = durationMs,
+    )
+
+    private fun SonicMixDto.displayTitle(): String {
+        val base = name?.takeIf { it.isNotBlank() } ?: "Sonic mix"
+        return base.replace(""" \(\d+\)$""".toRegex(), "")
+    }
+
+    private fun SonicMixDto.displayMeta(): String {
+        val mixNumber = clusterId?.let { "Mix ${it + 1}" }
+        val count = "$trackCount tracks"
+        return listOfNotNull(mixNumber, count).joinToString(" • ")
+    }
+
+    private fun formatDuration(ms: Long?): String? {
+        if (ms == null || ms <= 0) return null
+        val totalSeconds = ms / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        val hours = minutes / 60
+        val remainingMinutes = minutes % 60
+        return if (hours > 0) {
+            "%d:%02d:%02d".format(hours, remainingMinutes, seconds)
+        } else {
+            "%d:%02d".format(minutes, seconds)
         }
     }
 

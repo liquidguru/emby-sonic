@@ -4,13 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
 import guru.liquid.embysonic.data.coordinator.dto.TrackOutDto
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.LibraryItem
+import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.ui.library.TabState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +27,7 @@ import javax.inject.Inject
 class PlaylistsViewModel @Inject constructor(
     private val repository: LibraryRepository,
     private val coordinator: CoordinatorApi,
+    private val playlists: PlaylistRepository,
     private val settings: SettingsRepository,
     private val playback: PlaybackController,
 ) : ViewModel() {
@@ -39,6 +43,9 @@ class PlaylistsViewModel @Inject constructor(
 
     private val _sonicState = MutableStateFlow<SonicMixesState>(SonicMixesState.Loading)
     val sonicState: StateFlow<SonicMixesState> = _sonicState.asStateFlow()
+
+    private val _mixOptions = MutableStateFlow(SonicMixOptions())
+    val mixOptions: StateFlow<SonicMixOptions> = _mixOptions.asStateFlow()
 
     init {
         load()
@@ -109,6 +116,61 @@ class PlaylistsViewModel @Inject constructor(
         playback.playQueue(tracks, start)
     }
 
+    fun saveSonicMixAsPlaylist(name: String, tracks: List<LibraryItem>) {
+        _mixOptions.value = _mixOptions.value.copy(message = null)
+        viewModelScope.launch {
+            runCatching {
+                playlists.createPlaylist(
+                    name = name.ifBlank { "Sonic mix" },
+                    trackIds = tracks.map { it.id },
+                )
+            }.fold(
+                onSuccess = { count ->
+                    _mixOptions.value = _mixOptions.value.copy(message = "Saved $count tracks to Playlists")
+                    load()
+                },
+                onFailure = {
+                    _mixOptions.value = _mixOptions.value.copy(message = it.message ?: "Failed to save playlist")
+                },
+            )
+        }
+    }
+
+    fun setTracksPerMix(value: Int) {
+        _mixOptions.value = _mixOptions.value.copy(tracksPerMix = value)
+    }
+
+    fun generateSonicMixes() {
+        val options = _mixOptions.value
+        if (options.generating) return
+        _mixOptions.value = options.copy(generating = true, message = null)
+        viewModelScope.launch {
+            runCatching {
+                coordinator.buildMixes(
+                    BuildMixesRequestDto(
+                        nClusters = DEFAULT_MIX_COUNT,
+                        tracksPerMix = options.tracksPerMix,
+                    ),
+                )
+            }.fold(
+                onSuccess = {
+                    _mixOptions.value = _mixOptions.value.copy(
+                        message = "Generating ${it.nClusters} mixes of ${it.tracksPerMix} tracks",
+                    )
+                    delay(MIX_GENERATION_REFRESH_DELAY_MS)
+                    loadSonicMixes()
+                    _mixOptions.value = _mixOptions.value.copy(generating = false)
+                },
+                onFailure = {
+                    _mixOptions.value = _mixOptions.value.copy(
+                        generating = false,
+                        message = it.message ?: "Failed to generate mixes",
+                    )
+                },
+            )
+        }
+    }
+
     private fun TrackOutDto.toLibraryItem(): LibraryItem = LibraryItem(
         id = id,
         title = title.orEmpty().ifBlank { "Unknown track" },
@@ -132,7 +194,18 @@ class PlaylistsViewModel @Inject constructor(
             "%d:%02d".format(minutes, seconds)
         }
     }
+
+    private companion object {
+        const val DEFAULT_MIX_COUNT = 30
+        const val MIX_GENERATION_REFRESH_DELAY_MS = 25_000L
+    }
 }
+
+data class SonicMixOptions(
+    val tracksPerMix: Int = 50,
+    val generating: Boolean = false,
+    val message: String? = null,
+)
 
 sealed interface SonicMixesState {
     data object Loading : SonicMixesState
@@ -140,4 +213,9 @@ sealed interface SonicMixesState {
     data class ListData(val mixes: List<SonicMixDto>) : SonicMixesState
     data class DetailLoading(val mix: SonicMixDto) : SonicMixesState
     data class DetailData(val mix: SonicMixDto, val tracks: List<LibraryItem>) : SonicMixesState
+}
+
+fun SonicMixDto.displayTitle(): String {
+    val base = name?.takeIf { it.isNotBlank() } ?: "Sonic mix"
+    return base.replace(""" \(\d+\)$""".toRegex(), "")
 }
