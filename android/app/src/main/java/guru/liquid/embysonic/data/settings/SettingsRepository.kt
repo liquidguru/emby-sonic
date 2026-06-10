@@ -41,6 +41,7 @@ class SettingsRepository @Inject constructor(
         val HOME_COMPACT_CARDS = booleanPreferencesKey("home_compact_cards")
         val HOME_SECTION_ORDER = stringPreferencesKey("home_section_order")
         val HOME_HIDDEN_SECTIONS = stringPreferencesKey("home_hidden_sections")
+        val PLAYBACK_REPEAT_MODE = stringPreferencesKey("playback_repeat_mode")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -61,6 +62,9 @@ class SettingsRepository @Inject constructor(
         context.dataStore.data.map { prefs ->
             prefs[Keys.HOME_HIDDEN_SECTIONS]?.splitCsv()?.toSet().orEmpty()
         }
+
+    val playbackRepeatMode: Flow<String> =
+        context.dataStore.data.map { it[Keys.PLAYBACK_REPEAT_MODE] ?: "OFF" }
 
     suspend fun setLibraryListView(value: Boolean) {
         context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
@@ -88,6 +92,10 @@ class SettingsRepository @Inject constructor(
                 prefs[Keys.HOME_HIDDEN_SECTIONS] = hidden.joinToString(",")
             }
         }
+    }
+
+    suspend fun setPlaybackRepeatMode(mode: String) {
+        context.dataStore.edit { it[Keys.PLAYBACK_REPEAT_MODE] = mode }
     }
 
     @Volatile

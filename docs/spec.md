@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -365,6 +365,13 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   controls. Preferences persist in DataStore (`home_compact_cards`,
   `home_section_order`, `home_hidden_sections`) and apply to the existing
   sections: Resume audiobooks, Playlists, Recently added albums, and Artists.
+- **M3.10 — Playback control polish:** ✅ Now Playing's top-bar queue action is
+  wired to focus the queue tab/list, and the top-bar close action stops playback
+  and clears the queue. Queue row taps jump to non-current tracks without
+  restarting the current row. Repeat mode now persists through DataStore
+  (`playback_repeat_mode`) and is restored into Media3 on controller startup.
+  The mini player now exposes previous and next controls alongside play/pause
+  and stop, so collapsed playback can be controlled without opening Now Playing.
 - **M4 — Sonic features:** Mixes list + player, Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
@@ -463,6 +470,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - Verified screenshot shows the customize sheet with small cards enabled,
   section visibility toggles, and reordered sections.
 - Screenshot captured in `android/verify-home-customize-sheet.png`.
+
+**M3.10 verification (dev-pc / Pixel_3a_API_36, 2026-06-10):**
+- Built with `./gradlew :app:assembleDebug`.
+- Installed `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`.
+- User-confirmed repeat controls and track changes work on Now Playing.
+- User-confirmed mini-player previous/next controls work.
+- User-confirmed the queue focus/jump behavior, stop/clear behavior, and repeat
+  persistence checks look good.
+- Screenshot captured in `android/verify-playback-queue-controls.png`.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
@@ -618,8 +634,9 @@ User-Agent headers so Emby can transcode unsupported codecs such as WMA/ASF.
   replace placeholder browse-backed rows with true recent listens, sonic mixes,
   radio/adventure entries, and other M4 discovery surfaces as those APIs/UI flows
   land.
-- Mini player exists in the shell for active playback; follow-up polish could add
-  skip-next/previous, swipe-to-dismiss, or queue context if desired.
+- Mini player exists in the shell for active playback and now exposes previous,
+  play/pause, next, and stop. Follow-up polish could add swipe-to-dismiss or
+  queue context if desired.
 - Audiobook resume sync uses direct Emby user-data writes as the durable source
   of truth; normal session check-ins remain for active playback/session metadata.
   Long-form resume must use `/Audio/{id}/stream` with `StartTimeTicks`; do not

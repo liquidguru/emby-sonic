@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,6 +65,14 @@ class PlaybackController @Inject constructor(
                 publishState()
             }
         })
+        scope.launch {
+            settings.playbackRepeatMode
+                .distinctUntilChanged()
+                .collect { repeatMode ->
+                    player.repeatMode = repeatMode.toPlayerRepeatMode()
+                    publishState()
+                }
+        }
         scope.launch {
             while (isActive) {
                 publishState()
@@ -211,11 +220,13 @@ class PlaybackController @Inject constructor(
     }
 
     fun cycleRepeatMode() {
-        player.repeatMode = when (player.repeatMode) {
-            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-            else -> Player.REPEAT_MODE_OFF
+        val nextMode = when (player.repeatMode) {
+            Player.REPEAT_MODE_OFF -> PlaybackRepeatMode.ALL
+            Player.REPEAT_MODE_ALL -> PlaybackRepeatMode.ONE
+            else -> PlaybackRepeatMode.OFF
         }
+        player.repeatMode = nextMode.toPlayerRepeatMode()
+        scope.launch { settings.setPlaybackRepeatMode(nextMode.name) }
         publishState()
     }
 
@@ -319,6 +330,18 @@ class PlaybackController @Inject constructor(
         Player.REPEAT_MODE_ALL -> PlaybackRepeatMode.ALL
         Player.REPEAT_MODE_ONE -> PlaybackRepeatMode.ONE
         else -> PlaybackRepeatMode.OFF
+    }
+
+    private fun PlaybackRepeatMode.toPlayerRepeatMode(): Int = when (this) {
+        PlaybackRepeatMode.ALL -> Player.REPEAT_MODE_ALL
+        PlaybackRepeatMode.ONE -> Player.REPEAT_MODE_ONE
+        PlaybackRepeatMode.OFF -> Player.REPEAT_MODE_OFF
+    }
+
+    private fun String.toPlayerRepeatMode(): Int = when (uppercase()) {
+        PlaybackRepeatMode.ALL.name -> Player.REPEAT_MODE_ALL
+        PlaybackRepeatMode.ONE.name -> Player.REPEAT_MODE_ONE
+        else -> Player.REPEAT_MODE_OFF
     }
 
     private fun PlaybackTrack.resumePositionForPlayback(): Long {

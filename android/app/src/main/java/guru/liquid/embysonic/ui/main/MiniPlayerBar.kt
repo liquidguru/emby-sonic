@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,7 +68,7 @@ internal fun MiniPlayerBar(
                     .height(72.dp)
                     .clickable(onClick = onOpenNowPlaying)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Artwork(
@@ -91,6 +93,13 @@ internal fun MiniPlayerBar(
                         )
                     }
                 }
+                IconButton(
+                    onClick = viewModel::skipPrevious,
+                    enabled = state.hasPrevious,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
+                }
                 IconButton(onClick = viewModel::togglePlayPause) {
                     if (state.isBuffering) {
                         CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
@@ -101,7 +110,14 @@ internal fun MiniPlayerBar(
                         )
                     }
                 }
-                IconButton(onClick = viewModel::stopPlayback) {
+                IconButton(
+                    onClick = viewModel::skipNext,
+                    enabled = state.hasNext,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
+                }
+                IconButton(onClick = viewModel::stopPlayback, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Default.Close, contentDescription = "Stop playback")
                 }
             }
