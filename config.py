@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # hugs the centroid (less variety), higher roams further (more variety).
     refresh_pool_multiplier: int = 5
     refresh_pool_min: int = 250
-    refresh_temperature: float = 1.0
+    refresh_temperature: float = 1.5
 
     @property
     def db_url(self) -> str:

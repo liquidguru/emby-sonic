@@ -118,9 +118,11 @@ async def regenerate_mix(
     weights = np.exp((pool_scores - pool_scores.max()) / scale)
     weights /= weights.sum()
     chosen = np.random.choice(len(pool_idx), size=n, replace=False, p=weights)
-    # Lead with the closest of the chosen so the first track is representative.
+    # Shuffle the order too: the closest tracks recur most often, so sorting by
+    # score would pin the top of the list and make refreshes look unchanged even
+    # though ~half the set rotates. A random order makes the freshness visible.
     chosen_idx = pool_idx[chosen]
-    chosen_idx = chosen_idx[np.argsort(-scores[chosen_idx])]
+    np.random.shuffle(chosen_idx)
     selected_ids = [track_ids[i] for i in chosen_idx]
 
     await db.execute(delete(MixTrack).where(MixTrack.mix_id == mix_id))
