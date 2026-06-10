@@ -6,6 +6,7 @@ from sqlalchemy import select, delete
 from api.deps import DB, AuthToken
 from api.schemas import MixOut, MixDetail, RegenerateMixRequest, TrackOut
 from analysis.mixes import is_mix_excluded
+from config import settings
 from db.models import Embedding, Mix, MixTrack, Track
 
 router = APIRouter(tags=["mixes"])
