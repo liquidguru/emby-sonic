@@ -86,6 +86,7 @@ class PlaylistsViewModel @Inject constructor(
 
     fun openSonicMix(mix: SonicMixDto) {
         _sonicState.value = SonicMixesState.DetailLoading(mix)
+        _mixOptions.value = _mixOptions.value.copy(message = null)
         viewModelScope.launch {
             runCatching { coordinator.mixDetail(mix.id) }.fold(
                 onSuccess = { detail ->
@@ -150,8 +151,9 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
-    fun regenerateSonicMix(tracksPerMix: Int) {
+    fun regenerateSonicMix() {
         val mix = (_sonicState.value as? SonicMixesState.DetailData)?.mix ?: return
+        val tracksPerMix = _mixOptions.value.refreshTracksPerMix
         _mixOptions.value = _mixOptions.value.copy(generating = true, message = null)
         viewModelScope.launch {
             runCatching {
@@ -179,6 +181,10 @@ class PlaylistsViewModel @Inject constructor(
 
     fun setTracksPerMix(value: Int) {
         _mixOptions.value = _mixOptions.value.copy(tracksPerMix = value)
+    }
+
+    fun setRefreshTracksPerMix(value: Int) {
+        _mixOptions.value = _mixOptions.value.copy(refreshTracksPerMix = value)
     }
 
     fun generateSonicMixes() {
@@ -244,6 +250,7 @@ class PlaylistsViewModel @Inject constructor(
 
 data class SonicMixOptions(
     val tracksPerMix: Int = 50,
+    val refreshTracksPerMix: Int = 50,
     val generating: Boolean = false,
     val message: String? = null,
 )

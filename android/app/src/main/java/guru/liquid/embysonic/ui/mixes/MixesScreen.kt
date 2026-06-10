@@ -145,7 +145,9 @@ fun MixesScreen(
                             onOpenNowPlaying()
                         },
                         onSaveMix = playlistsViewModel::saveSonicMixAsPlaylist,
-                        onRegenerateMix = { n -> playlistsViewModel.regenerateSonicMix(n) },
+                        onRegenerateMix = playlistsViewModel::regenerateSonicMix,
+                        refreshTracksPerMix = mixOptions.refreshTracksPerMix,
+                        onRefreshTracksPerMixChange = playlistsViewModel::setRefreshTracksPerMix,
                         message = mixOptions.message,
                         regenerating = mixOptions.generating,
                     )
@@ -220,7 +222,9 @@ private fun SonicMixesTab(
     onPlayMix: (SonicMixDto) -> Unit,
     onPlayTracks: (tracks: List<LibraryItem>, start: LibraryItem) -> Unit,
     onSaveMix: (name: String, tracks: List<LibraryItem>) -> Unit,
-    onRegenerateMix: (tracksPerMix: Int) -> Unit,
+    onRegenerateMix: () -> Unit,
+    refreshTracksPerMix: Int,
+    onRefreshTracksPerMixChange: (Int) -> Unit,
     message: String?,
     regenerating: Boolean,
 ) {
@@ -249,7 +253,9 @@ private fun SonicMixesTab(
             tracks = state.tracks,
             onPlayTracks = onPlayTracks,
             onSaveMix = onSaveMix,
-            onRegenerateMix = { n -> onRegenerateMix(n) },
+            onRegenerateMix = onRegenerateMix,
+            refreshTracksPerMix = refreshTracksPerMix,
+            onRefreshTracksPerMixChange = onRefreshTracksPerMixChange,
             message = message,
             regenerating = regenerating,
         )
@@ -307,7 +313,9 @@ private fun SonicMixDetail(
     tracks: List<LibraryItem>,
     onPlayTracks: (tracks: List<LibraryItem>, start: LibraryItem) -> Unit,
     onSaveMix: (name: String, tracks: List<LibraryItem>) -> Unit,
-    onRegenerateMix: (tracksPerMix: Int) -> Unit,
+    onRegenerateMix: () -> Unit,
+    refreshTracksPerMix: Int,
+    onRefreshTracksPerMixChange: (Int) -> Unit,
     message: String?,
     regenerating: Boolean,
 ) {
@@ -389,11 +397,12 @@ private fun SonicMixDetail(
     }
     if (refreshDialogOpen) {
         RefreshMixDialog(
-            currentTrackCount = tracks.size,
+            tracksPerMix = refreshTracksPerMix,
+            onTracksPerMixChange = onRefreshTracksPerMixChange,
             onDismiss = { refreshDialogOpen = false },
-            onRefresh = { tracksPerMix ->
+            onRefresh = {
                 refreshDialogOpen = false
-                onRegenerateMix(tracksPerMix)
+                onRegenerateMix()
             },
         )
     }
@@ -451,13 +460,11 @@ private fun SaveMixDialog(
 
 @Composable
 private fun RefreshMixDialog(
-    currentTrackCount: Int,
+    tracksPerMix: Int,
+    onTracksPerMixChange: (Int) -> Unit,
     onDismiss: () -> Unit,
-    onRefresh: (tracksPerMix: Int) -> Unit,
+    onRefresh: () -> Unit,
 ) {
-    var tracksPerMix by rememberSaveable { mutableStateOf(
-        listOf(25, 50, 75, 100).minByOrNull { abs(it - currentTrackCount) } ?: 50
-    ) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Refresh mix") },
@@ -472,7 +479,7 @@ private fun RefreshMixDialog(
                     listOf(25, 50, 75, 100).forEach { count ->
                         FilterChip(
                             selected = tracksPerMix == count,
-                            onClick = { tracksPerMix = count },
+                            onClick = { onTracksPerMixChange(count) },
                             label = { Text(count.toString()) },
                             modifier = Modifier.padding(end = 8.dp),
                         )
@@ -481,7 +488,7 @@ private fun RefreshMixDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onRefresh(tracksPerMix) }) {
+            TextButton(onClick = onRefresh) {
                 Text("Refresh")
             }
         },
