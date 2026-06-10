@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlin.math.abs
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
 import guru.liquid.embysonic.data.emby.DetailKind
@@ -144,7 +145,9 @@ fun MixesScreen(
                             onOpenNowPlaying()
                         },
                         onSaveMix = playlistsViewModel::saveSonicMixAsPlaylist,
+                        onRegenerateMix = { n -> playlistsViewModel.regenerateSonicMix(n) },
                         message = mixOptions.message,
+                        regenerating = mixOptions.generating,
                     )
                 }
             }
@@ -168,6 +171,10 @@ private fun PlaylistsTab(
     onOpenNowPlaying: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var deleteTargetId by rememberSaveable { mutableStateOf<String?>(null) }
+    val deleteTarget = (state as? guru.liquid.embysonic.ui.library.TabState.Data)
+        ?.items?.firstOrNull { it.id == deleteTargetId }
+
     StateContent(state) { items ->
         val onClick = { item: LibraryItem ->
             onOpenItem(item.id, item.title, DetailKind.PLAYLIST_TRACKS)
@@ -176,11 +183,33 @@ private fun PlaylistsTab(
             viewModel.playPlaylist(item)
             onOpenNowPlaying()
         }
+        val onDelete = { item: LibraryItem -> deleteTargetId = item.id }
         if (listView) {
-            CollectionList(items, placeholderBook = false, onItemClick = onClick, onPlayItem = onPlay)
+            CollectionList(items, placeholderBook = false, onItemClick = onClick, onPlayItem = onPlay, onDeleteItem = onDelete)
         } else {
-            CardGrid(items, placeholderBook = false, onItemClick = onClick, onPlayItem = onPlay)
+            CardGrid(items, placeholderBook = false, onItemClick = onClick, onPlayItem = onPlay, onDeleteItem = onDelete)
         }
+    }
+
+    if (deleteTarget != null) {
+        AlertDialog(
+            onDismissRequest = { deleteTargetId = null },
+            title = { Text("Delete playlist") },
+            text = { Text("Delete \"${deleteTarget.title}\" from Emby? This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deletePlaylist(deleteTarget)
+                        deleteTargetId = null
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTargetId = null }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -191,7 +220,9 @@ private fun SonicMixesTab(
     onPlayMix: (SonicMixDto) -> Unit,
     onPlayTracks: (tracks: List<LibraryItem>, start: LibraryItem) -> Unit,
     onSaveMix: (name: String, tracks: List<LibraryItem>) -> Unit,
+    onRegenerateMix: (tracksPerMix: Int) -> Unit,
     message: String?,
+    regenerating: Boolean,
 ) {
     when (state) {
         SonicMixesState.Loading -> CenterMessage { CircularProgressIndicator() }
@@ -218,7 +249,9 @@ private fun SonicMixesTab(
             tracks = state.tracks,
             onPlayTracks = onPlayTracks,
             onSaveMix = onSaveMix,
+            onRegenerateMix = { n -> onRegenerateMix(n) },
             message = message,
+            regenerating = regenerating,
         )
     }
 }
@@ -274,13 +307,16 @@ private fun SonicMixDetail(
     tracks: List<LibraryItem>,
     onPlayTracks: (tracks: List<LibraryItem>, start: LibraryItem) -> Unit,
     onSaveMix: (name: String, tracks: List<LibraryItem>) -> Unit,
+    onRegenerateMix: (tracksPerMix: Int) -> Unit,
     message: String?,
+    regenerating: Boolean,
 ) {
     if (tracks.isEmpty()) {
         CenterMessage { Text("No tracks in this mix") }
         return
     }
     var saveDialogOpen by rememberSaveable(mix.id) { mutableStateOf(false) }
+    var refreshDialogOpen by rememberSaveable(mix.id) { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
@@ -305,12 +341,28 @@ private fun SonicMixDetail(
                 Icon(Icons.Default.PlayArrow, contentDescription = "Play mix")
             }
         }
-        TextButton(
-            onClick = { saveDialogOpen = true },
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp).widthIn(min = 160.dp),
+        Row(
+            modifier = Modifier.padding(start = 12.dp, end = 20.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
-            Text("Save as playlist", modifier = Modifier.padding(start = 8.dp))
+            TextButton(
+                onClick = { saveDialogOpen = true },
+                modifier = Modifier.widthIn(min = 160.dp),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+                Text("Save as playlist", modifier = Modifier.padding(start = 8.dp))
+            }
+            TextButton(
+                onClick = { refreshDialogOpen = true },
+                enabled = !regenerating,
+            ) {
+                if (regenerating) {
+                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                } else {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                }
+                Text("Refresh", modifier = Modifier.padding(start = 8.dp))
+            }
         }
         message?.let {
             AssistChip(
@@ -332,6 +384,16 @@ private fun SonicMixDetail(
             onSave = { name ->
                 saveDialogOpen = false
                 onSaveMix(name, tracks)
+            },
+        )
+    }
+    if (refreshDialogOpen) {
+        RefreshMixDialog(
+            currentTrackCount = tracks.size,
+            onDismiss = { refreshDialogOpen = false },
+            onRefresh = { tracksPerMix ->
+                refreshDialogOpen = false
+                onRegenerateMix(tracksPerMix)
             },
         )
     }
@@ -383,6 +445,48 @@ private fun SaveMixDialog(
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
+        },
+    )
+}
+
+@Composable
+private fun RefreshMixDialog(
+    currentTrackCount: Int,
+    onDismiss: () -> Unit,
+    onRefresh: (tracksPerMix: Int) -> Unit,
+) {
+    var tracksPerMix by rememberSaveable { mutableStateOf(
+        listOf(25, 50, 75, 100).minByOrNull { abs(it - currentTrackCount) } ?: 50
+    ) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Refresh mix") },
+        text = {
+            Column {
+                Text(
+                    "Pick up new tracks added since the last full build. How many tracks?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(modifier = Modifier.padding(top = 16.dp)) {
+                    listOf(25, 50, 75, 100).forEach { count ->
+                        FilterChip(
+                            selected = tracksPerMix == count,
+                            onClick = { tracksPerMix = count },
+                            label = { Text(count.toString()) },
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onRefresh(tracksPerMix) }) {
+                Text("Refresh")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }

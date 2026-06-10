@@ -9,6 +9,7 @@ import guru.liquid.embysonic.data.emby.dto.QueryResult
 import guru.liquid.embysonic.data.emby.dto.SystemInfo
 import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -86,6 +87,10 @@ interface EmbyApi {
         @Path("itemId") itemId: String,
         @Body body: UserDataUpdateDto,
     )
+
+    /** Deletes an Emby item (e.g. a playlist) from the server. */
+    @DELETE("Items/{itemId}")
+    suspend fun deleteItem(@Path("itemId") itemId: String)
 
     /** Album artists within a library ([parentId] scopes to that library). */
     @GET("Artists/AlbumArtists")

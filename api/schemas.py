@@ -76,6 +76,10 @@ class ScanStarted(BaseModel):
     full: bool
 
 
+class RegenerateMixRequest(BaseModel):
+    tracks_per_mix: int = 50   # how many tracks to include in the refreshed mix
+
+
 class BuildMixesRequest(BaseModel):
     n_clusters: int = 30       # number of mixes to generate
     tracks_per_mix: int = 50   # tracks per mix (closest to cluster centroid)

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
+import guru.liquid.embysonic.data.coordinator.dto.RegenerateMixRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
 import guru.liquid.embysonic.data.coordinator.dto.TrackOutDto
 import guru.liquid.embysonic.data.emby.LibraryRepository
@@ -131,6 +132,46 @@ class PlaylistsViewModel @Inject constructor(
                 },
                 onFailure = {
                     _mixOptions.value = _mixOptions.value.copy(message = it.message ?: "Failed to save playlist")
+                },
+            )
+        }
+    }
+
+    fun deletePlaylist(item: LibraryItem) {
+        viewModelScope.launch {
+            runCatching { playlists.deletePlaylist(item.id) }.fold(
+                onSuccess = { load() },
+                onFailure = {
+                    _mixOptions.value = _mixOptions.value.copy(
+                        message = it.message ?: "Delete failed",
+                    )
+                },
+            )
+        }
+    }
+
+    fun regenerateSonicMix(tracksPerMix: Int) {
+        val mix = (_sonicState.value as? SonicMixesState.DetailData)?.mix ?: return
+        _mixOptions.value = _mixOptions.value.copy(generating = true, message = null)
+        viewModelScope.launch {
+            runCatching {
+                coordinator.regenerateMix(mix.id, RegenerateMixRequestDto(tracksPerMix = tracksPerMix))
+            }.fold(
+                onSuccess = { detail ->
+                    _sonicState.value = SonicMixesState.DetailData(
+                        mix = detail.mix,
+                        tracks = detail.tracks.map { it.toLibraryItem() },
+                    )
+                    _mixOptions.value = _mixOptions.value.copy(
+                        generating = false,
+                        message = "Mix refreshed — ${detail.tracks.size} tracks",
+                    )
+                },
+                onFailure = {
+                    _mixOptions.value = _mixOptions.value.copy(
+                        generating = false,
+                        message = it.message ?: "Regeneration failed",
+                    )
                 },
             )
         }
