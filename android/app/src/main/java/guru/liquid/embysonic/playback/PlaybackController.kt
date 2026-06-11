@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
 import javax.inject.Inject
@@ -58,12 +60,27 @@ class PlaybackController @Inject constructor(
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
             .build()
+            .also { secondary ->
+                secondary.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        fadePlayerReady = playbackState == Player.STATE_READY
+                        Log.d(TAG, "Crossfade helper state=$playbackState ready=$fadePlayerReady")
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        fadePlayerReady = false
+                        Log.w(TAG, "Crossfade helper failed", error)
+                    }
+                })
+            }
     }
 
     @Volatile
     private var crossfadeInProgress = false
     @Volatile
     private var crossfadeArmed = false
+    @Volatile
+    private var fadePlayerReady = false
     private var crossfadeArmedIndex = -1
     private var crossfadeJob: Job? = null
 
@@ -83,6 +100,12 @@ class PlaybackController @Inject constructor(
         player.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
                 publishState()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (crossfadeInProgress) {
+                    Log.d(TAG, "Crossfade primary state=$playbackState playing=${player.isPlaying}")
+                }
             }
         })
         scope.launch {
@@ -461,36 +484,81 @@ class PlaybackController @Inject constructor(
             armCrossfade(current, tailFromMs, index)
         }
         if (crossfadeArmed && crossfadeArmedIndex == index && remaining in 1..crossfadeMs) {
-            fireCrossfade(crossfadeMs)
+            val outgoingPositionMs = duration - remaining
+            val helperHasTailBuffered = fadePlayerReady &&
+                fadePlayer.bufferedPosition >= outgoingPositionMs + CROSSFADE_BUFFER_MARGIN_MS
+            when {
+                helperHasTailBuffered -> fireCrossfade(
+                    blendDurationMs = remaining,
+                )
+                remaining <= MIN_CROSSFADE_START_MS -> {
+                    Log.w(TAG, "Crossfade helper was not ready; preserving normal transition")
+                    cancelCrossfade()
+                }
+            }
         }
     }
 
     private fun armCrossfade(outgoing: PlaybackTrack, tailFromMs: Long, index: Int) {
         crossfadeArmed = true
         crossfadeArmedIndex = index
-        // Buffer the outgoing tail (paused) so it can start instantly at fire.
-        fadePlayer.setMediaItem(mediaItem(outgoing, tailFromMs))
+        fadePlayerReady = false
+        // Use the normal direct-play source and seek to the tail. Reopening the
+        // track through Emby's transcoder is too slow for a reliable handoff.
+        // Reset playWhenReady before replacing the item: stop() deliberately
+        // retains it, which can otherwise consume the tail during preloading.
+        fadePlayer.pause()
+        fadePlayer.stop()
+        fadePlayer.clearMediaItems()
         fadePlayer.volume = 0f
         fadePlayer.playWhenReady = false
+        fadePlayer.setMediaItem(mediaItem(outgoing, 0L))
+        fadePlayer.seekTo(tailFromMs)
         fadePlayer.prepare()
+        Log.d(
+            TAG,
+            "Crossfade armed index=$index tailFromMs=$tailFromMs playWhenReady=${fadePlayer.playWhenReady}",
+        )
     }
 
-    private fun fireCrossfade(tailMs: Long) {
+    private fun fireCrossfade(blendDurationMs: Long) {
         crossfadeInProgress = true
         crossfadeArmed = false
+        // The helper is already paused at the blend point. Seeking it again here
+        // discards its buffered decoder state and creates the very gap it exists
+        // to cover.
         fadePlayer.volume = 1f
         fadePlayer.play()
-        // Advance the primary to the next track now; its gapless-preloaded buffer
-        // starts instantly, while the buffered tail keeps the outgoing audible.
+        // Advance the primary now; the buffered helper keeps the outgoing track
+        // audible while the next decoder becomes ready.
         player.volume = 0f
         player.seekToNextMediaItem()
+        Log.d(TAG, "Crossfade fired durationMs=$blendDurationMs")
         crossfadeJob?.cancel()
         crossfadeJob = scope.launch {
-            val steps = (tailMs / CROSSFADE_RAMP_STEP_MS).toInt().coerceAtLeast(1)
+            // Do not spend the fade duration while the incoming decoder is
+            // buffering. The outgoing helper remains at full volume meanwhile.
+            var readyWaitMs = 0L
+            while (
+                player.playbackState != Player.STATE_READY &&
+                readyWaitMs < CROSSFADE_INCOMING_READY_TIMEOUT_MS
+            ) {
+                delay(CROSSFADE_READY_POLL_MS)
+                readyWaitMs += CROSSFADE_READY_POLL_MS
+            }
+            if (player.playbackState != Player.STATE_READY) {
+                Log.w(TAG, "Incoming track missed crossfade readiness timeout")
+                endCrossfade()
+                return@launch
+            }
+            Log.d(TAG, "Crossfade ramp starting after readyWaitMs=$readyWaitMs")
+            val steps = (blendDurationMs / CROSSFADE_RAMP_STEP_MS).toInt().coerceAtLeast(1)
             for (step in 1..steps) {
                 val f = step.toFloat() / steps
-                // Equal-power curves avoid a perceived volume dip mid-blend.
-                player.volume = sin(f * (PI.toFloat() / 2f))
+                // Bring the incoming track forward slightly earlier than a
+                // symmetric equal-power curve, while retaining a smooth ramp.
+                val incomingProgress = f.toDouble().pow(INCOMING_FADE_EXPONENT).toFloat()
+                player.volume = sin(incomingProgress * (PI.toFloat() / 2f))
                 fadePlayer.volume = cos(f * (PI.toFloat() / 2f))
                 delay(CROSSFADE_RAMP_STEP_MS)
             }
@@ -506,6 +574,7 @@ class PlaybackController @Inject constructor(
         player.volume = 1f
         crossfadeInProgress = false
         crossfadeArmed = false
+        fadePlayerReady = false
         crossfadeArmedIndex = -1
     }
 
@@ -622,8 +691,14 @@ class PlaybackController @Inject constructor(
         const val RESUME_END_PADDING_MS = 5_000L
         const val LONG_FORM_MIN_DURATION_MS = 20 * 60 * 1000L
         const val LONG_FORM_RESUME_PREROLL_MS = 5_000L
-        const val CROSSFADE_POLL_MS = 250L
+        const val CROSSFADE_POLL_MS = 50L
         const val CROSSFADE_RAMP_STEP_MS = 50L
-        const val CROSSFADE_PRELOAD_MS = 4_000L
+        const val CROSSFADE_READY_POLL_MS = 10L
+        const val CROSSFADE_INCOMING_READY_TIMEOUT_MS = 1_500L
+        const val CROSSFADE_PRELOAD_MS = 12_000L
+        const val CROSSFADE_BUFFER_MARGIN_MS = 500L
+        const val MIN_CROSSFADE_START_MS = 2_000L
+        const val INCOMING_FADE_EXPONENT = 0.75
+        const val TAG = "PlaybackController"
     }
 }

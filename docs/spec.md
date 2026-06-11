@@ -295,7 +295,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation complete and awaiting on-device listening verification 2026-06-11.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -409,22 +409,28 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   Android: mix detail gains a Refresh action with a track-count dialog (state in
   the ViewModel so it survives reopen); Playlists tab gains per-item delete
   (Emby playlists only, with confirmation) via `DELETE /Items/{itemId}`.
-- **M4.4 — Crossfade (music only):** 🚧 implementation complete; on-device
-  listening verification and tuning remain (2026-06-11). Settings toggle
+- **M4.4 — Crossfade (music only):** ✅ implementation complete; six-second
+  overlap verified on-device across consecutive transitions (2026-06-11).
+  Settings toggle
   + overlap duration (3/6/9/12s, default 6s), persisted via DataStore
   (`crossfade_enabled` / `crossfade_duration_ms`, surfaced on `AppSettings`).
   Engine in `PlaybackController`: the existing single `player` stays the sole
   queue + MediaSession player (when crossfade is off the path is byte-for-byte
   unchanged). A secondary `fadePlayer` plays the outgoing track's tail while the
-  primary advances early (its gapless-preloaded buffer starts instantly), with
-  equal-power (sin/cos) volume ramps. Two-phase: *arm* preloads/buffers the tail
-  via `stream?StartTimeTicks=` ~4s ahead so there's no gap, then *fire* at the
-  blend point. Never applies to audiobooks/long-form (either side), repeat-one,
-  the last track, or resumed/offset streams; cancelled cleanly on
-  pause/skip/seek/shuffle/stop/new-queue. Also: stopping playback now clears a
+  primary advances early, with equal-power-style volume ramps. Two-phase:
+  *arm* opens the normal direct-play source, seeks to the outgoing tail, and
+  buffers it paused 12s ahead; *fire* occurs only once that helper is ready and
+  the configured blend point is reached. The incoming ramp waits for the primary
+  decoder to become ready, and late helper preparation falls back to the normal
+  transition instead of muting playback. The helper is explicitly paused,
+  stopped, cleared, and reset before every preload because ExoPlayer `stop()`
+  retains `playWhenReady`. A 50ms trigger poll keeps tail replay below the
+  previously audible quarter-second range. Never applies to audiobooks/long-form
+  (either side), repeat-one, the last track, or resumed/offset streams; cancelled
+  cleanly on pause/skip/seek/shuffle/stop/new-queue. Also: stopping playback now clears a
   *music* track's resume position (starts fresh next time) while audiobooks keep
   their resume point — only pause-then-exit preserves music resume. Open items:
-  verify 3/6/9/12-second overlaps on the emulator, test pause/skip/seek/stop
+  verify 3/9/12-second overlaps on the emulator, test pause/skip/seek/stop
   during an overlap, tune the preload window for slow networks, and optionally
   hold the Now Playing label until the blend completes (it currently flips to
   the next track approximately one overlap-duration early).
@@ -565,12 +571,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   fully replace the selected mix's tracks, saved Emby playlists can be deleted
   with confirmation, and spoken-word/audiobook paths are excluded from mix build
   and refresh.
-- The Android tree containing the crossfade implementation through commit
-  `12bec78` builds successfully with `./gradlew :app:assembleDebug`.
-- M4.4 crossfade has no recorded emulator screenshot or completed listening-test
-  matrix yet, so it must not be treated as device-verified. The next verification
-  pass should cover each duration plus cancellation during pause, skip, seek,
-  stop, shuffle, and new-queue actions.
+- M4.4 builds successfully with `./gradlew :app:assembleDebug`. The default
+  six-second crossfade was user-verified on the Pixel 3a API 36 emulator across
+  two consecutive transitions: no gap, smooth outgoing tail, audible incoming
+  track, and correct helper reset between transitions. Device logs show each
+  helper armed with `playWhenReady=false`, ready before the blend point, and the
+  ramps firing at about 5.96 seconds remaining. Screenshot captured in
+  `android/crossfade-verified-half.png`.
+- Remaining M4.4 verification: 3/9/12-second durations and cancellation during
+  pause, skip, seek, stop, shuffle, and new-queue actions.
 
 ### Phase 4 — iOS App
 *Feature parity, separate timeline.*
