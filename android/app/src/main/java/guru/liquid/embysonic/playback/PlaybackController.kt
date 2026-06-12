@@ -90,6 +90,7 @@ class PlaybackController @Inject constructor(
 
     private var queue: List<PlaybackTrack> = emptyList()
     private var queueShuffled: Boolean = false
+    private val musicResumeClearedByStop = mutableSetOf<String>()
     private var streamOffsetsByIndex: MutableMap<Int, Long> = mutableMapOf()
     private var playSessionId: String = UUID.randomUUID().toString()
     private var lastProgressReportMs: Long = 0
@@ -152,7 +153,15 @@ class PlaybackController @Inject constructor(
         playWhenReady: Boolean,
     ) {
         val startIndex = items.indexOfFirst { it.id == startItem.id }.coerceAtLeast(0)
-        val tracks = items.map { it.toPlaybackTrack() }
+        val tracks = items.map { item ->
+            item.toPlaybackTrack().let { track ->
+                if (track.id in musicResumeClearedByStop) {
+                    track.copy(playbackPositionMs = 0L)
+                } else {
+                    track
+                }
+            }
+        }
         if (tracks.isEmpty()) return
         cancelCrossfade()
         reportStopped(lastReportedState)
@@ -208,6 +217,7 @@ class PlaybackController @Inject constructor(
         // resume point — only pause-then-exit preserves resume for music.
         val stoppedTrack = lastReportedState.currentTrack
         val clearResume = stoppedTrack != null && !stoppedTrack.isLongForm
+        if (clearResume) musicResumeClearedByStop += stoppedTrack.id
         reportStopped(lastReportedState, clearResume = clearResume)
         lastReportedState = PlaybackUiState()
         player.stop()
@@ -555,10 +565,14 @@ class PlaybackController @Inject constructor(
             val steps = (blendDurationMs / CROSSFADE_RAMP_STEP_MS).toInt().coerceAtLeast(1)
             for (step in 1..steps) {
                 val f = step.toFloat() / steps
-                // Bring the incoming track forward slightly earlier than a
-                // symmetric equal-power curve, while retaining a smooth ramp.
+                // Bring the incoming track forward early enough to remain
+                // perceptible beneath a loud outgoing track. The helper reset
+                // in armCrossfade guarantees this floor begins only at the
+                // configured blend point, never during preload.
                 val incomingProgress = f.toDouble().pow(INCOMING_FADE_EXPONENT).toFloat()
-                player.volume = sin(incomingProgress * (PI.toFloat() / 2f))
+                val incomingCurve = sin(incomingProgress * (PI.toFloat() / 2f))
+                player.volume = INCOMING_START_VOLUME +
+                    ((1f - INCOMING_START_VOLUME) * incomingCurve)
                 fadePlayer.volume = cos(f * (PI.toFloat() / 2f))
                 delay(CROSSFADE_RAMP_STEP_MS)
             }
@@ -585,6 +599,7 @@ class PlaybackController @Inject constructor(
     }
 
     private fun reportStarted(track: PlaybackTrack, positionMs: Long) {
+        musicResumeClearedByStop -= track.id
         lastStartedItemId = track.id
         scope.launch {
             runCatching {
@@ -643,7 +658,7 @@ class PlaybackController @Inject constructor(
                 embyApi.reportPlaybackStopped(
                     PlaybackReportDto(
                         itemId = track.id,
-                        positionTicks = state.positionMs.msToTicks(),
+                        positionTicks = resumePositionMs.msToTicks(),
                         playSessionId = playSessionId,
                         isPaused = true,
                         playlistIndex = state.currentIndex,
@@ -698,7 +713,8 @@ class PlaybackController @Inject constructor(
         const val CROSSFADE_PRELOAD_MS = 12_000L
         const val CROSSFADE_BUFFER_MARGIN_MS = 500L
         const val MIN_CROSSFADE_START_MS = 2_000L
-        const val INCOMING_FADE_EXPONENT = 0.75
+        const val INCOMING_FADE_EXPONENT = 0.5
+        const val INCOMING_START_VOLUME = 0.18f
         const val TAG = "PlaybackController"
     }
 }
