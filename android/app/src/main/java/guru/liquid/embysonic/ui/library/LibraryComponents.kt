@@ -2,7 +2,6 @@ package guru.liquid.embysonic.ui.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -282,34 +282,58 @@ internal fun CollectionList(
 @Composable
 private fun BoxScope.AzIndexBar(letters: List<Char>, onSelect: (Char) -> Unit) {
     if (letters.size < 2) return
+    var activeLetter by remember(letters) { mutableStateOf<Char?>(null) }
     fun pick(y: Float, height: Int) {
         if (height <= 0) return
         val idx = ((y / height) * letters.size).toInt().coerceIn(0, letters.size - 1)
-        onSelect(letters[idx])
+        val letter = letters[idx]
+        activeLetter = letter
+        onSelect(letter)
     }
     Column(
         modifier = Modifier
             .align(Alignment.CenterEnd)
             .fillMaxHeight()
-            .width(24.dp)
+            .width(32.dp)
             .pointerInput(letters) {
-                detectTapGestures { pick(it.y, size.height) }
-            }
-            .pointerInput(letters) {
-                detectVerticalDragGestures { change, _ ->
-                    change.consume()
-                    pick(change.position.y, size.height)
-                }
+                detectVerticalDragGestures(
+                    onDragStart = { pick(it.y, size.height) },
+                    onDragEnd = { activeLetter = null },
+                    onDragCancel = { activeLetter = null },
+                    onVerticalDrag = { change, _ ->
+                        change.consume()
+                        pick(change.position.y, size.height)
+                    },
+                )
             },
-        verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         letters.forEach { c ->
-            Text(
-                c.toString(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clickable { onSelect(c) },
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (activeLetter == c) MaterialTheme.colorScheme.primary
+                            else Color.Transparent,
+                        ),
+                ) {
+                    Text(
+                        c.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (activeLetter == c) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
         }
     }
 }

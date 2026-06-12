@@ -325,7 +325,9 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   while paused. Collection cards/list rows expose explicit play affordances for
   artists/albums/books/playlists. Library A-Z indexes now derive from the same
   normalized sorted collection list they scroll, so jumps land on the expected
-  section. Tapping a bottom library tab from a drill-down detail pops back to the
+  section. Each displayed letter owns a stable 32dp-wide touch band; tap and drag
+  use the same geometry, and the active letter gains a cyan circular highlight
+  while dragging. Tapping a bottom library tab from a drill-down detail pops back to the
   existing library root when present, preserving the user's scroll position.
 - **M3.6 — Home landing polish:** ✅ Home is now the liquidWave user landing
   screen instead of an analysis/admin status page. It shows scrollable playlist,
@@ -427,10 +429,12 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   retains `playWhenReady`. A 50ms trigger poll keeps tail replay below the
   previously audible quarter-second range. Never applies to audiobooks/long-form
   (either side), repeat-one, the last track, or resumed/offset streams; cancelled
-  cleanly on pause/skip/seek/shuffle/stop/new-queue. Also: stopping playback now clears a
-  *music* track's resume position (starts fresh next time) while audiobooks keep
-  their resume point — only pause-then-exit preserves music resume. Open items:
-  verify 3/9/12-second overlaps on the emulator, test pause/skip/seek/stop
+  cleanly on pause/skip/seek/shuffle/stop/new-queue. The incoming curve uses an
+  18% starting floor and a 0.5 exponent so it remains audible beneath louder
+  outgoing material, including longer fades. Also: stopping playback now clears
+  a *music* track's resume position both locally and in the Emby stopped report
+  (starts fresh next time) while audiobooks keep their resume point. Pausing is
+  distinct and preserves resume. Open items: verify 3/9-second overlaps on the emulator, test pause/skip/seek/stop
   during an overlap, tune the preload window for slow networks, and optionally
   hold the Now Playing label until the blend completes (it currently flips to
   the next track approximately one overlap-duration early).
@@ -578,7 +582,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   helper armed with `playWhenReady=false`, ready before the blend point, and the
   ramps firing at about 5.96 seconds remaining. Screenshot captured in
   `android/crossfade-verified-half.png`.
-- Remaining M4.4 verification: 3/9/12-second durations and cancellation during
+- The 12-second setting was tested across several consecutive transitions on
+  2026-06-13. Trigger logs were accurate to 11.96-11.99 seconds; the incoming
+  curve was then strengthened and user-confirmed as working substantially better.
+  Music stop/reset was also user-verified: closing Now Playing with `X` causes
+  the next play to start at 0:00, while pause remains the resume-preserving action.
+- A-Z tap/drag was regression-tested after stopping playback. Direct letter taps
+  and dragging move to the expected artist sections, with a visible cyan active
+  letter during drag. Screenshot: `android/verify-az-picker-drag-feedback.png`.
+- Remaining M4.4 verification: 3/9-second durations and cancellation during
   pause, skip, seek, stop, shuffle, and new-queue actions.
 
 ### Phase 4 — iOS App
