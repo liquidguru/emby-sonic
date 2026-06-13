@@ -115,6 +115,16 @@ class PlaybackController @Inject constructor(
     private var crossfadeTargetIndex = -1
     private var crossfadeJob: Job? = null
 
+    // The outgoing track + blend length while a crossfade is firing, published in
+    // state so Now Playing can dissolve the artwork in sync with the audio.
+    @Volatile
+    private var crossfadeFromTrack: PlaybackTrack? = null
+    @Volatile
+    private var crossfadeBlendMs: Long = 0
+
+    // Index whose crossfade is suppressed because the user seeked into its tail.
+    private var suppressCrossfadeIndex = -1
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
@@ -219,6 +229,7 @@ class PlaybackController @Inject constructor(
         val tracks = items.map { it.toPlaybackTrack() }
         if (tracks.isEmpty()) return
         cancelCrossfade()
+        suppressCrossfadeIndex = -1
         // Guarantee audible playback for a new queue even if the volume was left
         // low by an interrupted ramp or external glitch (self-heals "silent but
         // advancing").
@@ -307,6 +318,16 @@ class PlaybackController @Inject constructor(
         } else {
             player.seekTo(positionMs.coerceAtLeast(0))
         }
+        // Suppress a crossfade when the user seeks INTO this track's blend window:
+        // a manual jump to the end has no runway for the helper to preload and
+        // shouldn't fire a blend (it just plays out into a normal transition).
+        // Re-enabled automatically if they seek back out of the tail.
+        val duration = player.duration.takeIf { it != C.TIME_UNSET }
+        val crossfadeMs = settings.snapshot().crossfadeDurationMs.toLong()
+        suppressCrossfadeIndex = if (
+            track != null && !track.isLongForm && duration != null && duration > 0 &&
+            positionMs > duration - crossfadeMs
+        ) index else -1
         publishState()
         reportProgress(lastReportedState, force = true, eventName = "TimeUpdate")
     }
@@ -478,6 +499,8 @@ class PlaybackController @Inject constructor(
             positionMs = position,
             durationMs = duration.coerceAtLeast(0),
             bufferedMs = streamOffset + player.bufferedPosition.coerceAtLeast(0),
+            crossfadeFromTrack = crossfadeFromTrack,
+            crossfadeBlendMs = crossfadeBlendMs,
         )
         val previous = lastReportedState
         if (previous.currentTrack?.id != null && previous.currentTrack.id != nextState.currentTrack?.id) {
@@ -571,6 +594,8 @@ class PlaybackController @Inject constructor(
         if (crossfadeArmed && crossfadeArmedIndex != index) {
             cancelCrossfade()
         }
+        // Don't blend a track the user manually seeked to the end of.
+        if (index == suppressCrossfadeIndex) return
         val current = queue.getOrNull(index) ?: return
         if (current.isLongForm) return
         if ((streamOffsetsByIndex[index] ?: 0L) > 0L) return
@@ -631,6 +656,10 @@ class PlaybackController @Inject constructor(
         crossfadeInProgress = true
         crossfadeArmed = false
         crossfadeTargetIndex = player.nextMediaItemIndex
+        // Capture the outgoing track before advancing so Now Playing can dissolve
+        // its artwork over the blend (publishState reads these).
+        crossfadeFromTrack = queue.getOrNull(player.currentMediaItemIndex.coerceAtLeast(0))
+        crossfadeBlendMs = blendDurationMs
         // The helper is already paused at the blend point. Seeking it again here
         // discards its buffered decoder state and creates the very gap it exists
         // to cover.
@@ -688,6 +717,9 @@ class PlaybackController @Inject constructor(
         crossfadeArmed = false
         crossfadeArmedIndex = -1
         crossfadeTargetIndex = -1
+        crossfadeFromTrack = null
+        crossfadeBlendMs = 0
+        publishState()
     }
 
     /** Aborts any armed or in-flight crossfade and restores the primary's volume. */

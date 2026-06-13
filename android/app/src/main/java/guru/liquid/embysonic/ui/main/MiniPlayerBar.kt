@@ -30,7 +30,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import guru.liquid.embysonic.ui.playback.crossfadeOutgoingAlpha
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -71,11 +73,31 @@ internal fun MiniPlayerBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Artwork(
-                    url = track.imageUrl,
-                    contentDescription = track.title,
-                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
-                )
+                // Cross-dissolve the cover during a crossfade, matching Now Playing.
+                Box {
+                    Artwork(
+                        url = track.imageUrl,
+                        contentDescription = track.title,
+                        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
+                    )
+                    val fromTrack = state.crossfadeFromTrack
+                    if (fromTrack != null && fromTrack.id != track.id) {
+                        val outgoingAlpha = crossfadeOutgoingAlpha(
+                            fromTrackId = fromTrack.id,
+                            currentTrackId = track.id,
+                            blendMs = state.crossfadeBlendMs,
+                            elapsedMs = state.positionMs,
+                        )
+                        Artwork(
+                            url = fromTrack.imageUrl,
+                            contentDescription = fromTrack.title,
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .graphicsLayer { alpha = outgoingAlpha },
+                        )
+                    }
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         track.title,
