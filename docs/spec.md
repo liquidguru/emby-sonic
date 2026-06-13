@@ -625,12 +625,27 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     no error). Not fixable in app code. Crossfade-dependent behaviour (blend
     quality, artwork dissolves, no-dropout) must be validated on real hardware.
     Non-crossfade features can still be emulator-tested with crossfade OFF.
+  - *Real-device verification (2026-06-13).* liquidWave installed on Kaj's
+    **Pixel 8 Pro** (wireless adb). Quick pass: audio quality and crossfade
+    confirmed excellent on real hardware — vindicates the "emulator codec
+    ceiling" diagnosis. Ongoing real-device checks: mini-player dissolve during
+    a natural transition, focus handling, media notification.
   Phase 2 remaining (queued):
   - Guest DJ toggle (Now Playing) is currently a disabled placeholder — wire it
     to `/sonic/queue/inject` (inject similar tracks into the live queue) or hide
     it until implemented. Distinct from Track Radio (augments the queue rather
     than replacing it).
-  - Real-device test build + verification pass (set up below).
+  - **Equalizer (requested 2026-06-13).** Two routes, not exclusive: (1) cheap —
+    broadcast the audio-session open/close intents so the device/system EQ (or
+    apps like Wavelet) can attach to liquidWave's output; (2) built-in graphic
+    EQ + presets via `android.media.audiofx.Equalizer` (+ BassBoost/
+    LoudnessEnhancer) bound to the player session, persisted in DataStore.
+    Wrinkle: crossfade uses two ExoPlayers (primary + fade helper), each with
+    its own audio session — the EQ must bind to both during a blend. Suggested:
+    ship the broadcast hook first, in-app EQ UI later.
+  - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
+    browse tree, drag scrubbing, queue reorder, swipe-to-dismiss mini player,
+    small offline cache.
   - "On This Day" — needs a play-history log (Emby only stores last-played per
     item), i.e. a new coordinator subsystem. Deferred.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
