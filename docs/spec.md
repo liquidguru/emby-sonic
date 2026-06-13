@@ -438,6 +438,90 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   during an overlap, tune the preload window for slow networks, and optionally
   hold the Now Playing label until the blend completes (it currently flips to
   the next track approximately one overlap-duration early).
+- **M4.5 — Playback correctness hardening (in progress, started 2026-06-13):**
+  Fixes from the 2026-06-13 comprehensive review. Phase 1 (HIGH, implemented,
+  pending device verification):
+  - *No durable resume for music* (product decision): progress reports no
+    longer write `UserData` positions for non-long-form tracks, and stored
+    positions are ignored when starting music playback. Previously every
+    3-second progress sync wrote a position, and a crossfade handoff (which
+    fires up to the fade duration before the end — outside the 5s end padding
+    for 6/9/12s fades) left a near-end resume on every transition, so tracks
+    could restart mid-song or in their final seconds. Skips are skips; pause
+    and Android Auto/cast continuity live in the session, not the server.
+  - *Completion marks Played*: a track that reaches its end (or crossfades
+    out — fade duration + 1s slack counts as completion) gets `UserData`
+    `{position: 0, Played: true}`. The old code stamped `Played: false` every
+    3 seconds, wiping played status server-wide and making finished audiobook
+    chapters indistinguishable from unstarted ones — stopping near a chapter
+    boundary resumed the book at chapter 1. `resumeStartItem()` now falls back
+    to the first unplayed chapter after the last played one (LibraryItem
+    carries `played`).
+  - *Audio focus, becoming-noisy, wake mode*: the primary player now requests
+    audio focus (`USAGE_MEDIA`, handleAudioFocus=true), pauses on headphone
+    unplug/BT drop, and holds `WAKE_MODE_NETWORK` (+ `WAKE_LOCK` permission)
+    so screen-off streaming doesn't stall. The crossfade helper uses the same
+    attributes with handleAudioFocus=**false** — both players must sound at
+    once during a blend.
+  - *Listener-based crossfade cancellation*: pause/seek from the media
+    notification, Bluetooth controls, or focus loss call `player.pause()`/
+    seek directly, bypassing the in-app wrappers — the crossfade was not
+    cancelled. A `Player.Listener` now cancels on `playWhenReady=false` and on
+    any external SEEK discontinuity (the fire's own `seekToNextMediaItem` is
+    recognised via `crossfadeTargetIndex` and ignored).
+  - *Seek on transcoded tracks restarted at 0:00 / played wrong audio*
+    (user-reported 2026-06-13, reproduced on emulator with R.E.M.
+    "Electrolite", WMA). Two stacked causes, both fixed:
+    (1) Emby serves transcodes as chunked streams of unknown length, ExoPlayer
+    marks the window unseekable, and an in-player seek on unseekable media
+    restarts at zero → `seekTo` now routes unseekable-READY tracks through the
+    server-side `/stream?StartTimeTicks=` path (`seekViaStreamOffset`, the
+    generalised long-form seek).
+    (2) **Emby keys transcode jobs by `PlaySessionId`** — re-requesting
+    `/stream` with a new `StartTimeTicks` but the same session id returns the
+    already-running job, so audio continues from the old position while the
+    counter shows the seek target. Server-side seeks now mint a fresh
+    `PlaySessionId` per seek (verified against Emby 4.10 with fresh-session
+    curl + ffprobe for wma/mp3/m4b sources; same-session requests provably
+    returned the old job). This latent bug also affected in-chapter audiobook
+    seeking; audiobook *resume* always worked because a new queue mints a new
+    session id. Beware when testing with curl: requests without a
+    `PlaySessionId` can also reuse jobs and poison A/B comparisons.
+  - *Media notification never appeared in the shade* (user-reported
+    2026-06-13; pre-existing — the in-app mini-player masked it). Root cause:
+    the app injects one `ExoPlayer` singleton into both the UI and the
+    `MediaSessionService` and the UI drives that player **directly**, so no
+    `MediaController` ever connected to the service — and Media3 only starts
+    the foreground media notification (and the foreground service that keeps
+    background playback alive) once a controller connects. Verified on
+    emulator: `startForegroundCount` stayed 0 through play/pause/media-key
+    transitions. Fix: `PlaybackController` now lazily connects its own
+    `MediaController` to `SonicPlaybackService` on play (`connectNotification
+    Controller`) and releases it on stop. The controller issues no commands —
+    its presence activates the notification lifecycle. After the fix:
+    `isForeground=true`, a MediaStyle notification (id 1001, transport
+    category) shows with art/transport/seek, tapping it opens the app, and
+    Stop tears the service + notification down cleanly. POST_NOTIFICATIONS
+    runtime request and `setSessionActivity` (notification → app) were
+    necessary too but not sufficient on their own.
+  - Also fixed while verifying: library tab selection now survives popping
+    back from a detail screen (`rememberSaveable`), and each library tab owns
+    its scroll state via `SaveableStateProvider` (Artists/Albums no longer
+    share one scroll offset).
+  - *Observed, not yet fixed* (folds into the MEDIUM Home-refresh item): a
+    coordinator outage (`/sonic/mixes` fails) blanks the **entire** Home
+    screen with "Failed to connect to …:8765", because `refresh()` wraps all
+    six fetches in one `runCatching`. Home should degrade per-section, not
+    all-or-nothing.
+  Phase 2 (MEDIUM, queued): POST_NOTIFICATIONS runtime request +
+  `setSessionActivity`; Mixes play-before-queue-loads + swallowed errors;
+  BackHandler for in-place mix detail; Home ON_RESUME refetch weight; refresh
+  dialog copy (product decision: full turnover IS intended — fix the copy);
+  build-mixes polling instead of fixed 25s delay; per-tab lazy-list state;
+  hold the Now Playing label until the blend completes (product decision:
+  yes). Accepted product ideas: audiobook playback speed, sleep timer, mix
+  artwork via batched `/Items?Ids=` hydration, Android Auto browse tree, drag
+  scrubbing, queue reorder, swipe-to-dismiss mini player, small offline cache.
 - **M4 — Remaining sonic features:** Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform

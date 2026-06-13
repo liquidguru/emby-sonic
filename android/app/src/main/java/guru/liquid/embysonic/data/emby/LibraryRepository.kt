@@ -51,14 +51,29 @@ data class LibraryItem(
     val album: String? = null,
     val durationMs: Long? = null,
     val playbackPositionMs: Long = 0,
+    val played: Boolean = false,
 )
 
-fun List<LibraryItem>.resumeStartItem(): LibraryItem? =
-    firstOrNull { item ->
+/**
+ * Where a book (or any ordered collection) should resume: the first chapter with
+ * a mid-chapter position; otherwise — when the listener stopped on a chapter
+ * boundary, where the finished chapter was marked Played with its position
+ * cleared — the first unplayed chapter after the last played one. A fully
+ * played or never-started book starts from the beginning.
+ */
+fun List<LibraryItem>.resumeStartItem(): LibraryItem? {
+    val inProgress = firstOrNull { item ->
         val duration = item.durationMs
         item.playbackPositionMs > RESUME_MIN_POSITION_MS &&
             (duration == null || item.playbackPositionMs < duration - RESUME_END_PADDING_MS)
-    } ?: firstOrNull()
+    }
+    if (inProgress != null) return inProgress
+    val lastPlayed = indexOfLast { it.played }
+    if (lastPlayed in 0 until lastIndex) {
+        subList(lastPlayed + 1, size).firstOrNull { !it.played }?.let { return it }
+    }
+    return firstOrNull()
+}
 
 private const val RESUME_MIN_POSITION_MS = 5_000L
 private const val RESUME_END_PADDING_MS = 5_000L
@@ -332,6 +347,7 @@ class LibraryRepository @Inject constructor(
             album = album,
             durationMs = durationMs,
             playbackPositionMs = userData?.playbackPositionTicks?.ticksToMs() ?: 0,
+            played = userData?.played ?: false,
         )
     }
 

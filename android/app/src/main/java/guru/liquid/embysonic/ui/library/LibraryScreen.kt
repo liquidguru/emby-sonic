@@ -30,6 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -48,7 +50,9 @@ fun LibraryScreen(
     onOpenNowPlaying: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
+    // Saveable so popping back from a detail screen restores the tab the user
+    // left from (plain remember resets to Artists on every return).
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listView by viewModel.listView.collectAsStateWithLifecycle()
     val selectionMode by viewModel.selectionMode.collectAsStateWithLifecycle()
@@ -130,23 +134,29 @@ fun LibraryScreen(
             // or toggles selection while building a playlist.
             val detailKind = viewModel.kind.detailKindFor(selectedTab)
             val tabState = if (selectedTab == 0) state.artists else state.albums
-            StateContent(tabState) { items ->
-                val onClick = { item: LibraryItem ->
-                    if (selectionMode) viewModel.toggleSelected(item.id)
-                    else onOpenItem(item.id, item.title, detailKind)
-                }
-                val onPlay = if (selectionMode) {
-                    null
-                } else {
-                    { item: LibraryItem ->
-                        viewModel.playCollection(item, detailKind)
+            // Each tab owns its scroll state. Without the holder both tabs flow
+            // through one composable slot and share a single LazyGrid/List state,
+            // so Albums inherits Artists' scroll offset (and vice versa).
+            val tabStateHolder = rememberSaveableStateHolder()
+            tabStateHolder.SaveableStateProvider(key = "library_tab_$selectedTab") {
+                StateContent(tabState) { items ->
+                    val onClick = { item: LibraryItem ->
+                        if (selectionMode) viewModel.toggleSelected(item.id)
+                        else onOpenItem(item.id, item.title, detailKind)
                     }
-                }
-                val selection = if (selectionMode) selectedIds else emptySet()
-                if (listView) {
-                    CollectionList(items, placeholderBook, onClick, selection, onPlay)
-                } else {
-                    CardGrid(items, placeholderBook, onClick, selection, onPlay)
+                    val onPlay = if (selectionMode) {
+                        null
+                    } else {
+                        { item: LibraryItem ->
+                            viewModel.playCollection(item, detailKind)
+                        }
+                    }
+                    val selection = if (selectionMode) selectedIds else emptySet()
+                    if (listView) {
+                        CollectionList(items, placeholderBook, onClick, selection, onPlay)
+                    } else {
+                        CardGrid(items, placeholderBook, onClick, selection, onPlay)
+                    }
                 }
             }
         }
