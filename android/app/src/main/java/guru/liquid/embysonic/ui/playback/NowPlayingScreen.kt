@@ -62,6 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -205,34 +206,24 @@ private fun PlayerContent(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         item {
-            NowPlayingArtwork(track)
-            Spacer(Modifier.height(20.dp))
-            Text(
-                track.title,
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            track.artist?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-            track.album?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
+            // During a crossfade the outgoing track's hero is overlaid on the
+            // incoming one and its opacity ramps to 0 over the blend, so the
+            // artwork (and title) dissolve across in step with the audio instead
+            // of hard-cutting. Only active when a real blend is firing.
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                NowPlayingHero(track)
+                val fromTrack = state.crossfadeFromTrack
+                if (fromTrack != null && fromTrack.id != track.id) {
+                    val outgoingAlpha = crossfadeOutgoingAlpha(
+                        fromTrackId = fromTrack.id,
+                        currentTrackId = track.id,
+                        blendMs = state.crossfadeBlendMs,
+                        elapsedMs = state.positionMs,
+                    )
+                    Box(modifier = Modifier.graphicsLayer { alpha = outgoingAlpha }) {
+                        NowPlayingHero(fromTrack)
+                    }
+                }
             }
             Spacer(Modifier.height(22.dp))
             progress.Render(state, onSeek, Modifier.fillMaxWidth())
@@ -366,6 +357,45 @@ private fun RadioRow(item: LibraryItem, onClick: () -> Unit) {
             }
         },
     )
+}
+
+/** Artwork + title/artist/album block, rendered once per track (and overlaid during a crossfade). */
+@Composable
+private fun NowPlayingHero(track: PlaybackTrack) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        NowPlayingArtwork(track)
+        Spacer(Modifier.height(20.dp))
+        Text(
+            track.title,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        track.artist?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+        track.album?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
 }
 
 @Composable

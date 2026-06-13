@@ -1,5 +1,8 @@
 package guru.liquid.embysonic.ui.playback
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -17,6 +20,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -33,6 +37,37 @@ interface TrackProgress {
         onSeek: (Long) -> Unit,
         modifier: Modifier,
     )
+}
+
+/**
+ * Opacity (1→0) for the OUTGOING track's artwork overlay during a crossfade,
+ * driven by how far the incoming track has advanced into the blend rather than a
+ * fixed timer. This keeps the dissolve correct (and finishing on time) even when
+ * the view — e.g. the mini player — only becomes visible partway through the
+ * blend, and naturally pauses while the incoming track is still buffering.
+ * Returns 0 when no blend is active.
+ */
+@Composable
+internal fun crossfadeOutgoingAlpha(
+    fromTrackId: String,
+    currentTrackId: String,
+    blendMs: Long,
+    elapsedMs: Long,
+): Float {
+    val alpha = remember(fromTrackId, currentTrackId) { Animatable(1f) }
+    LaunchedEffect(fromTrackId, currentTrackId) {
+        val blend = blendMs.coerceAtLeast(1L)
+        val elapsed = elapsedMs.coerceIn(0L, blend)
+        alpha.snapTo((1f - elapsed.toFloat() / blend).coerceIn(0f, 1f))
+        alpha.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(
+                durationMillis = (blend - elapsed).toInt().coerceIn(0, 15_000),
+                easing = LinearEasing,
+            ),
+        )
+    }
+    return alpha.value
 }
 
 object SliderTrackProgress : TrackProgress {

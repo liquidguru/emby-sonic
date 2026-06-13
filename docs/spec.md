@@ -600,13 +600,37 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     fire → ramp). NOTE: the silent-playback incident itself looked like
     emulator software-codec failure (audio focus was held; ExoPlayer raised no
     error) — retest on real hardware.
+  - *Artwork cross-dissolve during crossfade (2026-06-13)*. Now Playing and the
+    mini player cross-dissolve the album art (and Now Playing's title/artist)
+    from the outgoing to the incoming track, synced to the audio blend, instead
+    of hard-cutting. Driven by the incoming track's position within the blend
+    (`crossfadeOutgoingAlpha` in TrackProgress.kt) so it stays correct even when
+    a view appears mid-blend. PlaybackController publishes `crossfadeFromTrack` +
+    `crossfadeBlendMs`. Only active when a real blend fires (music, direct-play).
+    Now Playing verified on-device-good by Kaj; **mini-player dissolve pending
+    real-device confirmation** (emulator silence during blends confounds it, and
+    the mini player is only visible when not on Now Playing, so it must be
+    watched while browsing during a natural transition). Supersedes the old
+    "hold the Now Playing label" item.
+  - *Seek-into-tail no longer fires a crossfade (2026-06-13)*. Manually seeking
+    into a track's blend window has no runway for the helper to preload and was
+    force-firing a glitchy blend (the trigger for a reproducible silent-playback
+    on the emulator). `seekTo` now suppresses crossfade for a track seeked into
+    its tail (`suppressCrossfadeIndex`), re-enabled on seeking back out / new
+    queue. Correct behaviour regardless of platform.
+  - **Emulator audio ceiling reached (2026-06-13).** Repeated silent-but-
+    advancing playback during/after crossfades traced to the emulator's software
+    codecs failing under crossfade's two simultaneous decoders ("required system
+    resources" / dead MediaCodec thread; audio focus was held, ExoPlayer raised
+    no error). Not fixable in app code. Crossfade-dependent behaviour (blend
+    quality, artwork dissolves, no-dropout) must be validated on real hardware.
+    Non-crossfade features can still be emulator-tested with crossfade OFF.
   Phase 2 remaining (queued):
-  - Hold the Now Playing label until the crossfade blend completes (product
-    decision: yes).
   - Guest DJ toggle (Now Playing) is currently a disabled placeholder — wire it
     to `/sonic/queue/inject` (inject similar tracks into the live queue) or hide
     it until implemented. Distinct from Track Radio (augments the queue rather
     than replacing it).
+  - Real-device test build + verification pass (set up below).
   - "On This Day" — needs a play-history log (Emby only stores last-played per
     item), i.e. a new coordinator subsystem. Deferred.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
