@@ -12,6 +12,7 @@ Run via POST /sonic/library/build-mixes. Replaces all existing mixes on each run
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections import Counter
@@ -115,6 +116,61 @@ def _dedupe(name: str, used: set[str]) -> str:
     return final
 
 
+def _cluster_and_name(
+    track_ids: list[str],
+    vecs: "np.ndarray",
+    tempos: list[float | None],
+    energies: list[float | None],
+    artists: list[str | None],
+    n_clusters: int,
+    tracks_per_mix: int,
+) -> list[dict]:
+    """CPU-bound k-means + per-cluster track selection + naming. Pure/blocking,
+    so it runs in a worker thread (see `_run`)."""
+    n_clusters = min(n_clusters, len(vecs))
+    km = MiniBatchKMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = km.fit_predict(vecs)
+    centroids = km.cluster_centers_.astype(np.float32)
+
+    # Pass 1: pick each cluster's top tracks and gather their naming features.
+    clusters: list[dict] = []
+    for cluster_id in range(n_clusters):
+        mask = np.where(labels == cluster_id)[0]
+        if len(mask) == 0:
+            continue
+        cluster_vecs = vecs[mask]
+        centroid = centroids[cluster_id]
+        centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
+        scores = cluster_vecs @ centroid_norm
+        top_indices = np.argsort(-scores)[:tracks_per_mix]
+
+        sel_tempos = [tempos[mask[i]] for i in top_indices]
+        sel_energies = [energies[mask[i]] for i in top_indices]
+        clusters.append({
+            "cluster_id": cluster_id,
+            "track_ids": [track_ids[mask[i]] for i in top_indices],
+            "mean_tempo": _mean(sel_tempos),
+            "mean_energy": _mean(sel_energies),
+            "artists": [artists[mask[i]] for i in top_indices],
+            "centroid": centroids[cluster_id].tobytes(),
+        })
+
+    # Grade clusters RELATIVE TO EACH OTHER: terciles over the per-cluster means,
+    # not over individual tracks (averaging 50 tracks pulls toward the global mean,
+    # so track-level terciles would label almost every cluster "mid").
+    tempo_terc = _terciles([c["mean_tempo"] for c in clusters])
+    energy_terc = _terciles([c["mean_energy"] for c in clusters])
+
+    used_names: set[str] = set()
+    for c in clusters:
+        mood = _MOOD[(_level(c["mean_tempo"], tempo_terc), _level(c["mean_energy"], energy_terc))]
+        artist, frac = _dominant_artist(c["artists"])
+        base = f"{mood} · {artist}" if (artist and frac >= _ARTIST_DOMINANCE) else mood
+        c["name"] = _dedupe(base, used_names)
+
+    return clusters
+
+
 async def build_mixes(n_clusters: int = 30, tracks_per_mix: int = 50) -> int:
     global _build_running
     if _build_running:
@@ -170,48 +226,17 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
     energies = [r.energy for r in rows]
     artists = [r.artist for r in rows]
 
-    logger.info("build_mixes: clustering %d tracks into %d mixes", len(track_ids), n_clusters)
+    logger.info(
+        "build_mixes: clustering %d tracks into %d mixes",
+        len(track_ids), min(n_clusters, len(vecs)),
+    )
 
-    n_clusters = min(n_clusters, len(vecs))
-    km = MiniBatchKMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = km.fit_predict(vecs)
-    centroids = km.cluster_centers_.astype(np.float32)
-
-    # Pass 1: pick each cluster's top tracks and gather their naming features.
-    clusters: list[dict] = []
-    for cluster_id in range(n_clusters):
-        mask = np.where(labels == cluster_id)[0]
-        if len(mask) == 0:
-            continue
-        cluster_vecs = vecs[mask]
-        centroid = centroids[cluster_id]
-        centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
-        scores = cluster_vecs @ centroid_norm
-        top_indices = np.argsort(-scores)[:tracks_per_mix]
-
-        sel_tempos = [tempos[mask[i]] for i in top_indices]
-        sel_energies = [energies[mask[i]] for i in top_indices]
-        clusters.append({
-            "cluster_id": cluster_id,
-            "track_ids": [track_ids[mask[i]] for i in top_indices],
-            "mean_tempo": _mean(sel_tempos),
-            "mean_energy": _mean(sel_energies),
-            "artists": [artists[mask[i]] for i in top_indices],
-            "centroid": centroids[cluster_id].tobytes(),
-        })
-
-    # Grade clusters RELATIVE TO EACH OTHER: terciles over the per-cluster means,
-    # not over individual tracks (averaging 50 tracks pulls toward the global mean,
-    # so track-level terciles would label almost every cluster "mid").
-    tempo_terc = _terciles([c["mean_tempo"] for c in clusters])
-    energy_terc = _terciles([c["mean_energy"] for c in clusters])
-
-    used_names: set[str] = set()
-    for c in clusters:
-        mood = _MOOD[(_level(c["mean_tempo"], tempo_terc), _level(c["mean_energy"], energy_terc))]
-        artist, frac = _dominant_artist(c["artists"])
-        base = f"{mood} · {artist}" if (artist and frac >= _ARTIST_DOMINANCE) else mood
-        c["name"] = _dedupe(base, used_names)
+    # Offload the blocking k-means + selection + naming to a worker thread so the
+    # event loop stays responsive during the ~15-20s build (notably so the
+    # /library/build-state poll can be answered while a build runs).
+    clusters = await asyncio.to_thread(
+        _cluster_and_name, track_ids, vecs, tempos, energies, artists, n_clusters, tracks_per_mix
+    )
 
     # Pass 2: replace all mixes and write the new ones.
     async with AsyncSessionLocal() as db:
