@@ -124,8 +124,8 @@ class LibraryRepository @Inject constructor(
             AudioLibrary(id = id, name = v.name.orEmpty(), kind = kind)
         }
 
-    suspend fun artists(libraryId: String): List<LibraryItem> =
-        embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = BROWSE_LIMIT)
+    suspend fun artists(libraryId: String, limit: Int = BROWSE_LIMIT): List<LibraryItem> =
+        embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = limit)
             .items.map { it.toCollectionItem() }
 
     /**
@@ -242,12 +242,12 @@ class LibraryRepository @Inject constructor(
      * The user's Emby playlists (across all libraries). Cover art is often absent —
      * only some playlists have a Primary image — so the placeholder shows otherwise.
      */
-    suspend fun playlists(): List<LibraryItem> =
+    suspend fun playlists(limit: Int = BROWSE_LIMIT): List<LibraryItem> =
         embyApi.getItems(
             userId = userId(),
             includeItemTypes = "Playlist",
             fields = "ChildCount,UserData,PrimaryImageAspectRatio",
-            limit = BROWSE_LIMIT,
+            limit = limit,
         ).items.map { it.toPlaylistItem() }
 
     /** A playlist's tracks, in stored playlist order. */

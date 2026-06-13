@@ -38,13 +38,18 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -86,9 +91,22 @@ fun MixesScreen(
     var showMixOptions by rememberSaveable { mutableStateOf(false) }
     val selectedMix = (sonicState as? SonicMixesState.DetailLoading)?.mix
         ?: (sonicState as? SonicMixesState.DetailData)?.mix
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(playlistsViewModel) {
+        playlistsViewModel.openNowPlaying.collect { onOpenNowPlaying() }
+    }
+    LaunchedEffect(playlistsViewModel) {
+        playlistsViewModel.messages.collect { snackbarHostState.showSnackbar(it) }
+    }
+    // System back closes an open mix detail instead of leaving the Mixes tab.
+    BackHandler(enabled = selectedTab == 1 && selectedMix != null) {
+        playlistsViewModel.closeSonicMix()
+    }
 
     Scaffold(
         modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -132,18 +150,14 @@ fun MixesScreen(
             }
             Box(modifier = Modifier.fillMaxSize()) {
                 when (selectedTab) {
-                    0 -> PlaylistsTab(playlistsViewModel, listView, onOpenItem, onOpenNowPlaying)
+                    0 -> PlaylistsTab(playlistsViewModel, listView, onOpenItem)
                     else -> SonicMixesTab(
                         state = sonicState,
                         onOpenMix = playlistsViewModel::openSonicMix,
-                        onPlayMix = { mix ->
-                            playlistsViewModel.playSonicMix(mix)
-                            onOpenNowPlaying()
-                        },
-                        onPlayTracks = { tracks, start ->
-                            playlistsViewModel.playSonicTracks(tracks, start)
-                            onOpenNowPlaying()
-                        },
+                        // Now Playing opens via the ViewModel's openNowPlaying
+                        // event, only once a playable queue actually loads.
+                        onPlayMix = playlistsViewModel::playSonicMix,
+                        onPlayTracks = playlistsViewModel::playSonicTracks,
                         onSaveMix = playlistsViewModel::saveSonicMixAsPlaylist,
                         onRegenerateMix = playlistsViewModel::regenerateSonicMix,
                         refreshTracksPerMix = mixOptions.refreshTracksPerMix,
@@ -170,7 +184,6 @@ private fun PlaylistsTab(
     viewModel: PlaylistsViewModel,
     listView: Boolean,
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit,
-    onOpenNowPlaying: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var deleteTargetId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -181,10 +194,8 @@ private fun PlaylistsTab(
         val onClick = { item: LibraryItem ->
             onOpenItem(item.id, item.title, DetailKind.PLAYLIST_TRACKS)
         }
-        val onPlay = { item: LibraryItem ->
-            viewModel.playPlaylist(item)
-            onOpenNowPlaying()
-        }
+        // Now Playing opens via the ViewModel's openNowPlaying event on success.
+        val onPlay = { item: LibraryItem -> viewModel.playPlaylist(item) }
         val onDelete = { item: LibraryItem -> deleteTargetId = item.id }
         if (listView) {
             CollectionList(items, placeholderBook = false, onItemClick = onClick, onPlayItem = onPlay, onDeleteItem = onDelete)
@@ -471,7 +482,7 @@ private fun RefreshMixDialog(
         text = {
             Column {
                 Text(
-                    "Pick up new tracks added since the last full build. How many tracks?",
+                    "Replace this mix with a fresh set of similar tracks. How many tracks?",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
