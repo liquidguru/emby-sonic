@@ -116,7 +116,7 @@ class PlaylistsViewModel @Inject constructor(
                 onSuccess = { detail ->
                     _sonicState.value = SonicMixesState.DetailData(
                         mix = detail.mix,
-                        tracks = detail.tracks.map { it.toLibraryItem() },
+                        tracks = detail.tracks.map { it.toLibraryItem() }.withArtwork(),
                     )
                 },
                 onFailure = {
@@ -133,7 +133,7 @@ class PlaylistsViewModel @Inject constructor(
 
     fun playSonicMix(mix: SonicMixDto) {
         viewModelScope.launch {
-            runCatching { coordinator.mixDetail(mix.id).tracks.map { it.toLibraryItem() } }.fold(
+            runCatching { coordinator.mixDetail(mix.id).tracks.map { it.toLibraryItem() }.withArtwork() }.fold(
                 onSuccess = { tracks ->
                     val first = tracks.firstOrNull()
                     if (first == null) {
@@ -198,7 +198,7 @@ class PlaylistsViewModel @Inject constructor(
                 onSuccess = { detail ->
                     _sonicState.value = SonicMixesState.DetailData(
                         mix = detail.mix,
-                        tracks = detail.tracks.map { it.toLibraryItem() },
+                        tracks = detail.tracks.map { it.toLibraryItem() }.withArtwork(),
                     )
                     _mixOptions.value = _mixOptions.value.copy(
                         generating = false,
@@ -263,6 +263,17 @@ class PlaylistsViewModel @Inject constructor(
         album = album,
         durationMs = durationMs,
     )
+
+    /**
+     * Coordinator tracks carry no artwork; resolve each track's Emby Primary
+     * cover in one batched query so mix detail, Now Playing, and the mini player
+     * show real art instead of placeholders. Falls back to the unhydrated items
+     * if the lookup fails.
+     */
+    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
+        val art = runCatching { repository.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
+        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
+    }
 
     private fun formatDuration(ms: Long?): String? {
         if (ms == null || ms <= 0) return null

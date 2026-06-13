@@ -330,19 +330,38 @@ class LibraryRepository @Inject constructor(
         imageUrl = imageTags["Primary"]?.let { imageUrls.primary(id.orEmpty(), it) },
     )
 
+    /**
+     * Resolve item Primary art: its own tag first, else fall back to the parent
+     * album's Primary image, else null (placeholder). Shared by track rows and
+     * the batched [artworkByIds] hydration.
+     */
+    private fun EmbyItemDto.artUrl(): String? = when {
+        imageTags["Primary"] != null -> imageUrls.primary(id.orEmpty(), imageTags["Primary"])
+        albumId != null && albumPrimaryImageTag != null ->
+            imageUrls.primary(albumId, albumPrimaryImageTag)
+        else -> null
+    }
+
+    /**
+     * Resolve Primary artwork URLs for a set of Emby item ids in one batched
+     * query. Coordinator track lists (sonic mixes) carry no image metadata, so
+     * mixes hydrate their covers through this. Returns id → url (url may be null
+     * when the item has no resolvable cover).
+     */
+    suspend fun artworkByIds(ids: List<String>): Map<String, String?> {
+        val wanted = ids.filter { it.isNotBlank() }.distinct()
+        if (wanted.isEmpty()) return emptyMap()
+        val items = embyApi.getItemsByIds(userId(), wanted.joinToString(",")).items
+        return items.associate { it.id.orEmpty() to it.artUrl() }
+    }
+
     /** Track row: art falls back to the parent album's Primary image, else null (placeholder). */
     private fun EmbyItemDto.toTrackItem(): LibraryItem {
-        val art = when {
-            imageTags["Primary"] != null -> imageUrls.primary(id.orEmpty(), imageTags["Primary"])
-            albumId != null && albumPrimaryImageTag != null ->
-                imageUrls.primary(albumId, albumPrimaryImageTag)
-            else -> null
-        }
         return LibraryItem(
             id = id.orEmpty(),
             title = name.orEmpty(),
             subtitle = artists.joinToString(", ").ifBlank { albumArtist },
-            imageUrl = art,
+            imageUrl = artUrl(),
             trailingText = formatDuration(durationMs),
             album = album,
             durationMs = durationMs,

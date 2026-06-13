@@ -49,6 +49,17 @@ interface EmbyApi {
     ): QueryResult<EmbyItemDto>
 
     /**
+     * Fetches specific items by id (comma-separated). Used to hydrate artwork for
+     * coordinator-supplied track ids (sonic mixes), which carry no image metadata.
+     */
+    @GET("Items")
+    suspend fun getItemsByIds(
+        @Query("UserId") userId: String,
+        @Query("Ids") ids: String,
+        @Query("Fields") fields: String = "PrimaryImageAspectRatio",
+    ): QueryResult<EmbyItemDto>
+
+    /**
      * Items of a playlist, in playlist order. The dedicated endpoint preserves the
      * stored sequence (and PlaylistItemId) that a generic `/Items` query would not.
      */
