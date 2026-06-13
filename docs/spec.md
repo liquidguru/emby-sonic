@@ -562,9 +562,25 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     Verified on emulator: list + Home covers render; build-state endpoint
     returns `{running:false}`. Poll *cycle* not live-tested (won't trigger a
     destructive full rebuild that replaces all the user's mixes).
+  - *Recent plays Home row* (2026-06-13): new `RECENT_PLAYS` Home section —
+    recently played music grouped back to albums
+    (`LibraryRepository.recentlyPlayedAlbums`: Emby `SortBy=DatePlayed` +
+    `Filters=IsPlayed` over a 100-track window, deduped to albums, album cover
+    resolved). Tapping opens the album; play plays it. Customizable/reorderable
+    like the other sections. Verified on emulator. Note: `Filters=IsPlayed`
+    only catches fully-completed tracks, so the row reflects finished listens
+    (matches the H3 Played-on-completion behavior). New sections append to the
+    end of an existing saved section order, so it lands last for users who
+    already customized Home (default position is 2nd for fresh installs).
   Phase 2 remaining (queued):
   - Hold the Now Playing label until the crossfade blend completes (product
     decision: yes).
+  - "Stations" grid (Plexamp-style): metadata radios (Library/Decade/Random
+    Album/Deep Cuts — cheap, Emby-only) + wire the existing coordinator
+    `/sonic/tracks/{id}/radio` and `/sonic/adventure` endpoints into UI + reuse
+    mixes for Mood/Style. Overlaps the M4 sonic roadmap.
+  - "On This Day" — needs a play-history log (Emby only stores last-played per
+    item), i.e. a new coordinator subsystem. Deferred.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
     browse tree, drag scrubbing, queue reorder, swipe-to-dismiss mini player,
     small offline cache.

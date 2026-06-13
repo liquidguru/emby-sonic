@@ -85,6 +85,9 @@ private const val RESUME_END_PADDING_MS = 5_000L
  */
 private const val BROWSE_LIMIT = 10000
 
+/** How many recently played tracks to scan when grouping recent plays to albums. */
+private const val RECENT_PLAYS_SCAN = 100
+
 private fun formatDuration(ms: Long?): String? {
     if (ms == null || ms <= 0) return null
     val totalSeconds = ms / 1000
@@ -173,6 +176,42 @@ class LibraryRepository @Inject constructor(
             sortOrder = "Descending",
             limit = limit,
         ).items.map { it.toCollectionItem() }
+
+    /**
+     * Recently played music, grouped back to albums (most-recent first). Emby's
+     * `DatePlayed` lives on the track, so we scan a window of recently played
+     * tracks and dedupe to their albums. Cover resolves from the album's Primary
+     * image, falling back to the track's own.
+     */
+    suspend fun recentlyPlayedAlbums(libraryId: String, limit: Int): List<LibraryItem> {
+        val tracks = embyApi.getItems(
+            userId = userId(),
+            parentId = libraryId,
+            includeItemTypes = "Audio",
+            sortBy = "DatePlayed",
+            sortOrder = "Descending",
+            filters = "IsPlayed",
+            limit = RECENT_PLAYS_SCAN,
+        ).items
+        val seen = HashSet<String>()
+        val result = ArrayList<LibraryItem>()
+        for (t in tracks) {
+            val albumId = t.albumId ?: continue
+            if (!seen.add(albumId)) continue
+            val art = t.albumPrimaryImageTag?.let { imageUrls.primary(albumId, it) }
+                ?: t.imageTags["Primary"]?.let { imageUrls.primary(t.id.orEmpty(), it) }
+            result.add(
+                LibraryItem(
+                    id = albumId,
+                    title = t.album ?: t.name.orEmpty(),
+                    subtitle = t.albumArtist ?: t.artists.firstOrNull(),
+                    imageUrl = art,
+                ),
+            )
+            if (result.size >= limit) break
+        }
+        return result
+    }
 
     suspend fun resumeAudiobooks(libraryId: String, limit: Int): List<LibraryItem> {
         val chapters = embyApi.getItems(

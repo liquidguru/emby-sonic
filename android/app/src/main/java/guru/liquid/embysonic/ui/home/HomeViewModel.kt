@@ -32,6 +32,7 @@ data class HomeUiState(
     val compactCards: Boolean = false,
     val sectionPreferences: List<HomeSectionPreference> = HomeSectionKind.defaultPreferences(),
     val resumeAudiobooks: List<LibraryItem> = emptyList(),
+    val recentPlays: List<LibraryItem> = emptyList(),
     val playlists: List<LibraryItem> = emptyList(),
     val sonicMixes: List<LibraryItem> = emptyList(),
     val recentAlbums: List<LibraryItem> = emptyList(),
@@ -40,6 +41,7 @@ data class HomeUiState(
 
 enum class HomeSectionKind(val id: String, val label: String) {
     RESUME_AUDIOBOOKS("resume_audiobooks", "Resume audiobooks"),
+    RECENT_PLAYS("recent_plays", "Recent plays"),
     PLAYLISTS("playlists", "Playlists"),
     SONIC_MIXES("sonic_mixes", "Sonic mixes"),
     RECENT_ALBUMS("recent_albums", "Recently added albums"),
@@ -48,6 +50,7 @@ enum class HomeSectionKind(val id: String, val label: String) {
     companion object {
         val defaultOrder: List<HomeSectionKind> = listOf(
             RESUME_AUDIOBOOKS,
+            RECENT_PLAYS,
             PLAYLISTS,
             SONIC_MIXES,
             RECENT_ALBUMS,
@@ -117,6 +120,9 @@ class HomeViewModel @Inject constructor(
             val resumeJob = async {
                 section { audiobookLibrary?.let { repository.resumeAudiobooks(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
             }
+            val recentPlaysJob = async {
+                section { musicLibrary?.let { repository.recentlyPlayedAlbums(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
+            }
             val playlistsJob = async { section { repository.playlists(HOME_SECTION_LIMIT) } }
             val albumsJob = async {
                 section { musicLibrary?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
@@ -126,12 +132,13 @@ class HomeViewModel @Inject constructor(
             }
 
             val resumeAudiobooks = resumeJob.await()
+            val recentPlays = recentPlaysJob.await()
             val playlists = playlistsJob.await()
             val albums = albumsJob.await()
             val artists = artistsJob.await()
 
-            val allEmpty = resumeAudiobooks.isEmpty() && playlists.isEmpty() &&
-                albums.isEmpty() && artists.isEmpty()
+            val allEmpty = resumeAudiobooks.isEmpty() && recentPlays.isEmpty() &&
+                playlists.isEmpty() && albums.isEmpty() && artists.isEmpty()
             _state.value = HomeUiState(
                 userName = settings.snapshot().userName,
                 loading = false,
@@ -142,6 +149,7 @@ class HomeViewModel @Inject constructor(
                 compactCards = _state.value.compactCards,
                 sectionPreferences = _state.value.sectionPreferences,
                 resumeAudiobooks = resumeAudiobooks,
+                recentPlays = recentPlays,
                 playlists = playlists,
                 // Keep any previously loaded mixes until the coordinator answers.
                 sonicMixes = _state.value.sonicMixes,
