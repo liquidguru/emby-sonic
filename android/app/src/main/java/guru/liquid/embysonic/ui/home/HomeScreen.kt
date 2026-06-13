@@ -199,6 +199,11 @@ private fun HomeContent(
                         onClick = { onOpenItem(it.id, it.title, DetailKind.BOOK_CHAPTERS) },
                         onPlay = onPlayResumeAudiobook,
                     )
+                    HomeSectionKind.RECENT_PLAYS -> HomeSectionData(
+                        items = state.recentPlays,
+                        onClick = { onOpenItem(it.id, it.title, DetailKind.ALBUM_TRACKS) },
+                        onPlay = onPlayAlbum,
+                    )
                     HomeSectionKind.PLAYLISTS -> HomeSectionData(
                         items = state.playlists,
                         onClick = { onOpenItem(it.id, it.title, DetailKind.PLAYLIST_TRACKS) },
@@ -235,6 +240,7 @@ private fun HomeContent(
 
         if (
             state.resumeAudiobooks.isEmpty() &&
+            state.recentPlays.isEmpty() &&
             state.playlists.isEmpty() &&
             state.sonicMixes.isEmpty() &&
             state.recentAlbums.isEmpty() &&

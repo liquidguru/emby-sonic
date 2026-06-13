@@ -46,6 +46,7 @@ interface EmbyApi {
         @Query("Limit") limit: Int = 200,
         @Query("ParentId") parentId: String? = null,
         @Query("AlbumArtistIds") albumArtistIds: String? = null,
+        @Query("Filters") filters: String? = null,
     ): QueryResult<EmbyItemDto>
 
     /**
