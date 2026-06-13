@@ -49,6 +49,7 @@ class MixOut(BaseModel):
     created_at: datetime | None
     cluster_id: int | None
     track_count: int
+    cover_track_id: str | None = None  # a representative track id, for client artwork
 
     model_config = {"from_attributes": True}
 
@@ -89,6 +90,10 @@ class BuildMixesStarted(BaseModel):
     message: str
     n_clusters: int
     tracks_per_mix: int
+
+
+class BuildStateOut(BaseModel):
+    running: bool  # True while a mix build is in progress (poll after build-mixes)
 
 
 class SimilarArtist(BaseModel):

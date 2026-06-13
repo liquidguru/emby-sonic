@@ -1,6 +1,12 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from api.deps import DB, AuthToken
-from api.schemas import ScanRequest, ScanStarted, BuildMixesRequest, BuildMixesStarted
+from api.schemas import (
+    ScanRequest,
+    ScanStarted,
+    BuildMixesRequest,
+    BuildMixesStarted,
+    BuildStateOut,
+)
 from analysis.scanner import scan_state, run_scan
 from analysis.mixes import build_mixes, build_state
 
@@ -34,3 +40,10 @@ async def trigger_build_mixes(
         n_clusters=body.n_clusters,
         tracks_per_mix=body.tracks_per_mix,
     )
+
+
+@router.get("/library/build-state", response_model=BuildStateOut)
+async def get_build_state(_token: AuthToken) -> BuildStateOut:
+    """Whether a mix build is currently running. Clients poll this after
+    triggering build-mixes instead of waiting a fixed interval."""
+    return BuildStateOut(running=build_state()["running"])

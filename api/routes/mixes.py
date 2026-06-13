@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from api.deps import DB, AuthToken
 from api.schemas import MixOut, MixDetail, RegenerateMixRequest, TrackOut
 from analysis.mixes import is_mix_excluded
@@ -14,22 +14,34 @@ router = APIRouter(tags=["mixes"])
 
 @router.get("/mixes", response_model=list[MixOut])
 async def list_mixes(db: DB, _token: AuthToken) -> list[MixOut]:
-    result = await db.execute(select(Mix))
-    mixes = result.scalars().all()
-    out = []
-    for mix in mixes:
-        count_result = await db.execute(
-            select(MixTrack).where(MixTrack.mix_id == mix.id)
-        )
-        count = len(count_result.scalars().all())
-        out.append(MixOut(
+    mixes = (await db.execute(select(Mix))).scalars().all()
+    # Track counts and a representative cover track (position 0) for every mix in
+    # two grouped queries instead of one query per mix.
+    counts = dict(
+        (
+            await db.execute(
+                select(MixTrack.mix_id, func.count()).group_by(MixTrack.mix_id)
+            )
+        ).all()
+    )
+    covers = dict(
+        (
+            await db.execute(
+                select(MixTrack.mix_id, MixTrack.track_id).where(MixTrack.position == 0)
+            )
+        ).all()
+    )
+    return [
+        MixOut(
             id=mix.id,
             name=mix.name,
             created_at=mix.created_at,
             cluster_id=mix.cluster_id,
-            track_count=count,
-        ))
-    return out
+            track_count=counts.get(mix.id, 0),
+            cover_track_id=covers.get(mix.id),
+        )
+        for mix in mixes
+    ]
 
 
 @router.get("/mixes/{mix_id}", response_model=MixDetail)
@@ -55,6 +67,7 @@ async def get_mix(mix_id: str, db: DB, _token: AuthToken) -> MixDetail:
         created_at=mix.created_at,
         cluster_id=mix.cluster_id,
         track_count=len(tracks),
+        cover_track_id=tracks[0].id if tracks else None,
     )
     return MixDetail(mix=mix_out, tracks=tracks)
 
@@ -158,5 +171,6 @@ async def regenerate_mix(
         created_at=mix.created_at,
         cluster_id=mix.cluster_id,
         track_count=len(tracks),
+        cover_track_id=tracks[0].id if tracks else None,
     )
     return MixDetail(mix=mix_out, tracks=tracks)
