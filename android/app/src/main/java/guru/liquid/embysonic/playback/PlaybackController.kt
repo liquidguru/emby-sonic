@@ -3,6 +3,7 @@ package guru.liquid.embysonic.playback
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -51,6 +52,7 @@ class PlaybackController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val embyApi: EmbyApi,
     private val settings: SettingsRepository,
+    private val audioEffects: AudioEffectsController,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
@@ -60,12 +62,18 @@ class PlaybackController @Inject constructor(
         .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
         .build()
 
+    // Both players share one audio session so a single Equalizer instance covers
+    // normal playback AND the crossfade helper's tail.
+    private val sharedAudioSessionId: Int =
+        (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
+
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
         .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ true)
         .setHandleAudioBecomingNoisy(true)
         .setWakeMode(C.WAKE_MODE_NETWORK)
         .build()
+        .also { it.audioSessionId = sharedAudioSessionId }
 
     // Secondary player used only to play the OUTGOING track's tail during a
     // crossfade, so the primary can advance to the next track early. Created
@@ -83,6 +91,7 @@ class PlaybackController @Inject constructor(
             .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ false)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+            .also { it.audioSessionId = sharedAudioSessionId }
             .also { secondary ->
                 secondary.addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -203,6 +212,8 @@ class PlaybackController @Inject constructor(
                 delay(CROSSFADE_POLL_MS)
             }
         }
+        // Bind the equalizer to the players' shared session.
+        audioEffects.attach(sharedAudioSessionId)
     }
 
     fun playQueue(items: List<LibraryItem>, startItem: LibraryItem) {

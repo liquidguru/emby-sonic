@@ -635,14 +635,18 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     to `/sonic/queue/inject` (inject similar tracks into the live queue) or hide
     it until implemented. Distinct from Track Radio (augments the queue rather
     than replacing it).
-  - **Equalizer (requested 2026-06-13).** Two routes, not exclusive: (1) cheap —
-    broadcast the audio-session open/close intents so the device/system EQ (or
-    apps like Wavelet) can attach to liquidWave's output; (2) built-in graphic
-    EQ + presets via `android.media.audiofx.Equalizer` (+ BassBoost/
-    LoudnessEnhancer) bound to the player session, persisted in DataStore.
-    Wrinkle: crossfade uses two ExoPlayers (primary + fade helper), each with
-    its own audio session — the EQ must bind to both during a blend. Suggested:
-    ship the broadcast hook first, in-app EQ UI later.
+  - *Equalizer (built 2026-06-14, verified on Pixel 8 Pro).* In-app graphic EQ
+    via `android.media.audiofx.Equalizer`. Both ExoPlayers share one audio
+    session (`generateAudioSessionId` set on primary + fade helper) so a single
+    Equalizer covers normal playback and crossfade blends. `AudioEffects
+    Controller` (singleton) owns the effect, exposes `EqualizerState` (bands,
+    level range, presets, enabled), persists enabled + per-band millibel levels
+    in DataStore, and is robust to devices without an effects impl (UI shows
+    "not available"). UI: Settings → Equalizer (enable toggle, system presets,
+    per-band sliders with dB readout, Flat reset). Also broadcasts
+    `ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION` so external EQ apps (Wavelet,
+    system EQ) can attach. Follow-ups if wanted: BassBoost / LoudnessEnhancer,
+    a vertical-slider layout.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
     browse tree, drag scrubbing, queue reorder, swipe-to-dismiss mini player,
     small offline cache.

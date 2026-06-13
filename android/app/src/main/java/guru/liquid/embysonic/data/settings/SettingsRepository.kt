@@ -45,6 +45,8 @@ class SettingsRepository @Inject constructor(
         val PLAYBACK_REPEAT_MODE = stringPreferencesKey("playback_repeat_mode")
         val CROSSFADE_ENABLED = booleanPreferencesKey("crossfade_enabled")
         val CROSSFADE_DURATION_MS = intPreferencesKey("crossfade_duration_ms")
+        val EQ_ENABLED = booleanPreferencesKey("eq_enabled")
+        val EQ_BAND_LEVELS = stringPreferencesKey("eq_band_levels")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -119,6 +121,16 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    suspend fun setEqEnabled(value: Boolean) {
+        context.dataStore.edit { it[Keys.EQ_ENABLED] = value }
+        refreshCache()
+    }
+
+    suspend fun setEqBandLevels(levels: List<Int>) {
+        context.dataStore.edit { it[Keys.EQ_BAND_LEVELS] = levels.joinToString(",") }
+        refreshCache()
+    }
+
     @Volatile
     private var cached: AppSettings? = null
 
@@ -139,6 +151,11 @@ class SettingsRepository @Inject constructor(
             deviceId = deviceId,
             crossfadeEnabled = this[Keys.CROSSFADE_ENABLED] ?: false,
             crossfadeDurationMs = this[Keys.CROSSFADE_DURATION_MS] ?: DEFAULT_CROSSFADE_MS,
+            eqEnabled = this[Keys.EQ_ENABLED] ?: false,
+            eqBandLevels = this[Keys.EQ_BAND_LEVELS]
+                ?.splitCsv()
+                ?.mapNotNull { it.toIntOrNull() }
+                .orEmpty(),
         )
     }
 

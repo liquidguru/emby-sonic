@@ -6,6 +6,7 @@ object Routes {
     const val LOGIN = "login"
     const val MAIN = "main"
     const val SETTINGS = "settings"
+    const val EQUALIZER = "equalizer"
 
     // Tabs inside the main bottom-nav shell.
     const val HOME = "home"

@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun SettingsScreen(
     onBack: () -> Unit,
     onLoggedOut: () -> Unit,
+    onOpenEqualizer: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -178,6 +179,10 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            OutlinedButton(onClick = onOpenEqualizer, modifier = Modifier.fillMaxWidth()) {
+                Text("Equalizer")
             }
 
             OutlinedButton(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
