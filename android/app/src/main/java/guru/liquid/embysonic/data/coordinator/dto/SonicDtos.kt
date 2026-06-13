@@ -34,6 +34,8 @@ data class SonicMixDto(
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("cluster_id") val clusterId: Int? = null,
     @SerialName("track_count") val trackCount: Int = 0,
+    // A representative track id; clients resolve its Emby cover for the mix tile.
+    @SerialName("cover_track_id") val coverTrackId: String? = null,
 )
 
 @Serializable
@@ -58,4 +60,9 @@ data class BuildMixesStartedDto(
     @SerialName("message") val message: String,
     @SerialName("n_clusters") val nClusters: Int,
     @SerialName("tracks_per_mix") val tracksPerMix: Int,
+)
+
+@Serializable
+data class BuildStateDto(
+    @SerialName("running") val running: Boolean = false,
 )

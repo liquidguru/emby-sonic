@@ -151,8 +151,15 @@ class HomeViewModel @Inject constructor(
 
             // Sonic mixes live on the coordinator (a separate host that may be
             // down). Load them after the Emby rows so a slow/failed coordinator
-            // never gates or blanks the rest of Home.
-            val sonicMixes = section { coordinator.mixes().take(HOME_SECTION_LIMIT).map { it.toLibraryItem() } }
+            // never gates or blanks the rest of Home. Each mix tile shows its
+            // representative track's Emby cover.
+            val mixes = section { coordinator.mixes().take(HOME_SECTION_LIMIT) }
+            val mixArt = runCatching {
+                repository.artworkByIds(mixes.mapNotNull { it.coverTrackId })
+            }.getOrDefault(emptyMap())
+            val sonicMixes = mixes.map { mix ->
+                mix.toLibraryItem().copy(imageUrl = mix.coverTrackId?.let { mixArt[it] })
+            }
             _state.update { it.copy(sonicMixes = sonicMixes) }
         }
     }

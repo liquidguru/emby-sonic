@@ -3,6 +3,7 @@ package guru.liquid.embysonic.data.coordinator
 import guru.liquid.embysonic.data.coordinator.dto.RadioPlaylistDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesStartedDto
+import guru.liquid.embysonic.data.coordinator.dto.BuildStateDto
 import guru.liquid.embysonic.data.coordinator.dto.RegenerateMixRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.SimilarTrackDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDetailDto
@@ -54,6 +55,10 @@ interface CoordinatorApi {
     suspend fun buildMixes(
         @Body body: BuildMixesRequestDto,
     ): BuildMixesStartedDto
+
+    /** Whether a mix build is currently running. Poll after [buildMixes]. */
+    @GET("sonic/library/build-state")
+    suspend fun buildState(): BuildStateDto
 
     // --- Waveform (design-for-A placeholder; see docs/spec.md) -------------------
     // Reserved from day one so real waveforms drop in without restructuring the

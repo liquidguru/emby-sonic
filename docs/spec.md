@@ -547,15 +547,22 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     mixes showed grey placeholders everywhere (mix detail, Now Playing big art,
     mini player, queue). Mix tracks now resolve their Emby Primary cover in one
     batched `/Items?Ids=` query (`LibraryRepository.artworkByIds`, applied in
-    the mix detail/play paths). Verified on emulator — covers render in the mix
-    track list. Still placeholder-only: the mix *tiles/rows* themselves (Home
-    Sonic-mixes row, Mixes list), which would need a representative cover id in
-    the `/sonic/mixes` summary (a coordinator change).
+    the mix detail/play paths). Verified on emulator.
+  - *Mix tile/row covers + build polling* (coordinator + Android, deployed
+    2026-06-13). Coordinator: `MixOut` gains `cover_track_id` (the position-0
+    track), set in list/detail/regenerate; `list_mixes` now does counts +
+    covers in two grouped queries (removed the N+1). New
+    `GET /sonic/library/build-state {running}`. `build_mixes` offloads the
+    blocking k-means/selection/naming to `asyncio.to_thread` so the event loop
+    stays responsive (without it, the build-state poll can't be answered while
+    a build runs). Android: mix list rows and the Home Sonic-mixes row hydrate
+    a cover from `cover_track_id` (falls back to the GraphicEq icon when the
+    track has no resolvable art); `generateSonicMixes` now polls build-state
+    (grace window for start, capped at 3 min) instead of a fixed `delay(25s)`.
+    Verified on emulator: list + Home covers render; build-state endpoint
+    returns `{running:false}`. Poll *cycle* not live-tested (won't trigger a
+    destructive full rebuild that replaces all the user's mixes).
   Phase 2 remaining (queued):
-  - Build-mixes progress polling instead of the fixed 25s blind wait — needs a
-    coordinator-side build-state endpoint + redeploy to liquidBee. Could add a
-    per-mix cover track id to the `/sonic/mixes` summary at the same time so
-    mix tiles/rows get art too.
   - Hold the Now Playing label until the crossfade blend completes (product
     decision: yes).
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
