@@ -167,7 +167,15 @@ private fun PlayerContent(
     val listState = rememberLazyListState()
     LaunchedEffect(queueFocusRequest) {
         if (queueFocusRequest > 0) {
-            listState.animateScrollToItem(1)
+            // Toggle: if the queue is already showing, scroll back up to the
+            // player hero; otherwise scroll down to the queue. The same top-bar
+            // button takes you to the track list and back, so you're never
+            // stranded in the queue with only Stop/Collapse to escape.
+            if (listState.firstVisibleItemIndex >= 1) {
+                listState.animateScrollToItem(0)
+            } else {
+                listState.animateScrollToItem(1)
+            }
         }
     }
     LazyColumn(
