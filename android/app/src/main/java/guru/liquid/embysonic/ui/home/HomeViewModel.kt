@@ -74,6 +74,13 @@ data class HomeSectionPreference(
     val visible: Boolean,
 )
 
+/** Tap-to-play radio stations on Home. Decade also needs a [HomeStation] decade. */
+enum class HomeStation(val label: String) {
+    LIBRARY("Library Radio"),
+    RANDOM_ALBUM("Random Album Radio"),
+    DECADE("Decade Radio"),
+}
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: LibraryRepository,
@@ -90,6 +97,10 @@ class HomeViewModel @Inject constructor(
 
     private val _openNowPlaying = Channel<Unit>(Channel.BUFFERED)
     val openNowPlaying: Flow<Unit> = _openNowPlaying.receiveAsFlow()
+
+    // Cached so station taps (which happen after load) can build music queues.
+    @Volatile
+    private var musicLibraryId: String? = null
 
     init {
         val snap = settings.snapshot()
@@ -114,6 +125,7 @@ class HomeViewModel @Inject constructor(
             val libraries = runCatching { repository.audioLibraries() }.getOrElse { emptyList() }
             val musicLibrary = libraries.firstOrNull { it.kind == LibraryKind.MUSIC }
             val audiobookLibrary = libraries.firstOrNull { it.kind == LibraryKind.AUDIOBOOKS }
+            musicLibraryId = musicLibrary?.id
 
             // Emby-backed rows are the fast, primary content — fetch in parallel
             // and render as soon as they're ready.
@@ -175,6 +187,35 @@ class HomeViewModel @Inject constructor(
     /** Runs one Home section's fetch, swallowing failure to an empty list. */
     private suspend fun <T> section(block: suspend () -> List<T>): List<T> =
         runCatching { block() }.getOrElse { emptyList() }
+
+    /** Build and play a station queue, then open Now Playing. */
+    fun playStation(station: HomeStation, decadeStart: Int? = null) {
+        val libId = musicLibraryId
+        if (libId == null) {
+            viewModelScope.launch { _messages.send("No music library found") }
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                when (station) {
+                    HomeStation.LIBRARY -> repository.libraryRadio(libId)
+                    HomeStation.RANDOM_ALBUM -> repository.randomAlbumRadio(libId)
+                    HomeStation.DECADE -> repository.decadeRadio(libId, decadeStart ?: 2000)
+                }
+            }.fold(
+                onSuccess = { items ->
+                    val first = items.firstOrNull()
+                    if (first == null) {
+                        _messages.send("No tracks for ${station.label}")
+                    } else {
+                        playback.playQueue(items, first)
+                        _openNowPlaying.send(Unit)
+                    }
+                },
+                onFailure = { _messages.send("Couldn't start ${station.label}: ${it.message}") },
+            )
+        }
+    }
 
     fun playPlaylist(item: LibraryItem) = playCollection(item, DetailKind.PLAYLIST_TRACKS)
 

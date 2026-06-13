@@ -20,12 +20,16 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,6 +47,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -54,6 +59,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -135,6 +142,7 @@ fun HomeScreen(
                 state = state,
                 onOpenItem = onOpenItem,
                 onOpenMixes = onOpenMixes,
+                onPlayStation = viewModel::playStation,
                 onPlayPlaylist = viewModel::playPlaylist,
                 onPlaySonicMix = viewModel::playSonicMix,
                 onPlayAlbum = viewModel::playAlbum,
@@ -163,6 +171,7 @@ private fun HomeContent(
     state: HomeUiState,
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit,
     onOpenMixes: () -> Unit,
+    onPlayStation: (HomeStation, Int?) -> Unit,
     onPlayPlaylist: (LibraryItem) -> Unit,
     onPlaySonicMix: (LibraryItem) -> Unit,
     onPlayAlbum: (LibraryItem) -> Unit,
@@ -188,6 +197,12 @@ private fun HomeContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+
+        // Stations: tap-to-play radios. Shown when a music library is present
+        // (any music-derived row has content).
+        if (state.recentAlbums.isNotEmpty() || state.artists.isNotEmpty()) {
+            item(key = "stations") { StationsRow(onPlayStation) }
         }
 
         state.sectionPreferences
@@ -253,6 +268,118 @@ private fun HomeContent(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun StationsRow(onPlayStation: (HomeStation, Int?) -> Unit) {
+    var decadePicker by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            "Stations",
+            modifier = Modifier.padding(horizontal = 20.dp),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            StationCard(Modifier.weight(1f), Icons.Default.Shuffle, "Library\nRadio") {
+                onPlayStation(HomeStation.LIBRARY, null)
+            }
+            StationCard(Modifier.weight(1f), Icons.Default.Album, "Random\nAlbum") {
+                onPlayStation(HomeStation.RANDOM_ALBUM, null)
+            }
+            StationCard(Modifier.weight(1f), Icons.Default.DateRange, "Decade\nRadio") {
+                decadePicker = true
+            }
+        }
+    }
+    if (decadePicker) {
+        DecadePickerDialog(
+            onDismiss = { decadePicker = false },
+            onPick = { decade ->
+                decadePicker = false
+                onPlayStation(HomeStation.DECADE, decade)
+            },
+        )
+    }
+}
+
+@Composable
+private fun StationCard(
+    modifier: Modifier,
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = modifier.aspectRatio(1f).clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                label,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 2,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DecadePickerDialog(onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Pick a decade") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(1960, 1970, 1980, 1990, 2000, 2010, 2020).chunked(3).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        row.forEach { decade ->
+                            DecadeCard(Modifier.weight(1f), decade) { onPick(decade) }
+                        }
+                        // Pad a short final row so the tiles keep square sizing.
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun DecadeCard(modifier: Modifier, decadeStart: Int, onClick: () -> Unit) {
+    Card(
+        modifier = modifier.aspectRatio(1f).clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "${decadeStart}s",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }

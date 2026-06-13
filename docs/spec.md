@@ -572,13 +572,23 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     (matches the H3 Played-on-completion behavior). New sections append to the
     end of an existing saved section order, so it lands last for users who
     already customized Home (default position is 2nd for fresh installs).
+  - *Stations row on Home (pass 1: metadata radios, 2026-06-13)*. A "Stations"
+    row at the top of Home with three tap-to-play radios:
+    **Library Radio** (`SortBy=Random` over the whole library),
+    **Random Album Radio** (a handful of random albums played start-to-finish),
+    and **Decade Radio** (a square decade-tile picker → `Years=` filter +
+    Random). Builders in `LibraryRepository` (libraryRadio/randomAlbumRadio/
+    decadeRadio); `HomeViewModel.playStation` builds the queue and opens Now
+    Playing; failures snackbar. Verified on emulator: each produces a fresh
+    queue. **Deep Cuts dropped** — `SortBy=PlayCount` and `Filters=IsUnplayed`
+    both throw a SQLite 500 on this Emby 4.10, so least-played isn't queryable.
   Phase 2 remaining (queued):
+  - Stations pass 2: **Track Radio** — wire the existing coordinator
+    `/sonic/tracks/{id}/radio` into the Now Playing "Radio" tab (start a sonic
+    radio from the current track). Then Sonic Adventure (`/sonic/adventure`),
+    and reuse mixes for Mood/Style stations.
   - Hold the Now Playing label until the crossfade blend completes (product
     decision: yes).
-  - "Stations" grid (Plexamp-style): metadata radios (Library/Decade/Random
-    Album/Deep Cuts — cheap, Emby-only) + wire the existing coordinator
-    `/sonic/tracks/{id}/radio` and `/sonic/adventure` endpoints into UI + reuse
-    mixes for Mood/Style. Overlaps the M4 sonic roadmap.
   - "On This Day" — needs a play-history log (Emby only stores last-played per
     item), i.e. a new coordinator subsystem. Deferred.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto

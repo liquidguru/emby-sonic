@@ -47,6 +47,7 @@ interface EmbyApi {
         @Query("ParentId") parentId: String? = null,
         @Query("AlbumArtistIds") albumArtistIds: String? = null,
         @Query("Filters") filters: String? = null,
+        @Query("Years") years: String? = null,
     ): QueryResult<EmbyItemDto>
 
     /**

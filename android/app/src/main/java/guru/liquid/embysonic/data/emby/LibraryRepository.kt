@@ -88,6 +88,9 @@ private const val BROWSE_LIMIT = 10000
 /** How many recently played tracks to scan when grouping recent plays to albums. */
 private const val RECENT_PLAYS_SCAN = 100
 
+/** Default length of a generated radio/station queue. */
+private const val RADIO_QUEUE_LIMIT = 60
+
 private fun formatDuration(ms: Long?): String? {
     if (ms == null || ms <= 0) return null
     val totalSeconds = ms / 1000
@@ -235,6 +238,53 @@ class LibraryRepository @Inject constructor(
             }
             .take(limit)
             .toList()
+    }
+
+    /** Shuffle the whole music library into a radio queue. */
+    suspend fun libraryRadio(libraryId: String, limit: Int = RADIO_QUEUE_LIMIT): List<LibraryItem> =
+        embyApi.getItems(
+            userId = userId(),
+            parentId = libraryId,
+            includeItemTypes = "Audio",
+            sortBy = "Random",
+            limit = limit,
+        ).items.map { it.toTrackItem() }
+
+    /** Random tracks from a single decade ([decadeStart], e.g. 1990 → 1990–1999). */
+    suspend fun decadeRadio(
+        libraryId: String,
+        decadeStart: Int,
+        limit: Int = RADIO_QUEUE_LIMIT,
+    ): List<LibraryItem> =
+        embyApi.getItems(
+            userId = userId(),
+            parentId = libraryId,
+            includeItemTypes = "Audio",
+            sortBy = "Random",
+            limit = limit,
+            years = (decadeStart until decadeStart + 10).joinToString(","),
+        ).items.map { it.toTrackItem() }
+
+    /** A handful of random albums, played start-to-finish in sequence. */
+    suspend fun randomAlbumRadio(libraryId: String, albumCount: Int = 6): List<LibraryItem> {
+        val albumIds = embyApi.getItems(
+            userId = userId(),
+            parentId = libraryId,
+            includeItemTypes = "MusicAlbum",
+            sortBy = "Random",
+            limit = albumCount,
+        ).items.mapNotNull { it.id }
+        val out = ArrayList<LibraryItem>()
+        for (id in albumIds) {
+            out += embyApi.getItems(
+                userId = userId(),
+                parentId = id,
+                includeItemTypes = "Audio",
+                sortBy = "ParentIndexNumber,IndexNumber",
+                limit = 100,
+            ).items.map { it.toTrackItem() }
+        }
+        return out
     }
 
     /**
