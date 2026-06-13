@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -45,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -67,9 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.playback.PlaybackRepeatMode
 import guru.liquid.embysonic.playback.PlaybackTrack
 import guru.liquid.embysonic.playback.PlaybackUiState
+import guru.liquid.embysonic.ui.library.Artwork
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,9 +83,16 @@ fun NowPlayingScreen(
     viewModel: NowPlayingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val radio by viewModel.radio.collectAsStateWithLifecycle()
     val progress = remember { SliderTrackProgress }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var queueFocusRequest by remember { mutableIntStateOf(0) }
+
+    // Generate a sonic radio when the Radio tab is opened (and when the seed
+    // track changes while it's open).
+    LaunchedEffect(selectedTab, state.currentTrack?.id) {
+        if (selectedTab == 1) viewModel.loadRadioForCurrent()
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -142,6 +154,10 @@ fun NowPlayingScreen(
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
                     queueFocusRequest = queueFocusRequest,
+                    radio = radio,
+                    onPlayRadioAll = viewModel::playRadioAll,
+                    onPlayRadioTrack = viewModel::playRadioTrack,
+                    onRefreshRadio = { viewModel.loadRadioForCurrent(force = true) },
                 )
             } ?: EmptyPlayer(onCollapse)
         }
@@ -163,6 +179,10 @@ private fun PlayerContent(
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
     queueFocusRequest: Int,
+    radio: RadioState,
+    onPlayRadioAll: () -> Unit,
+    onPlayRadioTrack: (LibraryItem) -> Unit,
+    onRefreshRadio: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(queueFocusRequest) {
@@ -238,8 +258,8 @@ private fun PlayerContent(
             PlaybackTabs(selected = selectedTab, onSelect = onSelectTab)
             Spacer(Modifier.height(8.dp))
         }
-        if (selectedTab == 0) {
-            itemsIndexed(state.queue, key = { _, item -> item.id }) { index, item ->
+        when (selectedTab) {
+            0 -> itemsIndexed(state.queue, key = { _, item -> item.id }) { index, item ->
                 QueueRow(
                     item = item,
                     index = index,
@@ -251,16 +271,101 @@ private fun PlayerContent(
                     },
                 )
             }
-        } else {
-            item {
+            1 -> radioContent(radio, onPlayRadioAll, onPlayRadioTrack, onRefreshRadio)
+            else -> item {
                 Text(
-                    if (selectedTab == 1) "Track radio arrives in M4" else "Similar tracks arrive in M4",
+                    "Similar tracks arrive soon",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(24.dp),
                 )
             }
         }
     }
+}
+
+/** Track Radio tab body, rendered as items in the Now Playing LazyColumn. */
+private fun LazyListScope.radioContent(
+    radio: RadioState,
+    onPlayAll: () -> Unit,
+    onPlayTrack: (LibraryItem) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    when (radio) {
+        RadioState.Idle, RadioState.Loading -> item {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        is RadioState.Error -> item {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(radio.message, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onRefresh, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Try again")
+                }
+            }
+        }
+        is RadioState.Data -> {
+            if (radio.tracks.isEmpty()) {
+                item {
+                    Text(
+                        "No radio for this track yet",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+            } else {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onPlayAll) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Text("Play radio", modifier = Modifier.padding(start = 6.dp))
+                        }
+                        TextButton(onClick = onRefresh) { Text("New radio") }
+                    }
+                }
+                items(radio.tracks, key = { it.id }) { item ->
+                    RadioRow(item = item, onClick = { onPlayTrack(item) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RadioRow(item: LibraryItem, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 1.dp),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        headlineContent = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = item.subtitle?.let {
+            { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        },
+        leadingContent = {
+            Artwork(
+                item.imageUrl,
+                item.title,
+                Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)),
+            )
+        },
+        trailingContent = {
+            IconButton(onClick = onClick) {
+                Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+            }
+        },
+    )
 }
 
 @Composable

@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.RegenerateMixRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
-import guru.liquid.embysonic.data.coordinator.dto.TrackOutDto
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
@@ -281,16 +281,6 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
-    private fun TrackOutDto.toLibraryItem(): LibraryItem = LibraryItem(
-        id = id,
-        title = title.orEmpty().ifBlank { "Unknown track" },
-        subtitle = artist,
-        imageUrl = null,
-        trailingText = formatDuration(durationMs),
-        album = album,
-        durationMs = durationMs,
-    )
-
     /**
      * Coordinator tracks carry no artwork; resolve each track's Emby Primary
      * cover in one batched query so mix detail, Now Playing, and the mini player
@@ -300,20 +290,6 @@ class PlaylistsViewModel @Inject constructor(
     private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
         val art = runCatching { repository.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
         return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
-    }
-
-    private fun formatDuration(ms: Long?): String? {
-        if (ms == null || ms <= 0) return null
-        val totalSeconds = ms / 1000
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        val hours = minutes / 60
-        val remainingMinutes = minutes % 60
-        return if (hours > 0) {
-            "%d:%02d:%02d".format(hours, remainingMinutes, seconds)
-        } else {
-            "%d:%02d".format(minutes, seconds)
-        }
     }
 
     private companion object {

@@ -582,13 +582,31 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     Playing; failures snackbar. Verified on emulator: each produces a fresh
     queue. **Deep Cuts dropped** — `SortBy=PlayCount` and `Filters=IsUnplayed`
     both throw a SQLite 500 on this Emby 4.10, so least-played isn't queryable.
+  - *Track Radio (Stations pass 2, 2026-06-13)*. The Now Playing "Radio" tab
+    now generates a live sonic radio from the current track via the coordinator
+    `/sonic/tracks/{id}/radio` (`NowPlayingViewModel` RadioState; auto-loads on
+    tab open and when the seed track changes; "Play radio" / per-track play /
+    "New radio"; artwork hydrated). The coordinator track→LibraryItem mapping
+    (previously duplicated in Home + Playlists VMs) was consolidated into
+    `data/coordinator/CoordinatorMappers.kt`. Verified: radio loads and plays.
+  - *Crossfade helper lifecycle fix*. The `fadePlayer` (second ExoPlayer) was
+    created once and kept alive forever, permanently holding a second decoder;
+    on the resource-starved emulator this contributed to codec exhaustion
+    ("required system resources: 6" / dead MediaCodec thread → silent-but-
+    advancing playback). It's now created per-crossfade and fully `release()`d
+    when the blend ends/cancels, so normal single-track playback holds one
+    decoder. Also: `setQueue` resets `player.volume = 1f` to self-heal any
+    stuck-silent state. Crossfade cycle re-verified on emulator (arm → ready →
+    fire → ramp). NOTE: the silent-playback incident itself looked like
+    emulator software-codec failure (audio focus was held; ExoPlayer raised no
+    error) — retest on real hardware.
   Phase 2 remaining (queued):
-  - Stations pass 2: **Track Radio** — wire the existing coordinator
-    `/sonic/tracks/{id}/radio` into the Now Playing "Radio" tab (start a sonic
-    radio from the current track). Then Sonic Adventure (`/sonic/adventure`),
-    and reuse mixes for Mood/Style stations.
   - Hold the Now Playing label until the crossfade blend completes (product
     decision: yes).
+  - Guest DJ toggle (Now Playing) is currently a disabled placeholder — wire it
+    to `/sonic/queue/inject` (inject similar tracks into the live queue) or hide
+    it until implemented. Distinct from Track Radio (augments the queue rather
+    than replacing it).
   - "On This Day" — needs a play-history log (Emby only stores last-played per
     item), i.e. a new coordinator subsystem. Deferred.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto

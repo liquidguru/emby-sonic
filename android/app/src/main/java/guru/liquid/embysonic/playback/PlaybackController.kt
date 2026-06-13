@@ -69,11 +69,16 @@ class PlaybackController @Inject constructor(
 
     // Secondary player used only to play the OUTGOING track's tail during a
     // crossfade, so the primary can advance to the next track early. Created
-    // lazily; only ever active when crossfade is enabled for music. It must NOT
-    // handle audio focus — both players are meant to sound at once during a
-    // blend, and a focus-handling helper would silence the primary.
-    private val fadePlayer: ExoPlayer by lazy {
-        ExoPlayer.Builder(context)
+    // on demand for each crossfade and fully RELEASED when the blend ends, so
+    // normal single-track playback never holds a second decoder (which can
+    // exhaust codec resources on constrained devices). It must NOT handle audio
+    // focus — both players are meant to sound at once during a blend, and a
+    // focus-handling helper would silence the primary.
+    private var fadePlayer: ExoPlayer? = null
+
+    /** The crossfade helper, created (with its listener) if it doesn't exist yet. */
+    private fun fadePlayerInstance(): ExoPlayer =
+        fadePlayer ?: ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
             .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ false)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -90,7 +95,14 @@ class PlaybackController @Inject constructor(
                         Log.w(TAG, "Crossfade helper failed", error)
                     }
                 })
+                fadePlayer = secondary
             }
+
+    /** Stop and fully release the crossfade helper so it holds no decoder. */
+    private fun releaseFadePlayer() {
+        fadePlayer?.release()
+        fadePlayer = null
+        fadePlayerReady = false
     }
 
     @Volatile
@@ -207,6 +219,10 @@ class PlaybackController @Inject constructor(
         val tracks = items.map { it.toPlaybackTrack() }
         if (tracks.isEmpty()) return
         cancelCrossfade()
+        // Guarantee audible playback for a new queue even if the volume was left
+        // low by an interrupted ramp or external glitch (self-heals "silent but
+        // advancing").
+        player.volume = 1f
         reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
         if (playWhenReady) startService()
@@ -573,7 +589,7 @@ class PlaybackController @Inject constructor(
         if (crossfadeArmed && crossfadeArmedIndex == index && remaining in 1..crossfadeMs) {
             val outgoingPositionMs = duration - remaining
             val helperHasTailBuffered = fadePlayerReady &&
-                fadePlayer.bufferedPosition >= outgoingPositionMs + CROSSFADE_BUFFER_MARGIN_MS
+                (fadePlayer?.bufferedPosition ?: 0L) >= outgoingPositionMs + CROSSFADE_BUFFER_MARGIN_MS
             when {
                 helperHasTailBuffered -> fireCrossfade(
                     blendDurationMs = remaining,
@@ -592,31 +608,34 @@ class PlaybackController @Inject constructor(
         fadePlayerReady = false
         // Use the normal direct-play source and seek to the tail. Reopening the
         // track through Emby's transcoder is too slow for a reliable handoff.
-        // Reset playWhenReady before replacing the item: stop() deliberately
-        // retains it, which can otherwise consume the tail during preloading.
-        fadePlayer.pause()
-        fadePlayer.stop()
-        fadePlayer.clearMediaItems()
-        fadePlayer.volume = 0f
-        fadePlayer.playWhenReady = false
-        fadePlayer.setMediaItem(mediaItem(outgoing, 0L))
-        fadePlayer.seekTo(tailFromMs)
-        fadePlayer.prepare()
+        // A fresh helper starts with playWhenReady=false, so the tail buffers
+        // paused (no audio) until the blend point.
+        val helper = fadePlayerInstance()
+        helper.volume = 0f
+        helper.playWhenReady = false
+        helper.setMediaItem(mediaItem(outgoing, 0L))
+        helper.seekTo(tailFromMs)
+        helper.prepare()
         Log.d(
             TAG,
-            "Crossfade armed index=$index tailFromMs=$tailFromMs playWhenReady=${fadePlayer.playWhenReady}",
+            "Crossfade armed index=$index tailFromMs=$tailFromMs playWhenReady=${helper.playWhenReady}",
         )
     }
 
     private fun fireCrossfade(blendDurationMs: Long) {
+        val helper = fadePlayer ?: run {
+            // Helper went away (released) — fall back to a normal transition.
+            cancelCrossfade()
+            return
+        }
         crossfadeInProgress = true
         crossfadeArmed = false
         crossfadeTargetIndex = player.nextMediaItemIndex
         // The helper is already paused at the blend point. Seeking it again here
         // discards its buffered decoder state and creates the very gap it exists
         // to cover.
-        fadePlayer.volume = 1f
-        fadePlayer.play()
+        helper.volume = 1f
+        helper.play()
         // Advance the primary now; the buffered helper keeps the outgoing track
         // audible while the next decoder becomes ready.
         player.volume = 0f
@@ -651,7 +670,7 @@ class PlaybackController @Inject constructor(
                 val incomingCurve = sin(incomingProgress * (PI.toFloat() / 2f))
                 player.volume = INCOMING_START_VOLUME +
                     ((1f - INCOMING_START_VOLUME) * incomingCurve)
-                fadePlayer.volume = cos(f * (PI.toFloat() / 2f))
+                helper.volume = cos(f * (PI.toFloat() / 2f))
                 delay(CROSSFADE_RAMP_STEP_MS)
             }
             endCrossfade()
@@ -661,12 +680,12 @@ class PlaybackController @Inject constructor(
     private fun endCrossfade() {
         crossfadeJob?.cancel()
         crossfadeJob = null
-        fadePlayer.stop()
-        fadePlayer.clearMediaItems()
+        // Fully release the helper so no second decoder lingers during normal
+        // single-track playback.
+        releaseFadePlayer()
         player.volume = 1f
         crossfadeInProgress = false
         crossfadeArmed = false
-        fadePlayerReady = false
         crossfadeArmedIndex = -1
         crossfadeTargetIndex = -1
     }
