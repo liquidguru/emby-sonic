@@ -59,9 +59,9 @@ class PlaylistsViewModel @Inject constructor(
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages: Flow<String> = _messages.receiveAsFlow()
 
-    // The last loaded mix list, so backing out of a mix detail restores it
-    // instantly instead of refetching (and losing the user's place).
-    private var lastMixes: List<SonicMixDto>? = null
+    // The last loaded mix list (with covers), so backing out of a mix detail
+    // restores it instantly instead of refetching (and losing the user's place).
+    private var lastList: SonicMixesState.ListData? = null
 
     init {
         load()
@@ -100,8 +100,14 @@ class PlaylistsViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { coordinator.mixes() }.fold(
                 onSuccess = { mixes ->
-                    lastMixes = mixes
-                    _sonicState.value = SonicMixesState.ListData(mixes)
+                    // Resolve a cover image per mix from its representative track id.
+                    val art = runCatching {
+                        repository.artworkByIds(mixes.mapNotNull { it.coverTrackId })
+                    }.getOrDefault(emptyMap())
+                    val covers = mixes.associate { it.id to it.coverTrackId?.let { tid -> art[tid] } }
+                    val list = SonicMixesState.ListData(mixes, covers)
+                    lastList = list
+                    _sonicState.value = list
                 },
                 onFailure = { _sonicState.value = SonicMixesState.Error(it.message ?: "Failed to load mixes") },
             )
@@ -127,8 +133,8 @@ class PlaylistsViewModel @Inject constructor(
     }
 
     fun closeSonicMix() {
-        // Restore the cached list instantly if we have it; only refetch if not.
-        lastMixes?.let { _sonicState.value = SonicMixesState.ListData(it) } ?: loadSonicMixes()
+        // Restore the cached list (with covers) instantly; only refetch if absent.
+        lastList?.let { _sonicState.value = it } ?: loadSonicMixes()
     }
 
     fun playSonicMix(mix: SonicMixDto) {
@@ -240,7 +246,7 @@ class PlaylistsViewModel @Inject constructor(
                     _mixOptions.value = _mixOptions.value.copy(
                         message = "Generating ${it.nClusters} mixes of ${it.tracksPerMix} tracks",
                     )
-                    delay(MIX_GENERATION_REFRESH_DELAY_MS)
+                    awaitMixBuild()
                     loadSonicMixes()
                     _mixOptions.value = _mixOptions.value.copy(generating = false)
                 },
@@ -251,6 +257,27 @@ class PlaylistsViewModel @Inject constructor(
                     )
                 },
             )
+        }
+    }
+
+    /**
+     * Wait for a triggered mix build to finish by polling the coordinator's
+     * build-state, instead of guessing a fixed delay. Waits for the build to
+     * start (grace window — a tiny library can finish almost instantly), then
+     * for it to finish, capped so a stuck build can't hang the UI forever.
+     */
+    private suspend fun awaitMixBuild() {
+        var sawRunning = false
+        var waited = 0L
+        while (waited < MIX_BUILD_MAX_WAIT_MS) {
+            delay(MIX_BUILD_POLL_MS)
+            waited += MIX_BUILD_POLL_MS
+            val running = runCatching { coordinator.buildState().running }.getOrDefault(false)
+            if (running) {
+                sawRunning = true
+            } else if (sawRunning || waited >= MIX_BUILD_START_GRACE_MS) {
+                break
+            }
         }
     }
 
@@ -291,7 +318,9 @@ class PlaylistsViewModel @Inject constructor(
 
     private companion object {
         const val DEFAULT_MIX_COUNT = 30
-        const val MIX_GENERATION_REFRESH_DELAY_MS = 25_000L
+        const val MIX_BUILD_POLL_MS = 1_500L
+        const val MIX_BUILD_START_GRACE_MS = 6_000L
+        const val MIX_BUILD_MAX_WAIT_MS = 180_000L
     }
 }
 
@@ -305,7 +334,10 @@ data class SonicMixOptions(
 sealed interface SonicMixesState {
     data object Loading : SonicMixesState
     data class Error(val message: String) : SonicMixesState
-    data class ListData(val mixes: List<SonicMixDto>) : SonicMixesState
+    data class ListData(
+        val mixes: List<SonicMixDto>,
+        val covers: Map<String, String?> = emptyMap(),
+    ) : SonicMixesState
     data class DetailLoading(val mix: SonicMixDto) : SonicMixesState
     data class DetailData(val mix: SonicMixDto, val tracks: List<LibraryItem>) : SonicMixesState
 }

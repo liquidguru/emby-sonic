@@ -56,10 +56,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import kotlin.math.abs
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
@@ -246,6 +248,7 @@ private fun SonicMixesTab(
         }
         is SonicMixesState.ListData -> SonicMixList(
             mixes = state.mixes,
+            covers = state.covers,
             onOpenMix = onOpenMix,
             onPlayMix = onPlayMix,
         )
@@ -276,6 +279,7 @@ private fun SonicMixesTab(
 @Composable
 private fun SonicMixList(
     mixes: List<SonicMixDto>,
+    covers: Map<String, String?>,
     onOpenMix: (SonicMixDto) -> Unit,
     onPlayMix: (SonicMixDto) -> Unit,
 ) {
@@ -291,7 +295,7 @@ private fun SonicMixList(
             ListItem(
                 modifier = Modifier.fillMaxWidth().clickable { onOpenMix(mix) },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                leadingContent = { MixIcon() },
+                leadingContent = { MixIcon(coverUrl = covers[mix.id]) },
                 headlineContent = {
                     Text(
                         mix.displayTitle(),
@@ -341,7 +345,7 @@ private fun SonicMixDetail(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MixIcon(modifier = Modifier.size(64.dp))
+            MixIcon(modifier = Modifier.size(64.dp), coverUrl = tracks.firstOrNull()?.imageUrl)
             Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 Text(
                     mix.displayTitle(),
@@ -420,20 +424,28 @@ private fun SonicMixDetail(
 }
 
 @Composable
-private fun MixIcon(modifier: Modifier = Modifier.size(56.dp)) {
+private fun MixIcon(modifier: Modifier = Modifier.size(56.dp), coverUrl: String? = null) {
     Box(
         modifier = modifier
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(0.dp),
+            .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            Icons.Default.GraphicEq,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(32.dp),
-        )
+        if (coverUrl != null) {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                Icons.Default.GraphicEq,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp),
+            )
+        }
     }
 }
 
