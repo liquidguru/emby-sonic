@@ -13,6 +13,7 @@ import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
@@ -103,45 +104,62 @@ class HomeViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            runCatching {
-                val libraries = repository.audioLibraries()
-                val musicLibrary = libraries.firstOrNull { it.kind == LibraryKind.MUSIC }
-                val audiobookLibrary = libraries.firstOrNull { it.kind == LibraryKind.AUDIOBOOKS }
-                val resumeAudiobooks = audiobookLibrary
-                    ?.let { repository.resumeAudiobooks(it.id, HOME_SECTION_LIMIT) }
-                    .orEmpty()
-                val playlists = repository.playlists().take(HOME_SECTION_LIMIT)
-                val sonicMixes = coordinator.mixes().take(HOME_SECTION_LIMIT).map { it.toLibraryItem() }
-                val albums = musicLibrary
-                    ?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }
-                    .orEmpty()
-                val artists = musicLibrary
-                    ?.let { repository.artists(it.id).take(HOME_SECTION_LIMIT) }
-                    .orEmpty()
-                HomeUiState(
-                    userName = settings.snapshot().userName,
-                    loading = false,
-                    compactCards = _state.value.compactCards,
-                    sectionPreferences = _state.value.sectionPreferences,
-                    resumeAudiobooks = resumeAudiobooks,
-                    playlists = playlists,
-                    sonicMixes = sonicMixes,
-                    recentAlbums = albums,
-                    artists = artists,
-                )
-            }.fold(
-                onSuccess = { next -> _state.value = next },
-                onFailure = { e ->
-                    _state.update {
-                        it.copy(
-                            loading = false,
-                            error = e.message ?: "Could not load Home",
-                        )
-                    }
-                },
+            // Each section loads independently and in parallel: a coordinator
+            // outage must not blank the Emby-backed rows (and vice versa), and a
+            // single failed Emby query degrades only its own row rather than the
+            // whole screen.
+            val libraries = runCatching { repository.audioLibraries() }.getOrElse { emptyList() }
+            val musicLibrary = libraries.firstOrNull { it.kind == LibraryKind.MUSIC }
+            val audiobookLibrary = libraries.firstOrNull { it.kind == LibraryKind.AUDIOBOOKS }
+
+            // Emby-backed rows are the fast, primary content — fetch in parallel
+            // and render as soon as they're ready.
+            val resumeJob = async {
+                section { audiobookLibrary?.let { repository.resumeAudiobooks(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
+            }
+            val playlistsJob = async { section { repository.playlists(HOME_SECTION_LIMIT) } }
+            val albumsJob = async {
+                section { musicLibrary?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
+            }
+            val artistsJob = async {
+                section { musicLibrary?.let { repository.artists(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
+            }
+
+            val resumeAudiobooks = resumeJob.await()
+            val playlists = playlistsJob.await()
+            val albums = albumsJob.await()
+            val artists = artistsJob.await()
+
+            val allEmpty = resumeAudiobooks.isEmpty() && playlists.isEmpty() &&
+                albums.isEmpty() && artists.isEmpty()
+            _state.value = HomeUiState(
+                userName = settings.snapshot().userName,
+                loading = false,
+                // Only surface a full-screen error when nothing at all was
+                // reachable (Emby down); a single failed section just leaves
+                // that row empty.
+                error = if (libraries.isEmpty() && allEmpty) "Couldn't reach your server" else null,
+                compactCards = _state.value.compactCards,
+                sectionPreferences = _state.value.sectionPreferences,
+                resumeAudiobooks = resumeAudiobooks,
+                playlists = playlists,
+                // Keep any previously loaded mixes until the coordinator answers.
+                sonicMixes = _state.value.sonicMixes,
+                recentAlbums = albums,
+                artists = artists,
             )
+
+            // Sonic mixes live on the coordinator (a separate host that may be
+            // down). Load them after the Emby rows so a slow/failed coordinator
+            // never gates or blanks the rest of Home.
+            val sonicMixes = section { coordinator.mixes().take(HOME_SECTION_LIMIT).map { it.toLibraryItem() } }
+            _state.update { it.copy(sonicMixes = sonicMixes) }
         }
     }
+
+    /** Runs one Home section's fetch, swallowing failure to an empty list. */
+    private suspend fun <T> section(block: suspend () -> List<T>): List<T> =
+        runCatching { block() }.getOrElse { emptyList() }
 
     fun playPlaylist(item: LibraryItem) = playCollection(item, DetailKind.PLAYLIST_TRACKS)
 

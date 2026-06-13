@@ -508,20 +508,39 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     back from a detail screen (`rememberSaveable`), and each library tab owns
     its scroll state via `SaveableStateProvider` (Artists/Albums no longer
     share one scroll offset).
-  - *Observed, not yet fixed* (folds into the MEDIUM Home-refresh item): a
-    coordinator outage (`/sonic/mixes` fails) blanks the **entire** Home
-    screen with "Failed to connect to …:8765", because `refresh()` wraps all
-    six fetches in one `runCatching`. Home should degrade per-section, not
-    all-or-nothing.
-  Phase 2 (MEDIUM, queued): POST_NOTIFICATIONS runtime request +
-  `setSessionActivity`; Mixes play-before-queue-loads + swallowed errors;
-  BackHandler for in-place mix detail; Home ON_RESUME refetch weight; refresh
-  dialog copy (product decision: full turnover IS intended — fix the copy);
-  build-mixes polling instead of fixed 25s delay; per-tab lazy-list state;
-  hold the Now Playing label until the blend completes (product decision:
-  yes). Accepted product ideas: audiobook playback speed, sleep timer, mix
-  artwork via batched `/Items?Ids=` hydration, Android Auto browse tree, drag
-  scrubbing, queue reorder, swipe-to-dismiss mini player, small offline cache.
+  Phase 2 (MEDIUM, done 2026-06-13, verified on emulator):
+  - *Home degrades per-section instead of all-or-nothing.* A coordinator
+    outage (`/sonic/mixes`) used to blank the whole Home screen with "Failed
+    to connect to …:8765" because `refresh()` wrapped all six fetches in one
+    `runCatching`. Now each section loads independently: the Emby rows fetch
+    in parallel (`async`) and render first; the coordinator-backed Sonic mixes
+    row loads *afterwards* so a slow/dead coordinator never gates or blanks the
+    rest of Home. A full-screen error shows only when nothing at all is
+    reachable (Emby down). Verified: with the coordinator stopped, Home still
+    shows playlists/albums/artists/resume rows and appears fast.
+  - *Home fetch weight*: `artists()`/`playlists()` take an optional server-side
+    `limit`; Home passes `HOME_SECTION_LIMIT` (12) instead of pulling up to
+    10 000 rows to show 12.
+  - *Mixes play gating + errors*: `PlaylistsViewModel` now exposes
+    `openNowPlaying`/`messages` channels; playing a mix or playlist opens Now
+    Playing only once a playable queue loads, and failures show a snackbar
+    instead of dropping the user on an empty player.
+  - *Mixes back + list cache*: a `BackHandler` closes an open mix detail back
+    to the list (instead of leaving the Mixes tab), and the last-loaded mix
+    list is cached so backing out restores it instantly rather than refetching.
+  - *Refresh dialog copy*: now "Replace this mix with a fresh set of similar
+    tracks" — matches the implemented full-turnover semantics (product
+    decision confirmed: full turnover is intended).
+  Phase 2 remaining (queued):
+  - Build-mixes progress polling instead of the fixed 25s blind wait — needs a
+    coordinator-side build-state endpoint + redeploy to liquidBee.
+  - Hold the Now Playing label until the crossfade blend completes (product
+    decision: yes).
+  - Accepted product ideas: audiobook playback speed, sleep timer, mix artwork
+    via batched `/Items?Ids=` hydration, Android Auto browse tree, drag
+    scrubbing, queue reorder, swipe-to-dismiss mini player, small offline cache.
+  - (Done earlier in M4.5 phase 1: POST_NOTIFICATIONS runtime request,
+    `setSessionActivity`, per-tab lazy-list state.)
 - **M4 — Remaining sonic features:** Track radio, Sonic adventure,
   sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform

@@ -14,11 +14,14 @@ import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.ui.library.TabState
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -48,6 +51,18 @@ class PlaylistsViewModel @Inject constructor(
     private val _mixOptions = MutableStateFlow(SonicMixOptions())
     val mixOptions: StateFlow<SonicMixOptions> = _mixOptions.asStateFlow()
 
+    // Open Now Playing only after a playable queue actually loads; surface
+    // failures as a snackbar instead of dropping the user on an empty player.
+    private val _openNowPlaying = Channel<Unit>(Channel.BUFFERED)
+    val openNowPlaying: Flow<Unit> = _openNowPlaying.receiveAsFlow()
+
+    private val _messages = Channel<String>(Channel.BUFFERED)
+    val messages: Flow<String> = _messages.receiveAsFlow()
+
+    // The last loaded mix list, so backing out of a mix detail restores it
+    // instantly instead of refetching (and losing the user's place).
+    private var lastMixes: List<SonicMixDto>? = null
+
     init {
         load()
         loadSonicMixes()
@@ -67,9 +82,15 @@ class PlaylistsViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { repository.playableItems(item.id, guru.liquid.embysonic.data.emby.DetailKind.PLAYLIST_TRACKS) }.fold(
                 onSuccess = { items ->
-                    items.firstOrNull()?.let { playback.playQueue(items, it) }
+                    val first = items.firstOrNull()
+                    if (first == null) {
+                        _messages.send("Nothing playable in \"${item.title}\"")
+                    } else {
+                        playback.playQueue(items, first)
+                        _openNowPlaying.send(Unit)
+                    }
                 },
-                onFailure = {},
+                onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
             )
         }
     }
@@ -78,7 +99,10 @@ class PlaylistsViewModel @Inject constructor(
         _sonicState.value = SonicMixesState.Loading
         viewModelScope.launch {
             runCatching { coordinator.mixes() }.fold(
-                onSuccess = { mixes -> _sonicState.value = SonicMixesState.ListData(mixes) },
+                onSuccess = { mixes ->
+                    lastMixes = mixes
+                    _sonicState.value = SonicMixesState.ListData(mixes)
+                },
                 onFailure = { _sonicState.value = SonicMixesState.Error(it.message ?: "Failed to load mixes") },
             )
         }
@@ -103,19 +127,31 @@ class PlaylistsViewModel @Inject constructor(
     }
 
     fun closeSonicMix() {
-        loadSonicMixes()
+        // Restore the cached list instantly if we have it; only refetch if not.
+        lastMixes?.let { _sonicState.value = SonicMixesState.ListData(it) } ?: loadSonicMixes()
     }
 
     fun playSonicMix(mix: SonicMixDto) {
         viewModelScope.launch {
-            runCatching { coordinator.mixDetail(mix.id).tracks.map { it.toLibraryItem() } }.onSuccess { tracks ->
-                tracks.firstOrNull()?.let { playback.playQueue(tracks, it) }
-            }
+            runCatching { coordinator.mixDetail(mix.id).tracks.map { it.toLibraryItem() } }.fold(
+                onSuccess = { tracks ->
+                    val first = tracks.firstOrNull()
+                    if (first == null) {
+                        _messages.send("Nothing playable in \"${mix.displayTitle()}\"")
+                    } else {
+                        playback.playQueue(tracks, first)
+                        _openNowPlaying.send(Unit)
+                    }
+                },
+                onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
+            )
         }
     }
 
     fun playSonicTracks(tracks: List<LibraryItem>, start: LibraryItem) {
+        if (tracks.isEmpty()) return
         playback.playQueue(tracks, start)
+        viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 
     fun saveSonicMixAsPlaylist(name: String, tracks: List<LibraryItem>) {
