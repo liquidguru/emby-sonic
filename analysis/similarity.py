@@ -90,7 +90,7 @@ async def build_adventure(
         return []
 
     visited = {from_id, to_id}
-    tracks: list[TrackOut] = []
+    middle: list[TrackOut] = []
 
     for step in range(1, length + 1):
         t = step / (length + 1)  # 0 < t < 1, never hits endpoints
@@ -102,8 +102,19 @@ async def build_adventure(
                 visited.add(tid)
                 track_out = await _load_track_out(tid, db)
                 if track_out:
-                    tracks.append(track_out)
+                    middle.append(track_out)
                 break
+
+    # A→B journey: bookend the interpolated walk with the actual endpoints so
+    # the adventure literally starts at A and ends at B.
+    tracks: list[TrackOut] = []
+    start_out = await _load_track_out(from_id, db)
+    if start_out:
+        tracks.append(start_out)
+    tracks.extend(middle)
+    end_out = await _load_track_out(to_id, db)
+    if end_out:
+        tracks.append(end_out)
 
     return tracks
 
