@@ -531,6 +531,18 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   - *Refresh dialog copy*: now "Replace this mix with a fresh set of similar
     tracks" — matches the implemented full-turnover semantics (product
     decision confirmed: full turnover is intended).
+  - *Now Playing queue toggle*: the top-bar queue button now toggles — tap to
+    scroll down to the track list, tap again to scroll back up to the player
+    hero. Previously, once scrolled to the queue the only top-bar buttons were
+    Stop (X) and Collapse (down), so the player view felt unreachable.
+  - *Crossfade only applies to direct-play tracks* (confirmed 2026-06-13 by
+    reproducing a transition on an all-MP3 mix: armed → tail buffered → 6s
+    blend fired → ramped clean, per logs). On a **transcoded** track (WMA/ASF,
+    of which the library has many) the helper can't seek into the tail fast
+    enough and the engine falls back to a normal gapless transition — by
+    design, not a bug. A mix heavy on WMA will have some transitions that don't
+    blend. No cheap fix (can't seek into a live transcode); documented as a
+    known limitation.
   Phase 2 remaining (queued):
   - Build-mixes progress polling instead of the fixed 25s blind wait — needs a
     coordinator-side build-state endpoint + redeploy to liquidBee.
