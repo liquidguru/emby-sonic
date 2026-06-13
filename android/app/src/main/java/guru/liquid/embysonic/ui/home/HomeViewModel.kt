@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
-import guru.liquid.embysonic.data.coordinator.dto.TrackOutDto
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
@@ -291,16 +291,6 @@ class HomeViewModel @Inject constructor(
         imageUrl = null,
     )
 
-    private fun TrackOutDto.toLibraryItem(): LibraryItem = LibraryItem(
-        id = id,
-        title = title.orEmpty().ifBlank { "Unknown track" },
-        subtitle = artist,
-        imageUrl = null,
-        trailingText = formatDuration(durationMs),
-        album = album,
-        durationMs = durationMs,
-    )
-
     private fun SonicMixDto.displayTitle(): String {
         val base = name?.takeIf { it.isNotBlank() } ?: "Sonic mix"
         return base.replace(""" \(\d+\)$""".toRegex(), "")
@@ -310,20 +300,6 @@ class HomeViewModel @Inject constructor(
         val mixNumber = clusterId?.let { "Mix ${it + 1}" }
         val count = "$trackCount tracks"
         return listOfNotNull(mixNumber, count).joinToString(" • ")
-    }
-
-    private fun formatDuration(ms: Long?): String? {
-        if (ms == null || ms <= 0) return null
-        val totalSeconds = ms / 1000
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        val hours = minutes / 60
-        val remainingMinutes = minutes % 60
-        return if (hours > 0) {
-            "%d:%02d:%02d".format(hours, remainingMinutes, seconds)
-        } else {
-            "%d:%02d".format(minutes, seconds)
-        }
     }
 
     private fun observeHomePreferences() {
