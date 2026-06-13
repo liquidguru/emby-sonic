@@ -543,14 +543,24 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     design, not a bug. A mix heavy on WMA will have some transitions that don't
     blend. No cheap fix (can't seek into a live transcode); documented as a
     known limitation.
+  - *Mix artwork hydration*: coordinator track lists carry no images, so sonic
+    mixes showed grey placeholders everywhere (mix detail, Now Playing big art,
+    mini player, queue). Mix tracks now resolve their Emby Primary cover in one
+    batched `/Items?Ids=` query (`LibraryRepository.artworkByIds`, applied in
+    the mix detail/play paths). Verified on emulator — covers render in the mix
+    track list. Still placeholder-only: the mix *tiles/rows* themselves (Home
+    Sonic-mixes row, Mixes list), which would need a representative cover id in
+    the `/sonic/mixes` summary (a coordinator change).
   Phase 2 remaining (queued):
   - Build-mixes progress polling instead of the fixed 25s blind wait — needs a
-    coordinator-side build-state endpoint + redeploy to coordinator-host.
+    coordinator-side build-state endpoint + redeploy to coordinator-host. Could add a
+    per-mix cover track id to the `/sonic/mixes` summary at the same time so
+    mix tiles/rows get art too.
   - Hold the Now Playing label until the crossfade blend completes (product
     decision: yes).
-  - Accepted product ideas: audiobook playback speed, sleep timer, mix artwork
-    via batched `/Items?Ids=` hydration, Android Auto browse tree, drag
-    scrubbing, queue reorder, swipe-to-dismiss mini player, small offline cache.
+  - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
+    browse tree, drag scrubbing, queue reorder, swipe-to-dismiss mini player,
+    small offline cache.
   - (Done earlier in M4.5 phase 1: POST_NOTIFICATIONS runtime request,
     `setSessionActivity`, per-tab lazy-list state.)
 - **M4 — Remaining sonic features:** Track radio, Sonic adventure,

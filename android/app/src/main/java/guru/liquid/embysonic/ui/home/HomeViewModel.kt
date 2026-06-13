@@ -165,7 +165,7 @@ class HomeViewModel @Inject constructor(
 
     fun playSonicMix(item: LibraryItem) {
         viewModelScope.launch {
-            runCatching { coordinator.mixDetail(item.id).tracks.map { it.toLibraryItem() } }.fold(
+            runCatching { coordinator.mixDetail(item.id).tracks.map { it.toLibraryItem() }.withArtwork() }.fold(
                 onSuccess = { tracks ->
                     tracks.firstOrNull()?.let {
                         playback.playQueue(tracks, it)
@@ -175,6 +175,12 @@ class HomeViewModel @Inject constructor(
                 onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
             )
         }
+    }
+
+    /** Resolve Emby cover art for coordinator track ids (mixes carry none). */
+    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
+        val art = runCatching { repository.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
+        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
     }
 
     fun playAlbum(item: LibraryItem) = playCollection(item, DetailKind.ALBUM_TRACKS)
