@@ -16,6 +16,9 @@ data class AppSettings(
     val deviceId: String,
     val crossfadeEnabled: Boolean = false,
     val crossfadeDurationMs: Int = 6_000,
+    val eqEnabled: Boolean = false,
+    // Per-band gains in millibels, indexed by equalizer band; empty = flat/default.
+    val eqBandLevels: List<Int> = emptyList(),
 ) {
     val isLoggedIn: Boolean
         get() = !serverUrl.isNullOrBlank() && !accessToken.isNullOrBlank()

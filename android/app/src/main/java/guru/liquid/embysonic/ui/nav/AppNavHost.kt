@@ -12,6 +12,7 @@ import androidx.navigation.compose.rememberNavController
 import guru.liquid.embysonic.ui.brand.LiquidWaveSplashScreen
 import guru.liquid.embysonic.ui.login.LoginScreen
 import guru.liquid.embysonic.ui.main.MainShell
+import guru.liquid.embysonic.ui.settings.EqualizerScreen
 import guru.liquid.embysonic.ui.settings.SettingsScreen
 import kotlinx.coroutines.delay
 
@@ -47,12 +48,16 @@ fun AppNavHost(startLoggedIn: Boolean) {
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
+                onOpenEqualizer = { navController.navigate(Routes.EQUALIZER) },
                 onLoggedOut = {
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(0) { inclusive = true }
                     }
                 },
             )
+        }
+        composable(Routes.EQUALIZER) {
+            EqualizerScreen(onBack = { navController.popBackStack() })
         }
     }
 }
