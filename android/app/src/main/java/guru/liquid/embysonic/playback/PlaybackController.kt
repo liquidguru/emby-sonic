@@ -1,10 +1,12 @@
 package guru.liquid.embysonic.playback
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -13,6 +15,10 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import androidx.core.content.ContextCompat
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.BuildConfig
 import guru.liquid.embysonic.data.emby.EmbyApi
@@ -49,16 +55,28 @@ class PlaybackController @Inject constructor(
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
 
+    private val mediaAudioAttributes = AudioAttributes.Builder()
+        .setUsage(C.USAGE_MEDIA)
+        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+        .build()
+
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
+        .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ true)
+        .setHandleAudioBecomingNoisy(true)
+        .setWakeMode(C.WAKE_MODE_NETWORK)
         .build()
 
     // Secondary player used only to play the OUTGOING track's tail during a
     // crossfade, so the primary can advance to the next track early. Created
-    // lazily; only ever active when crossfade is enabled for music.
+    // lazily; only ever active when crossfade is enabled for music. It must NOT
+    // handle audio focus — both players are meant to sound at once during a
+    // blend, and a focus-handling helper would silence the primary.
     private val fadePlayer: ExoPlayer by lazy {
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
+            .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ false)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
             .also { secondary ->
                 secondary.addListener(object : Player.Listener {
@@ -82,6 +100,7 @@ class PlaybackController @Inject constructor(
     @Volatile
     private var fadePlayerReady = false
     private var crossfadeArmedIndex = -1
+    private var crossfadeTargetIndex = -1
     private var crossfadeJob: Job? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -90,12 +109,20 @@ class PlaybackController @Inject constructor(
 
     private var queue: List<PlaybackTrack> = emptyList()
     private var queueShuffled: Boolean = false
-    private val musicResumeClearedByStop = mutableSetOf<String>()
     private var streamOffsetsByIndex: MutableMap<Int, Long> = mutableMapOf()
     private var playSessionId: String = UUID.randomUUID().toString()
     private var lastProgressReportMs: Long = 0
     private var lastReportedState: PlaybackUiState = PlaybackUiState()
     private var lastStartedItemId: String? = null
+
+    // A MediaController connected to our own MediaSessionService. The UI drives
+    // the shared ExoPlayer directly, so without this nothing connects to the
+    // session — and Media3 only starts the foreground media notification (and
+    // the foreground service that keeps playback alive in the background) once
+    // a controller connects. This controller issues no commands; its presence
+    // is what activates the notification lifecycle.
+    private var notificationControllerFuture: ListenableFuture<MediaController>? = null
+    private var notificationController: MediaController? = null
 
     init {
         player.addListener(object : Player.Listener {
@@ -106,6 +133,30 @@ class PlaybackController @Inject constructor(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (crossfadeInProgress) {
                     Log.d(TAG, "Crossfade primary state=$playbackState playing=${player.isPlaying}")
+                }
+            }
+
+            // Pauses can arrive without going through togglePlayPause — media
+            // notification, Bluetooth controls, audio-focus loss, becoming-noisy.
+            // Any of them must abort a pending or in-flight crossfade, or the
+            // helper keeps playing the outgoing tail over a paused primary.
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) cancelCrossfade()
+            }
+
+            // Seeks from the notification/MediaSession bypass seekTo()/skipNext().
+            // Ignore the seek that fireCrossfade itself issues (it lands on
+            // crossfadeTargetIndex); cancel on anything else.
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                if (reason != Player.DISCONTINUITY_REASON_SEEK) return
+                if (crossfadeArmed) {
+                    cancelCrossfade()
+                } else if (crossfadeInProgress && newPosition.mediaItemIndex != crossfadeTargetIndex) {
+                    cancelCrossfade()
                 }
             }
         })
@@ -153,15 +204,7 @@ class PlaybackController @Inject constructor(
         playWhenReady: Boolean,
     ) {
         val startIndex = items.indexOfFirst { it.id == startItem.id }.coerceAtLeast(0)
-        val tracks = items.map { item ->
-            item.toPlaybackTrack().let { track ->
-                if (track.id in musicResumeClearedByStop) {
-                    track.copy(playbackPositionMs = 0L)
-                } else {
-                    track
-                }
-            }
-        }
+        val tracks = items.map { it.toPlaybackTrack() }
         if (tracks.isEmpty()) return
         cancelCrossfade()
         reportStopped(lastReportedState)
@@ -213,12 +256,9 @@ class PlaybackController @Inject constructor(
     fun stopPlayback() {
         cancelCrossfade()
         // Stopping (closing Now Playing / mini-bar) forgets a music track's
-        // position so it starts fresh next time. Audiobooks still keep their
-        // resume point — only pause-then-exit preserves resume for music.
-        val stoppedTrack = lastReportedState.currentTrack
-        val clearResume = stoppedTrack != null && !stoppedTrack.isLongForm
-        if (clearResume) musicResumeClearedByStop += stoppedTrack.id
-        reportStopped(lastReportedState, clearResume = clearResume)
+        // position so it starts fresh next time — reportStopped never persists
+        // a music position. Audiobooks keep their resume point.
+        reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
         player.stop()
         player.clearMediaItems()
@@ -226,6 +266,9 @@ class PlaybackController @Inject constructor(
         queueShuffled = false
         streamOffsetsByIndex.clear()
         lastStartedItemId = null
+        // Release the controller first; a live binding would keep the service
+        // alive past stopService and leave a stale notification behind.
+        releaseNotificationController()
         context.stopService(Intent(context, SonicPlaybackService::class.java))
         publishState()
     }
@@ -234,8 +277,17 @@ class PlaybackController @Inject constructor(
         cancelCrossfade()
         val index = player.currentMediaItemIndex.coerceAtLeast(0)
         val track = queue.getOrNull(index)
-        if (track != null && track.isLongForm) {
-            seekLongFormTo(index = index, track = track, positionMs = positionMs)
+        // Long-form always seeks server-side. So do transcoded tracks (e.g.
+        // WMA→MP3): Emby serves them as a chunked stream of unknown length,
+        // ExoPlayer marks the window unseekable, and an in-player seek on an
+        // unseekable stream restarts from zero. Only trust the seekable flag
+        // once READY — before that every stream looks unseekable.
+        val needsServerSeek = track != null && (
+            track.isLongForm ||
+                (player.playbackState == Player.STATE_READY && !player.isCurrentMediaItemSeekable)
+            )
+        if (track != null && needsServerSeek) {
+            seekViaStreamOffset(index = index, track = track, positionMs = positionMs)
         } else {
             player.seekTo(positionMs.coerceAtLeast(0))
         }
@@ -366,6 +418,24 @@ class PlaybackController @Inject constructor(
     private fun startService() {
         val intent = Intent(context, SonicPlaybackService::class.java)
         context.startService(intent)
+        connectNotificationController()
+    }
+
+    private fun connectNotificationController() {
+        if (notificationControllerFuture != null) return
+        val token = SessionToken(context, ComponentName(context, SonicPlaybackService::class.java))
+        val future = MediaController.Builder(context, token).buildAsync()
+        notificationControllerFuture = future
+        future.addListener(
+            { runCatching { notificationController = future.get() } },
+            ContextCompat.getMainExecutor(context),
+        )
+    }
+
+    private fun releaseNotificationController() {
+        notificationControllerFuture?.let { MediaController.releaseFuture(it) }
+        notificationControllerFuture = null
+        notificationController = null
     }
 
     private fun publishState() {
@@ -423,15 +493,15 @@ class PlaybackController @Inject constructor(
     }
 
     private fun PlaybackTrack.resumePositionForPlayback(): Long {
+        // Music never resumes from a stored position — only the live player
+        // session carries one (pause, Android Auto handoff). Durable resume is
+        // an audiobook/long-form concept; honouring server positions for music
+        // replays stale skip/crossfade leftovers mid-song.
+        if (!isLongForm) return 0
         val resume = playbackPositionMs.coerceAtLeast(0)
         val duration = durationMs
         if (duration != null && resume !in 1 until (duration - RESUME_END_PADDING_MS)) return 0
-        val preRoll = if ((duration ?: 0) >= LONG_FORM_MIN_DURATION_MS) {
-            LONG_FORM_RESUME_PREROLL_MS
-        } else {
-            0L
-        }
-        return (resume - preRoll).coerceAtLeast(0)
+        return (resume - LONG_FORM_RESUME_PREROLL_MS).coerceAtLeast(0)
     }
 
     private val PlaybackTrack.isLongForm: Boolean
@@ -446,9 +516,16 @@ class PlaybackController @Inject constructor(
     private fun PlaybackTrack.absolutePosition(index: Int, playerPositionMs: Long): Long =
         (streamOffsetsByIndex[index] ?: 0L) + playerPositionMs
 
-    private fun seekLongFormTo(index: Int, track: PlaybackTrack, positionMs: Long) {
+    /** Reopens the stream at [positionMs] via `/stream?StartTimeTicks=` (server-side seek). */
+    private fun seekViaStreamOffset(index: Int, track: PlaybackTrack, positionMs: Long) {
         val nextOffset = positionMs.coerceAtLeast(0)
         val wasPlaying = player.isPlaying
+        // Emby keys transcode jobs by PlaySessionId: re-requesting /stream with a
+        // new StartTimeTicks but the same session returns the ALREADY-RUNNING job
+        // — audio keeps coming from the old position while the position counter
+        // shows the seek target. A fresh id forces a new job that honours the
+        // offset (verified against Emby 4.10 for wma/mp3/m4b sources).
+        playSessionId = UUID.randomUUID().toString()
         streamOffsetsByIndex[index] = nextOffset
         player.replaceMediaItem(index, mediaItem(track, nextOffset))
         player.seekTo(index, 0L)
@@ -534,6 +611,7 @@ class PlaybackController @Inject constructor(
     private fun fireCrossfade(blendDurationMs: Long) {
         crossfadeInProgress = true
         crossfadeArmed = false
+        crossfadeTargetIndex = player.nextMediaItemIndex
         // The helper is already paused at the blend point. Seeking it again here
         // discards its buffered decoder state and creates the very gap it exists
         // to cover.
@@ -590,6 +668,7 @@ class PlaybackController @Inject constructor(
         crossfadeArmed = false
         fadePlayerReady = false
         crossfadeArmedIndex = -1
+        crossfadeTargetIndex = -1
     }
 
     /** Aborts any armed or in-flight crossfade and restores the primary's volume. */
@@ -599,7 +678,6 @@ class PlaybackController @Inject constructor(
     }
 
     private fun reportStarted(track: PlaybackTrack, positionMs: Long) {
-        musicResumeClearedByStop -= track.id
         lastStartedItemId = track.id
         scope.launch {
             runCatching {
@@ -646,19 +724,36 @@ class PlaybackController @Inject constructor(
                     ),
                 )
             }
-            runCatching { syncResumePosition(track, state.positionMs) }
+            // Durable resume is written for long-form only. Music must never
+            // accumulate server-side positions (stale skip/crossfade leftovers
+            // would replay mid-song), and a rolling Played=false write would
+            // wipe played status earned in other sessions/clients.
+            if (track.isLongForm) {
+                runCatching { syncLongFormResume(track, state.positionMs) }
+            }
         }
     }
 
-    private fun reportStopped(state: PlaybackUiState, clearResume: Boolean = false) {
+    /**
+     * Final report for a track that is no longer current (transitioned away,
+     * stopped, or replaced by a new queue). Completion — natural end, or a
+     * crossfade handoff that fires up to the fade duration early — marks the
+     * item Played with its position cleared, for both music and audiobook
+     * chapters; chapter completion is what lets a book resume from the right
+     * chapter when no chapter holds a mid position. A music track stopped
+     * mid-way reports position 0 (skipped is skipped) and leaves UserData
+     * untouched so earlier played status survives.
+     */
+    private fun reportStopped(state: PlaybackUiState) {
         val track = state.currentTrack ?: return
-        val resumePositionMs = if (clearResume) 0L else state.positionMs
+        val completed = track.isCompletedAt(state.positionMs)
+        val reportPositionMs = if (completed || track.isLongForm) state.positionMs else 0L
         scope.launch {
             runCatching {
                 embyApi.reportPlaybackStopped(
                     PlaybackReportDto(
                         itemId = track.id,
-                        positionTicks = resumePositionMs.msToTicks(),
+                        positionTicks = reportPositionMs.msToTicks(),
                         playSessionId = playSessionId,
                         isPaused = true,
                         playlistIndex = state.currentIndex,
@@ -666,19 +761,38 @@ class PlaybackController @Inject constructor(
                     ),
                 )
             }
-            runCatching { syncResumePosition(track, resumePositionMs) }
+            when {
+                completed -> runCatching { writeUserData(track, positionMs = 0L, played = true) }
+                track.isLongForm -> runCatching { syncLongFormResume(track, state.positionMs) }
+            }
         }
     }
 
-    private suspend fun syncResumePosition(track: PlaybackTrack, positionMs: Long) {
+    private fun PlaybackTrack.isCompletedAt(positionMs: Long): Boolean {
+        val duration = durationMs ?: return false
+        if (duration <= 0) return false
+        var threshold = RESUME_END_PADDING_MS
+        val snap = settings.snapshot()
+        if (snap.crossfadeEnabled && !isLongForm) {
+            // A crossfade hands off up to the fade duration before the end;
+            // that is still a completed listen.
+            threshold = maxOf(threshold, snap.crossfadeDurationMs.toLong() + CROSSFADE_COMPLETION_SLACK_MS)
+        }
+        return positionMs >= duration - threshold
+    }
+
+    private suspend fun syncLongFormResume(track: PlaybackTrack, positionMs: Long) {
+        writeUserData(track, durableResumePosition(track, positionMs), played = false)
+    }
+
+    private suspend fun writeUserData(track: PlaybackTrack, positionMs: Long, played: Boolean) {
         val userId = settings.snapshot().userId?.takeIf { it.isNotBlank() } ?: return
-        val position = durableResumePosition(track, positionMs)
         embyApi.updateUserData(
             userId = userId,
             itemId = track.id,
             body = UserDataUpdateDto(
-                playbackPositionTicks = position.msToTicks(),
-                played = false,
+                playbackPositionTicks = positionMs.msToTicks(),
+                played = played,
             ),
         )
     }
@@ -713,6 +827,7 @@ class PlaybackController @Inject constructor(
         const val CROSSFADE_PRELOAD_MS = 12_000L
         const val CROSSFADE_BUFFER_MARGIN_MS = 500L
         const val MIN_CROSSFADE_START_MS = 2_000L
+        const val CROSSFADE_COMPLETION_SLACK_MS = 1_000L
         const val INCOMING_FADE_EXPONENT = 0.5
         const val INCOMING_START_VOLUME = 0.18f
         const val TAG = "PlaybackController"
