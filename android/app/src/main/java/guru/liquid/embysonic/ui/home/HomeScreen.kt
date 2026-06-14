@@ -1,6 +1,8 @@
 package guru.liquid.embysonic.ui.home
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,10 +24,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Tune
@@ -79,6 +83,8 @@ fun HomeScreen(
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit,
     onOpenMixes: () -> Unit,
     onOpenNowPlaying: () -> Unit,
+    onOpenAdventure: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(),
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -110,6 +116,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text(state.userName?.let { "Hi, $it" } ?: "liquidWave") },
                 actions = {
+                    IconButton(onClick = onOpenSearch) {
+                        Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
                     IconButton(onClick = { customizeHome = true }) {
                         Icon(Icons.Default.Tune, contentDescription = "Customize Home")
                     }
@@ -142,6 +151,7 @@ fun HomeScreen(
                 state = state,
                 onOpenItem = onOpenItem,
                 onOpenMixes = onOpenMixes,
+                onOpenAdventure = onOpenAdventure,
                 onPlayStation = viewModel::playStation,
                 onPlayPlaylist = viewModel::playPlaylist,
                 onPlaySonicMix = viewModel::playSonicMix,
@@ -171,6 +181,7 @@ private fun HomeContent(
     state: HomeUiState,
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit,
     onOpenMixes: () -> Unit,
+    onOpenAdventure: () -> Unit,
     onPlayStation: (HomeStation, Int?) -> Unit,
     onPlayPlaylist: (LibraryItem) -> Unit,
     onPlaySonicMix: (LibraryItem) -> Unit,
@@ -202,7 +213,7 @@ private fun HomeContent(
         // Stations: tap-to-play radios. Shown when a music library is present
         // (any music-derived row has content).
         if (state.recentAlbums.isNotEmpty() || state.artists.isNotEmpty()) {
-            item(key = "stations") { StationsRow(onPlayStation) }
+            item(key = "stations") { StationsRow(onPlayStation, onOpenAdventure) }
         }
 
         state.sectionPreferences
@@ -273,7 +284,10 @@ private fun HomeContent(
 }
 
 @Composable
-private fun StationsRow(onPlayStation: (HomeStation, Int?) -> Unit) {
+private fun StationsRow(
+    onPlayStation: (HomeStation, Int?) -> Unit,
+    onOpenAdventure: () -> Unit,
+) {
     var decadePicker by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -282,18 +296,19 @@ private fun StationsRow(onPlayStation: (HomeStation, Int?) -> Unit) {
             style = MaterialTheme.typography.titleLarge,
         )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            StationCard(Modifier.weight(1f), Icons.Default.Shuffle, "Library\nRadio") {
+            Spacer(Modifier.width(8.dp))
+            StationCard(Icons.Default.Shuffle, "Library\nRadio") {
                 onPlayStation(HomeStation.LIBRARY, null)
             }
-            StationCard(Modifier.weight(1f), Icons.Default.Album, "Random\nAlbum") {
+            StationCard(Icons.Default.Album, "Random\nAlbum") {
                 onPlayStation(HomeStation.RANDOM_ALBUM, null)
             }
-            StationCard(Modifier.weight(1f), Icons.Default.DateRange, "Decade\nRadio") {
-                decadePicker = true
-            }
+            StationCard(Icons.Default.DateRange, "Decade\nRadio") { decadePicker = true }
+            StationCard(Icons.Default.Explore, "Sonic\nAdventure", onClick = onOpenAdventure)
+            Spacer(Modifier.width(8.dp))
         }
     }
     if (decadePicker) {
@@ -309,13 +324,12 @@ private fun StationsRow(onPlayStation: (HomeStation, Int?) -> Unit) {
 
 @Composable
 private fun StationCard(
-    modifier: Modifier,
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
 ) {
     Card(
-        modifier = modifier.aspectRatio(1f).clickable(onClick = onClick),
+        modifier = Modifier.size(116.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {

@@ -27,6 +27,22 @@ data class RadioPlaylistDto(
     @SerialName("tracks") val tracks: List<TrackOutDto> = emptyList(),
 )
 
+/** Request for `POST /sonic/adventure` — a sonic journey from one track to another. */
+@Serializable
+data class AdventureRequestDto(
+    @SerialName("from_id") val fromId: String,
+    @SerialName("to_id") val toId: String,
+    @SerialName("length") val length: Int = 20,
+)
+
+/** Response of `POST /sonic/adventure`. */
+@Serializable
+data class AdventurePlaylistDto(
+    @SerialName("from_id") val fromId: String,
+    @SerialName("to_id") val toId: String,
+    @SerialName("tracks") val tracks: List<TrackOutDto> = emptyList(),
+)
+
 @Serializable
 data class SonicMixDto(
     @SerialName("id") val id: String,
