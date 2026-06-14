@@ -12,6 +12,13 @@ object Routes {
     const val HOME = "home"
     const val MIXES = "mixes"
     const val NOW_PLAYING = "now_playing"
+    const val ADVENTURE = "adventure"
+
+    // Search, with a mode arg selecting the scope set ("MUSIC" / "AUDIOBOOKS").
+    const val ARG_SEARCH_MODE = "mode"
+    const val SEARCH = "search?$ARG_SEARCH_MODE={$ARG_SEARCH_MODE}"
+
+    fun search(mode: String): String = "search?$ARG_SEARCH_MODE=$mode"
 
     // Library tabs. Music and audiobooks are SEPARATE nav destinations (distinct
     // route prefixes) so the bottom nav's save/restore-state — which keys by route

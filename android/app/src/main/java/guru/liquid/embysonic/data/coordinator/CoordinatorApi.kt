@@ -1,5 +1,7 @@
 package guru.liquid.embysonic.data.coordinator
 
+import guru.liquid.embysonic.data.coordinator.dto.AdventurePlaylistDto
+import guru.liquid.embysonic.data.coordinator.dto.AdventureRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.RadioPlaylistDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesStartedDto
@@ -36,6 +38,10 @@ interface CoordinatorApi {
         @Path("id") trackId: String,
         @Query("length") length: Int = 25,
     ): RadioPlaylistDto
+
+    /** A sonic journey that morphs from one track to another. */
+    @POST("sonic/adventure")
+    suspend fun adventure(@Body body: AdventureRequestDto): AdventurePlaylistDto
 
     @GET("sonic/mixes")
     suspend fun mixes(): List<SonicMixDto>

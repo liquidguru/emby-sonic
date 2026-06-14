@@ -48,6 +48,7 @@ interface EmbyApi {
         @Query("AlbumArtistIds") albumArtistIds: String? = null,
         @Query("Filters") filters: String? = null,
         @Query("Years") years: String? = null,
+        @Query("SearchTerm") searchTerm: String? = null,
     ): QueryResult<EmbyItemDto>
 
     /**

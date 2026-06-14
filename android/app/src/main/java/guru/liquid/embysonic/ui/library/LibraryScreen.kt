@@ -48,6 +48,7 @@ fun LibraryScreen(
     contentPadding: PaddingValues = PaddingValues(),
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit = { _, _, _ -> },
     onOpenNowPlaying: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     // Saveable so popping back from a detail screen restores the tab the user
@@ -112,8 +113,10 @@ fun LibraryScreen(
                                 )
                             }
                         }
-                        // TODO(M2+): wire library search + sort/filter overflow.
-                        IconButton(onClick = {}) { Icon(Icons.Default.Search, contentDescription = "Search") }
+                        IconButton(onClick = onOpenSearch) {
+                            Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                        // TODO(M2+): sort/filter overflow.
                         IconButton(onClick = {}) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                     },
                 )

@@ -91,6 +91,9 @@ private const val RECENT_PLAYS_SCAN = 100
 /** Default length of a generated radio/station queue. */
 private const val RADIO_QUEUE_LIMIT = 60
 
+/** Max results for a track search. */
+private const val SEARCH_LIMIT = 60
+
 private fun formatDuration(ms: Long?): String? {
     if (ms == null || ms <= 0) return null
     val totalSeconds = ms / 1000
@@ -238,6 +241,44 @@ class LibraryRepository @Inject constructor(
             }
             .take(limit)
             .toList()
+    }
+
+    /** Free-text track/chapter search ([parentId] scopes to a library). */
+    suspend fun searchTracks(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
+        searchItems(query, "Audio", parentId, limit) { it.toTrackItem() }
+
+    /** Free-text album search ([parentId] scopes to the music library). */
+    suspend fun searchAlbums(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
+        searchItems(query, "MusicAlbum", parentId, limit) { it.toCollectionItem() }
+
+    /** Free-text artist search ([parentId] scopes to the music library). */
+    suspend fun searchArtists(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
+        searchItems(query, "MusicArtist", parentId, limit) { it.toCollectionItem() }
+
+    /** Free-text book search (audiobook MusicAlbums; [parentId] = audiobooks library). */
+    suspend fun searchBooks(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
+        searchItems(query, "MusicAlbum", parentId, limit) { it.toCollectionItem() }
+
+    /** Free-text author search (audiobook MusicArtists; [parentId] = audiobooks library). */
+    suspend fun searchAuthors(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
+        searchItems(query, "MusicArtist", parentId, limit) { it.toCollectionItem() }
+
+    private suspend fun searchItems(
+        query: String,
+        includeItemTypes: String,
+        parentId: String?,
+        limit: Int,
+        map: (EmbyItemDto) -> LibraryItem,
+    ): List<LibraryItem> {
+        val term = query.trim()
+        if (term.isBlank()) return emptyList()
+        return embyApi.getItems(
+            userId = userId(),
+            includeItemTypes = includeItemTypes,
+            parentId = parentId,
+            searchTerm = term,
+            limit = limit,
+        ).items.map(map)
     }
 
     /** Shuffle the whole music library into a radio queue. */
