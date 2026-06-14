@@ -1,5 +1,6 @@
 package guru.liquid.embysonic.playback
 
+import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 
 data class PlaybackTrack(
@@ -10,6 +11,7 @@ data class PlaybackTrack(
     val imageUrl: String?,
     val durationMs: Long?,
     val playbackPositionMs: Long = 0,
+    val contentKind: ContentKind = ContentKind.UNKNOWN,
 )
 
 enum class PlaybackRepeatMode {
@@ -49,4 +51,5 @@ fun LibraryItem.toPlaybackTrack(): PlaybackTrack = PlaybackTrack(
     imageUrl = imageUrl,
     durationMs = durationMs,
     playbackPositionMs = playbackPositionMs,
+    contentKind = contentKind,
 )
