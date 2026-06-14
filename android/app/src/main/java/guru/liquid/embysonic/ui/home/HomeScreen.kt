@@ -158,6 +158,7 @@ fun HomeScreen(
                 onPlayAlbum = viewModel::playAlbum,
                 onPlayArtist = viewModel::playArtist,
                 onPlayResumeAudiobook = viewModel::playResumeAudiobook,
+                onPlayRecent = viewModel::playRecent,
                 compactCards = state.compactCards,
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
@@ -188,6 +189,7 @@ private fun HomeContent(
     onPlayAlbum: (LibraryItem) -> Unit,
     onPlayArtist: (LibraryItem) -> Unit,
     onPlayResumeAudiobook: (LibraryItem) -> Unit,
+    onPlayRecent: (LibraryItem) -> Unit,
     compactCards: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -226,9 +228,11 @@ private fun HomeContent(
                         onPlay = onPlayResumeAudiobook,
                     )
                     HomeSectionKind.RECENT_PLAYS -> HomeSectionData(
+                        // Each tile is a recorded session; tap or play replays its
+                        // exact stored queue (works for generated radios too).
                         items = state.recentPlays,
-                        onClick = { onOpenItem(it.id, it.title, DetailKind.ALBUM_TRACKS) },
-                        onPlay = onPlayAlbum,
+                        onClick = onPlayRecent,
+                        onPlay = onPlayRecent,
                     )
                     HomeSectionKind.PLAYLISTS -> HomeSectionData(
                         items = state.playlists,

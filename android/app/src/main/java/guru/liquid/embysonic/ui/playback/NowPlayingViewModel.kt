@@ -8,6 +8,7 @@ import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.PlaybackSource
 import guru.liquid.embysonic.playback.PlaybackUiState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,12 +78,18 @@ class NowPlayingViewModel @Inject constructor(
     fun playRadioAll() {
         val tracks = (_radio.value as? RadioState.Data)?.tracks ?: return
         val first = tracks.firstOrNull() ?: return
-        playback.playQueue(tracks, first)
+        playback.playQueue(tracks, first, radioSource(tracks))
     }
 
     /** Play the radio queue starting from [item]. */
     fun playRadioTrack(item: LibraryItem) {
         val tracks = (_radio.value as? RadioState.Data)?.tracks ?: return
-        playback.playQueue(tracks, item)
+        playback.playQueue(tracks, item, radioSource(tracks))
+    }
+
+    /** Recent-plays source for a Track Radio, keyed by its seed track. */
+    private fun radioSource(tracks: List<LibraryItem>): PlaybackSource {
+        val seedTitle = playback.state.value.currentTrack?.title ?: "current track"
+        return PlaybackSource("radio:$radioSeedId", "Track Radio", "Based on $seedTitle", tracks.firstOrNull()?.imageUrl)
     }
 }

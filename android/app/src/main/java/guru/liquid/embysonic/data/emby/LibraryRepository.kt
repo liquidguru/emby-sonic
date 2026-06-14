@@ -502,6 +502,19 @@ class LibraryRepository @Inject constructor(
         return items.associate { it.id.orEmpty() to it.artUrl() }
     }
 
+    /**
+     * Resolve playable music track items for a set of Emby ids, preserving the
+     * requested order (Emby may return them in any order). Used to replay a
+     * stored Recent plays queue. Ids no longer in the library are dropped.
+     */
+    suspend fun itemsByIds(ids: List<String>): List<LibraryItem> {
+        val wanted = ids.filter { it.isNotBlank() }
+        if (wanted.isEmpty()) return emptyList()
+        val byId = embyApi.getItemsByIds(userId(), wanted.distinct().joinToString(","))
+            .items.associateBy { it.id.orEmpty() }
+        return wanted.mapNotNull { byId[it]?.toTrackItem(ContentKind.MUSIC) }
+    }
+
     /** Track row: art falls back to the parent album's Primary image, else null (placeholder). */
     private fun EmbyItemDto.toTrackItem(kind: ContentKind = ContentKind.UNKNOWN): LibraryItem {
         return LibraryItem(

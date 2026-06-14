@@ -11,8 +11,12 @@ import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.resumeStartItem
+import guru.liquid.embysonic.data.recent.RecentPlay
+import guru.liquid.embysonic.data.recent.RecentPlaysRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.PlaybackSource
+import guru.liquid.embysonic.playback.playbackSourceFor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -88,6 +92,7 @@ class HomeViewModel @Inject constructor(
     private val coordinator: CoordinatorApi,
     private val settings: SettingsRepository,
     private val playback: PlaybackController,
+    private val recentPlaysRepo: RecentPlaysRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -109,11 +114,53 @@ class HomeViewModel @Inject constructor(
     // one (refresh writes _state.value wholesale).
     private var refreshJob: Job? = null
 
+    // Latest recorded sessions, kept so a Recent plays tap can resolve a tile's
+    // stored track ids back into a playable queue.
+    @Volatile
+    private var recentPlayRecords: List<RecentPlay> = emptyList()
+
     init {
         val snap = settings.snapshot()
         _state.update { it.copy(userName = snap.userName) }
         observeHomePreferences()
+        observeRecentPlays()
         refresh()
+    }
+
+    /** Recent plays is a live local history — update its row as new plays land. */
+    private fun observeRecentPlays() {
+        viewModelScope.launch {
+            recentPlaysRepo.recentPlays.collect { records ->
+                recentPlayRecords = records
+                _state.update { it.copy(recentPlays = records.map { r -> r.toTile() }) }
+            }
+        }
+    }
+
+    private fun RecentPlay.toTile(): LibraryItem =
+        LibraryItem(id = key, title = title, subtitle = subtitle, imageUrl = coverUrl)
+
+    /** Replay a recorded session: rebuild the exact queue from its stored track ids. */
+    fun playRecent(item: LibraryItem) {
+        val record = recentPlayRecords.firstOrNull { it.key == item.id } ?: return
+        viewModelScope.launch {
+            runCatching { repository.itemsByIds(record.trackIds) }.fold(
+                onSuccess = { items ->
+                    val first = items.firstOrNull()
+                    if (first == null) {
+                        _messages.send("Those tracks are no longer available")
+                    } else {
+                        playback.playQueue(
+                            items,
+                            first,
+                            PlaybackSource(record.key, record.title, record.subtitle, record.coverUrl),
+                        )
+                        _openNowPlaying.send(Unit)
+                    }
+                },
+                onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
+            )
+        }
     }
 
     fun refresh(showLoading: Boolean = true) {
@@ -140,9 +187,6 @@ class HomeViewModel @Inject constructor(
             val resumeJob = async {
                 section { audiobookLibrary?.let { repository.resumeAudiobooks(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
             }
-            val recentPlaysJob = async {
-                section { musicLibrary?.let { repository.recentlyPlayedAlbums(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
-            }
             val playlistsJob = async { section { repository.playlists(HOME_SECTION_LIMIT) } }
             val albumsJob = async {
                 section { musicLibrary?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
@@ -152,11 +196,13 @@ class HomeViewModel @Inject constructor(
             }
 
             val resumeAudiobooks = resumeJob.await()
-            val recentPlays = recentPlaysJob.await()
             val playlists = playlistsJob.await()
             val albums = albumsJob.await()
             val artists = artistsJob.await()
 
+            // Recent plays is a live local history (observeRecentPlays), not an
+            // Emby fetch — preserve whatever the collector has already set.
+            val recentPlays = _state.value.recentPlays
             val allEmpty = resumeAudiobooks.isEmpty() && recentPlays.isEmpty() &&
                 playlists.isEmpty() && albums.isEmpty() && artists.isEmpty()
             _state.value = HomeUiState(
@@ -216,7 +262,11 @@ class HomeViewModel @Inject constructor(
                     if (first == null) {
                         _messages.send("No tracks for ${station.label}")
                     } else {
-                        playback.playQueue(items, first)
+                        playback.playQueue(
+                            items,
+                            first,
+                            PlaybackSource("station:${station.name}", station.label, "Station", first.imageUrl),
+                        )
                         _openNowPlaying.send(Unit)
                     }
                 },
@@ -232,7 +282,11 @@ class HomeViewModel @Inject constructor(
             runCatching { coordinator.mixDetail(item.id).tracks.map { it.toLibraryItem() }.withArtwork() }.fold(
                 onSuccess = { tracks ->
                     tracks.firstOrNull()?.let {
-                        playback.playQueue(tracks, it)
+                        playback.playQueue(
+                            tracks,
+                            it,
+                            PlaybackSource("mix:${item.id}", item.title, "Sonic mix", item.imageUrl),
+                        )
                         _openNowPlaying.send(Unit)
                     } ?: _messages.send("Nothing playable in \"${item.title}\"")
                 },
@@ -283,7 +337,7 @@ class HomeViewModel @Inject constructor(
                     if (first == null) {
                         _messages.send("Nothing playable in \"${item.title}\"")
                     } else {
-                        playback.playQueue(items, first)
+                        playback.playQueue(items, first, playbackSourceFor(detailKind, item))
                         _openNowPlaying.send(Unit)
                     }
                 },

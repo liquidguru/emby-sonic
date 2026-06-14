@@ -13,6 +13,7 @@ import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.PlaybackSource
 import guru.liquid.embysonic.ui.library.TabState
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -86,7 +87,11 @@ class PlaylistsViewModel @Inject constructor(
                     if (first == null) {
                         _messages.send("Nothing playable in \"${item.title}\"")
                     } else {
-                        playback.playQueue(items, first)
+                        playback.playQueue(
+                            items,
+                            first,
+                            PlaybackSource("playlist:${item.id}", item.title, "Playlist", item.imageUrl),
+                        )
                         _openNowPlaying.send(Unit)
                     }
                 },
@@ -145,7 +150,7 @@ class PlaylistsViewModel @Inject constructor(
                     if (first == null) {
                         _messages.send("Nothing playable in \"${mix.displayTitle()}\"")
                     } else {
-                        playback.playQueue(tracks, first)
+                        playback.playQueue(tracks, first, mix.recentSource(first.imageUrl))
                         _openNowPlaying.send(Unit)
                     }
                 },
@@ -154,9 +159,14 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
+    private fun SonicMixDto.recentSource(cover: String?): PlaybackSource =
+        PlaybackSource("mix:$id", displayTitle(), "Sonic mix", cover)
+
     fun playSonicTracks(tracks: List<LibraryItem>, start: LibraryItem) {
         if (tracks.isEmpty()) return
-        playback.playQueue(tracks, start)
+        // Playing from within an open mix detail: record it as that mix.
+        val source = (_sonicState.value as? SonicMixesState.DetailData)?.mix?.recentSource(start.imageUrl)
+        playback.playQueue(tracks, start, source)
         viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 
