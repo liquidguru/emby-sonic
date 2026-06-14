@@ -124,6 +124,7 @@ All user-facing routes are under `/sonic` and require an `X-Emby-Token` header
 | `/sonic/albums/{id}/similar` | GET | Similar albums |
 | `/sonic/library/scan` | POST | Trigger library sync |
 | `/sonic/library/build-mixes` | POST | Rebuild auto-curated mixes (k-means) |
+| `/sonic/library/build-state` | GET | Report whether a mix rebuild is running |
 
 Interactive docs at `http://<host>:8765/docs` once running.
 

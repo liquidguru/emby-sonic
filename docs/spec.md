@@ -604,11 +604,12 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     error) — retest on real hardware.
   - *Artwork cross-dissolve during crossfade (2026-06-13)*. Now Playing and the
     mini player cross-dissolve the album art (and Now Playing's title/artist)
-    from the outgoing to the incoming track, synced to the audio blend, instead
-    of hard-cutting. Driven by the incoming track's position within the blend
-    (`crossfadeOutgoingAlpha` in TrackProgress.kt) so it stays correct even when
-    a view appears mid-blend. PlaybackController publishes `crossfadeFromTrack` +
-    `crossfadeBlendMs`. Only active when a real blend fires (music, direct-play).
+    from the outgoing to the incoming track instead of hard-cutting. The current
+    `crossfadeOutgoingAlpha` implementation snapshots the incoming position when
+    the composable enters a blend, then finishes with a wall-clock tween; it does
+    not continuously follow playback or pause while the incoming decoder buffers.
+    PlaybackController publishes `crossfadeFromTrack` + `crossfadeBlendMs`. Only
+    active when a real blend fires (music, direct-play).
     Now Playing verified on-device-good by Kaj; **mini-player dissolve pending
     real-device confirmation** (emulator silence during blends confounds it, and
     the mini player is only visible when not on Now Playing, so it must be
@@ -649,6 +650,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     `ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION` so external EQ apps (Wavelet,
     system EQ) can attach. Follow-ups if wanted: BassBoost / LoudnessEnhancer,
     a vertical-slider layout.
+  - *Review hardening batch 1 (2026-06-14).* Every primary playback-start path
+    now starts/connects the MediaSession foreground service before `player.play()`,
+    including prepared shuffle queues and queue-row starts. Crossfade's widened
+    Played threshold is granted only to the specific outgoing item when a blend
+    actually fires; otherwise the normal 5-second completion padding applies.
+    Search caches library discovery only after a successful response, so transient
+    failures remain retryable instead of making later searches unscoped. Equalizer
+    sliders still update the live effect continuously, but persist band levels to
+    DataStore only when the drag finishes.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
     browse tree, drag scrubbing, queue reorder, swipe-to-dismiss mini player,
     small offline cache.
@@ -685,8 +695,8 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail; Guest DJ toggle (currently a disabled placeholder — wire to
   `/sonic/queue/inject` or hide).
-- **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
-  (Option A) considered here, dropped in behind the `TrackProgress` interface.
+- **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
+  in behind the `TrackProgress` interface; remaining UI polish as identified.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
@@ -987,11 +997,9 @@ authenticated universal audio endpoint (`/Audio/{id}/universal`) with proper
 User-Agent headers so Emby can transcode unsupported codecs such as WMA/ASF.
 
 **M3 Polish & Known Refinements:**
-- Home now has its user-facing landing shell with playlists, recently added
-  albums, and artist shortcuts. Analysis status lives in Settings. Follow-up:
-  replace placeholder browse-backed rows with true recent listens, sonic mixes,
-  radio/adventure entries, and other M4 discovery surfaces as those APIs/UI flows
-  land.
+- Home now has its user-facing landing shell with Resume audiobooks, Recent
+  Plays, Playlists, Sonic mixes, recently added albums, artist shortcuts, and
+  the Stations/Adventure discovery strip. Analysis status lives in Settings.
 - Mini player exists in the shell for active playback and now exposes previous,
   play/pause, next, and stop. Follow-up polish could add swipe-to-dismiss or
   queue context if desired.
