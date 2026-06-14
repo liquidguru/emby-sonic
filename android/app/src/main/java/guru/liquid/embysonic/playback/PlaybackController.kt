@@ -128,6 +128,7 @@ class PlaybackController @Inject constructor(
     // state so Now Playing can dissolve the artwork in sync with the audio.
     @Volatile
     private var crossfadeFromTrack: PlaybackTrack? = null
+    private var crossfadeFromIndex: Int = -1
     @Volatile
     private var crossfadeBlendMs: Long = 0
 
@@ -520,7 +521,10 @@ class PlaybackController @Inject constructor(
         )
         val previous = lastReportedState
         if (previous.currentTrack?.id != null && previous.currentTrack.id != nextState.currentTrack?.id) {
-            reportStopped(previous)
+            val completedByCrossfade = crossfadeInProgress &&
+                crossfadeFromTrack?.id == previous.currentTrack.id &&
+                crossfadeFromIndex == previous.currentIndex
+            reportStopped(previous, completedByCrossfade = completedByCrossfade)
         }
         if (nextState.currentTrack != null && nextState.currentTrack.id != lastStartedItemId && nextState.isPlaying) {
             reportStarted(nextState.currentTrack, nextState.positionMs)
@@ -674,7 +678,8 @@ class PlaybackController @Inject constructor(
         crossfadeTargetIndex = player.nextMediaItemIndex
         // Capture the outgoing track before advancing so Now Playing can dissolve
         // its artwork over the blend (publishState reads these).
-        crossfadeFromTrack = queue.getOrNull(player.currentMediaItemIndex.coerceAtLeast(0))
+        crossfadeFromIndex = player.currentMediaItemIndex.coerceAtLeast(0)
+        crossfadeFromTrack = queue.getOrNull(crossfadeFromIndex)
         crossfadeBlendMs = blendDurationMs
         // The helper is already paused at the blend point. Seeking it again here
         // discards its buffered decoder state and creates the very gap it exists
@@ -734,6 +739,7 @@ class PlaybackController @Inject constructor(
         crossfadeArmedIndex = -1
         crossfadeTargetIndex = -1
         crossfadeFromTrack = null
+        crossfadeFromIndex = -1
         crossfadeBlendMs = 0
         publishState()
     }
@@ -811,9 +817,9 @@ class PlaybackController @Inject constructor(
      * mid-way reports position 0 (skipped is skipped) and leaves UserData
      * untouched so earlier played status survives.
      */
-    private fun reportStopped(state: PlaybackUiState) {
+    private fun reportStopped(state: PlaybackUiState, completedByCrossfade: Boolean = false) {
         val track = state.currentTrack ?: return
-        val completed = track.isCompletedAt(state.positionMs)
+        val completed = track.isCompletedAt(state.positionMs, completedByCrossfade)
         val reportPositionMs = if (completed || track.isLongForm) state.positionMs else 0L
         scope.launch {
             runCatching {
@@ -835,15 +841,15 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    private fun PlaybackTrack.isCompletedAt(positionMs: Long): Boolean {
+    private fun PlaybackTrack.isCompletedAt(positionMs: Long, completedByCrossfade: Boolean): Boolean {
         val duration = durationMs ?: return false
         if (duration <= 0) return false
         var threshold = RESUME_END_PADDING_MS
-        val snap = settings.snapshot()
-        if (snap.crossfadeEnabled && !isLongForm) {
-            // A crossfade hands off up to the fade duration before the end;
-            // that is still a completed listen.
-            threshold = maxOf(threshold, snap.crossfadeDurationMs.toLong() + CROSSFADE_COMPLETION_SLACK_MS)
+        if (completedByCrossfade && !isLongForm) {
+            // Only a blend that actually fired earns early completion credit.
+            // Merely enabling crossfade must not turn a manual near-end stop or
+            // skip into a completed listen.
+            threshold = maxOf(threshold, crossfadeBlendMs + CROSSFADE_COMPLETION_SLACK_MS)
         }
         return positionMs >= duration - threshold
     }
