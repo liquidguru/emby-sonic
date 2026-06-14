@@ -247,7 +247,6 @@ class PlaybackController @Inject constructor(
         player.volume = 1f
         reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
-        if (playWhenReady) startService()
         playSessionId = UUID.randomUUID().toString()
         lastProgressReportMs = 0
         lastStartedItemId = null
@@ -265,7 +264,7 @@ class PlaybackController @Inject constructor(
         player.setMediaItems(tracks.mapIndexed { index, track -> mediaItem(track, streamOffsetsByIndex[index] ?: 0L) }, startIndex, resumePosition)
         if (playWhenReady) {
             player.prepare()
-            player.play()
+            playPrimary()
             reportStarted(tracks[startIndex], tracks[startIndex].absolutePosition(startIndex, resumePosition))
         } else {
             player.pause()
@@ -281,7 +280,7 @@ class PlaybackController @Inject constructor(
             if (player.playbackState == Player.STATE_IDLE || player.playerError != null) {
                 player.prepare()
             }
-            player.play()
+            playPrimary()
         }
         publishState()
         reportProgress(
@@ -363,7 +362,7 @@ class PlaybackController @Inject constructor(
         streamOffsetsByIndex.remove(index)
         player.replaceMediaItem(index, mediaItem(queue[index], 0L))
         player.seekTo(index, 0L)
-        player.play()
+        playPrimary()
         reportStarted(queue[index], 0L)
         publishState()
     }
@@ -388,7 +387,7 @@ class PlaybackController @Inject constructor(
             .toMutableMap()
         player.setMediaItems(queue.mapIndexed { index, track -> mediaItem(track, streamOffsetsByIndex[index] ?: 0L) }, 0, currentPosition)
         player.prepare()
-        if (wasPlaying) player.play() else player.pause()
+        if (wasPlaying) playPrimary() else player.pause()
         publishState()
     }
 
@@ -463,7 +462,13 @@ class PlaybackController @Inject constructor(
         httpDataSourceFactory.setDefaultRequestProperties(headers)
     }
 
-    private fun startService() {
+    /** Start primary playback only after its foreground service/session are connected. */
+    private fun playPrimary() {
+        ensurePlaybackService()
+        player.play()
+    }
+
+    private fun ensurePlaybackService() {
         val intent = Intent(context, SonicPlaybackService::class.java)
         context.startService(intent)
         connectNotificationController()
@@ -580,7 +585,7 @@ class PlaybackController @Inject constructor(
         player.replaceMediaItem(index, mediaItem(track, nextOffset))
         player.seekTo(index, 0L)
         player.prepare()
-        if (wasPlaying) player.play() else player.pause()
+        if (wasPlaying) playPrimary() else player.pause()
     }
 
     /**
