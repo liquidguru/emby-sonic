@@ -11,6 +11,7 @@ import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackTrack
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +53,10 @@ class AdventureViewModel @Inject constructor(
     private val _openNowPlaying = Channel<Unit>(Channel.BUFFERED)
     val openNowPlaying: Flow<Unit> = _openNowPlaying.receiveAsFlow()
 
+    // The in-flight journey build, so a repeated Generate (or changed
+    // endpoints/length) cancels the previous request instead of racing it.
+    private var generateJob: Job? = null
+
     init {
         // Default the start to whatever's playing, if anything.
         playback.state.value.currentTrack?.let { current ->
@@ -72,7 +77,8 @@ class AdventureViewModel @Inject constructor(
             return
         }
         _state.update { it.copy(result = AdventureResult.Loading) }
-        viewModelScope.launch {
+        generateJob?.cancel()
+        generateJob = viewModelScope.launch {
             runCatching {
                 // The user picks a total length; start + end take two slots, so
                 // the middle target is length - 2. Over-request from the
