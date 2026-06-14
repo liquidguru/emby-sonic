@@ -9,6 +9,7 @@ import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.PlaybackSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.Channel
@@ -127,7 +128,11 @@ class SearchViewModel @Inject constructor(
 
     /** Play a single track result (Tracks scope). */
     fun playTrack(item: LibraryItem) {
-        playback.playQueue(listOf(item), item)
+        playback.playQueue(
+            listOf(item),
+            item,
+            PlaybackSource("track:${item.id}", item.title, item.subtitle ?: "Song", item.imageUrl),
+        )
         viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 

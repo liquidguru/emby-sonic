@@ -1,6 +1,7 @@
 package guru.liquid.embysonic.playback
 
 import guru.liquid.embysonic.data.emby.ContentKind
+import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 
 data class PlaybackTrack(
@@ -19,6 +20,33 @@ enum class PlaybackRepeatMode {
     ALL,
     ONE,
 }
+
+/**
+ * Describes where a playback queue came from, so it can be recorded in the
+ * Recent plays history. [key] is a stable identity for de-duping repeated plays
+ * of the same thing (e.g. "playlist:<id>", "mix:<id>", "album:<id>", "adventure",
+ * "radio:<seedId>", "station:library", "track:<id>"). Audiobook plays are never
+ * recorded — the controller skips them by content kind.
+ */
+data class PlaybackSource(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val coverUrl: String? = null,
+)
+
+/**
+ * Recent-plays source for a collection [item] played as the given [kind], or
+ * null for audiobooks (never recorded). [cover] overrides the item's own art
+ * (e.g. the playing track's cover) when supplied.
+ */
+fun playbackSourceFor(kind: DetailKind, item: LibraryItem, cover: String? = item.imageUrl): PlaybackSource? =
+    when (kind) {
+        DetailKind.ALBUM_TRACKS -> PlaybackSource("album:${item.id}", item.title, "Album", cover)
+        DetailKind.ARTIST_ALBUMS -> PlaybackSource("artist:${item.id}", item.title, "Artist", cover)
+        DetailKind.PLAYLIST_TRACKS -> PlaybackSource("playlist:${item.id}", item.title, "Playlist", cover)
+        DetailKind.AUTHOR_BOOKS, DetailKind.BOOK_CHAPTERS -> null
+    }
 
 data class PlaybackUiState(
     val currentTrack: PlaybackTrack? = null,

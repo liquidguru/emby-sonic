@@ -27,6 +27,8 @@ import guru.liquid.embysonic.data.emby.EmbyApi
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.dto.PlaybackReportDto
 import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
+import guru.liquid.embysonic.data.recent.RecentPlay
+import guru.liquid.embysonic.data.recent.RecentPlaysRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +57,7 @@ class PlaybackController @Inject constructor(
     private val embyApi: EmbyApi,
     private val settings: SettingsRepository,
     private val audioEffects: AudioEffectsController,
+    private val recentPlays: RecentPlaysRepository,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
@@ -236,18 +239,18 @@ class PlaybackController @Inject constructor(
         audioEffects.attach(sharedAudioSessionId)
     }
 
-    fun playQueue(items: List<LibraryItem>, startItem: LibraryItem) {
-        setQueue(items = items, startItem = startItem, shuffled = false, playWhenReady = true)
+    fun playQueue(items: List<LibraryItem>, startItem: LibraryItem, source: PlaybackSource? = null) {
+        setQueue(items = items, startItem = startItem, shuffled = false, playWhenReady = true, source = source)
     }
 
-    fun prepareShuffledQueue(items: List<LibraryItem>) {
+    fun prepareShuffledQueue(items: List<LibraryItem>, source: PlaybackSource? = null) {
         val tracks = items.shuffled(Random(System.nanoTime()))
-        prepareQueue(items = tracks, shuffled = true)
+        prepareQueue(items = tracks, shuffled = true, source = source)
     }
 
-    fun prepareQueue(items: List<LibraryItem>, shuffled: Boolean) {
+    fun prepareQueue(items: List<LibraryItem>, shuffled: Boolean, source: PlaybackSource? = null) {
         val startItem = items.firstOrNull() ?: return
-        setQueue(items = items, startItem = startItem, shuffled = shuffled, playWhenReady = player.isPlaying)
+        setQueue(items = items, startItem = startItem, shuffled = shuffled, playWhenReady = player.isPlaying, source = source)
     }
 
     private fun setQueue(
@@ -255,10 +258,12 @@ class PlaybackController @Inject constructor(
         startItem: LibraryItem,
         shuffled: Boolean,
         playWhenReady: Boolean,
+        source: PlaybackSource? = null,
     ) {
         val startIndex = items.indexOfFirst { it.id == startItem.id }.coerceAtLeast(0)
         val tracks = items.map { it.toPlaybackTrack() }
         if (tracks.isEmpty()) return
+        recordRecentPlay(source, tracks)
         cancelCrossfade()
         suppressCrossfadeIndex = -1
         // Guarantee audible playback for a new queue even if the volume was left
@@ -290,6 +295,25 @@ class PlaybackController @Inject constructor(
             player.pause()
         }
         publishState()
+    }
+
+    /** Record this queue in Recent plays, unless it's an audiobook or has no source. */
+    private fun recordRecentPlay(source: PlaybackSource?, tracks: List<PlaybackTrack>) {
+        if (source == null) return
+        if (tracks.firstOrNull()?.isLongForm == true) return
+        val trackIds = tracks.map { it.id }
+        scope.launch {
+            recentPlays.record(
+                RecentPlay(
+                    key = source.key,
+                    title = source.title,
+                    subtitle = source.subtitle,
+                    coverUrl = source.coverUrl,
+                    trackIds = trackIds,
+                    timestampMs = System.currentTimeMillis(),
+                ),
+            )
+        }
     }
 
     fun togglePlayPause() {

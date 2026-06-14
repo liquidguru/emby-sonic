@@ -692,6 +692,25 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   - *Recent plays:* Home row of recently played albums.
   - *Nav fix:* bottom-nav tabs always land on their section root; Search/Adventure
     overlays are not restored by a tab.
+- **M4.8 — Recent plays = local session history (2026-06-14, verified Pixel 8
+  Pro):** the Home "Recent plays" row changed from Emby `DatePlayed`-derived
+  albums to a **local play-history of full queues**, because Emby only records
+  last-played *per track* and can't attribute a track to the playlist/mix/
+  adventure it was played as part of. New `RecentPlaysRepository` (DataStore JSON,
+  capped 20, de-duped by source key, most-recent-first) stores each session as
+  `{key, title, subtitle, coverUrl, trackIds, timestampMs}`. `PlaybackController`
+  records on every queue start via a new optional `PlaybackSource` arg, **skipping
+  audiobooks** by content kind (so the exclusion is centralized, not per-call-site).
+  Sources are tagged at every start path — album/artist/playlist (via shared
+  `playbackSourceFor(DetailKind, …)`), sonic mix, Sonic Adventure, Track Radio,
+  Stations, and single-track search. The row is **live** (a new
+  `observeRecentPlays` collector updates it without a manual refresh). Tapping a
+  tile (or its play button) replays the **exact stored queue** —
+  `LibraryRepository.itemsByIds` re-hydrates the track ids in order — which
+  preserves generated radio/adventure queues instead of regenerating different
+  ones. Note: the row starts empty on first install (history begins now); the old
+  `recentlyPlayedAlbums` helper is no longer used by Home. This is the first piece
+  of the play-history subsystem the spec deferred for "On This Day".
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail; Guest DJ toggle (currently a disabled placeholder — wire to
   `/sonic/queue/inject` or hide).

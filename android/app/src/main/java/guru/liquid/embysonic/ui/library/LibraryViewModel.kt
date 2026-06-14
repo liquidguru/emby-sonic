@@ -11,6 +11,7 @@ import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.playbackSourceFor
 import guru.liquid.embysonic.ui.nav.Routes
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -166,7 +167,7 @@ class LibraryViewModel @Inject constructor(
                     if (first == null) {
                         _messages.send("Nothing playable in \"${item.title}\"")
                     } else {
-                        playback.playQueue(items, first)
+                        playback.playQueue(items, first, playbackSourceFor(detailKind, item))
                         _openNowPlaying.send(Unit)
                     }
                 },
@@ -182,7 +183,7 @@ class LibraryViewModel @Inject constructor(
                     if (items.isEmpty()) {
                         _messages.send("Nothing playable in \"${item.title}\"")
                     } else {
-                        playback.prepareShuffledQueue(items)
+                        playback.prepareShuffledQueue(items, playbackSourceFor(detailKind, item))
                     }
                 },
                 onFailure = { _messages.send("Couldn't shuffle: ${it.message}") },

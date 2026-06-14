@@ -11,6 +11,8 @@ import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.PlaybackSource
+import guru.liquid.embysonic.playback.playbackSourceFor
 import kotlinx.coroutines.channels.Channel
 import guru.liquid.embysonic.ui.nav.Routes
 import kotlinx.coroutines.flow.Flow
@@ -86,9 +88,13 @@ class DetailViewModel @Inject constructor(
         build = { playlists.radioTrackIds(seed.id) },
     )
 
+    /** Recent-plays source for this drill-down (the album/playlist being viewed). */
+    private fun currentSource(cover: String?): PlaybackSource? =
+        playbackSourceFor(kind, LibraryItem(id = itemId, title = title, subtitle = null, imageUrl = cover), cover)
+
     fun playFrom(seed: LibraryItem) {
         val items = (state.value as? TabState.Data)?.items.orEmpty().ifEmpty { listOf(seed) }
-        playback.playQueue(items, seed)
+        playback.playQueue(items, seed, currentSource(seed.imageUrl))
         viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 
@@ -99,7 +105,7 @@ class DetailViewModel @Inject constructor(
             viewModelScope.launch { _messages.send("Nothing playable here") }
             return
         }
-        playback.playQueue(items, seed)
+        playback.playQueue(items, seed, currentSource(seed.imageUrl))
         viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 
@@ -110,7 +116,7 @@ class DetailViewModel @Inject constructor(
         _state.update { current ->
             if (current is TabState.Data) current.copy(items = shuffled) else current
         }
-        playback.prepareQueue(shuffled, shuffled = true)
+        playback.prepareQueue(shuffled, shuffled = true, source = currentSource(shuffled.firstOrNull()?.imageUrl))
     }
 
     fun playCollection(item: LibraryItem) {
@@ -122,7 +128,7 @@ class DetailViewModel @Inject constructor(
                     if (first == null) {
                         _messages.send("Nothing playable in \"${item.title}\"")
                     } else {
-                        playback.playQueue(items, first)
+                        playback.playQueue(items, first, playbackSourceFor(targetKind, item))
                         _openNowPlaying.send(Unit)
                     }
                 },

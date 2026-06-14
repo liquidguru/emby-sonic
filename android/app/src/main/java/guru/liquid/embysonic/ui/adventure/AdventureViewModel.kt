@@ -10,6 +10,7 @@ import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.PlaybackSource
 import guru.liquid.embysonic.playback.PlaybackTrack
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -138,9 +139,15 @@ class AdventureViewModel @Inject constructor(
 
     /** Play the generated journey starting from [item]. */
     fun playFrom(item: LibraryItem) {
-        val tracks = (_state.value.result as? AdventureResult.Data)?.tracks ?: return
+        val s = _state.value
+        val tracks = (s.result as? AdventureResult.Data)?.tracks ?: return
         if (tracks.none { it.id == item.id }) return
-        playback.playQueue(tracks, item)
+        val label = listOfNotNull(s.start?.title, s.end?.title).joinToString(" → ").ifBlank { "Journey" }
+        playback.playQueue(
+            tracks,
+            item,
+            PlaybackSource("adventure:${s.start?.id}:${s.end?.id}", "Sonic Adventure", label, tracks.firstOrNull()?.imageUrl),
+        )
         viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 
