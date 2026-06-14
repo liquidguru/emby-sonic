@@ -109,7 +109,7 @@ class SearchViewModel @Inject constructor(
 
     private suspend fun parentIdFor(scope: SearchScope): String? {
         val libs = libraries
-            ?: runCatching { repository.audioLibraries() }.getOrNull().orEmpty().also { libraries = it }
+            ?: repository.audioLibraries().also { libraries = it }
         val kind = when (scope) {
             SearchScope.BOOKS, SearchScope.AUTHORS -> LibraryKind.AUDIOBOOKS
             else -> LibraryKind.MUSIC
