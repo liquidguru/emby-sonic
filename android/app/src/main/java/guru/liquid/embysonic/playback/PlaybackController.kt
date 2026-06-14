@@ -770,13 +770,17 @@ class PlaybackController @Inject constructor(
 
     private fun reportStarted(track: PlaybackTrack, positionMs: Long) {
         lastStartedItemId = track.id
+        // Snapshot the session id synchronously: setQueue/seekViaStreamOffset
+        // reassign the field, and reading it inside the coroutine would race
+        // that reassignment and stamp the report with the wrong session.
+        val sessionId = playSessionId
         scope.launch {
             runCatching {
                 embyApi.reportPlaybackStarted(
                     PlaybackReportDto(
                         itemId = track.id,
                         positionTicks = positionMs.msToTicks(),
-                        playSessionId = playSessionId,
+                        playSessionId = sessionId,
                         isPaused = false,
                     ),
                 )
@@ -801,13 +805,14 @@ class PlaybackController @Inject constructor(
         val now = System.currentTimeMillis()
         if (!force && now - lastProgressReportMs < PROGRESS_REPORT_INTERVAL_MS) return
         lastProgressReportMs = now
+        val sessionId = playSessionId
         scope.launch {
             runCatching {
                 embyApi.reportPlaybackProgress(
                     PlaybackReportDto(
                         itemId = track.id,
                         positionTicks = state.positionMs.msToTicks(),
-                        playSessionId = playSessionId,
+                        playSessionId = sessionId,
                         isPaused = !state.isPlaying,
                         playlistIndex = state.currentIndex,
                         playlistLength = state.queue.size,
@@ -839,13 +844,14 @@ class PlaybackController @Inject constructor(
         val track = state.currentTrack ?: return
         val completed = track.isCompletedAt(state.positionMs, completedByCrossfade)
         val reportPositionMs = if (completed || track.isLongForm) state.positionMs else 0L
+        val sessionId = playSessionId
         scope.launch {
             runCatching {
                 embyApi.reportPlaybackStopped(
                     PlaybackReportDto(
                         itemId = track.id,
                         positionTicks = reportPositionMs.msToTicks(),
-                        playSessionId = playSessionId,
+                        playSessionId = sessionId,
                         isPaused = true,
                         playlistIndex = state.currentIndex,
                         playlistLength = state.queue.size,
