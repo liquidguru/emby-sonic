@@ -86,8 +86,13 @@ class AudioEffectsController @Inject constructor(
             val (min, max) = eq.bandLevelRange.let { it[0].toInt() to it[1].toInt() }
             eq.setBandLevel(index.toShort(), levelMb.coerceIn(min, max).toShort())
         }
-        scope.launch { settings.setEqBandLevels(currentLevels()) }
         publish()
+    }
+
+    /** Persist the current live band values after a slider drag finishes. */
+    fun persistBandLevels() {
+        if (equalizer == null) return
+        scope.launch { settings.setEqBandLevels(currentLevels()) }
     }
 
     /** Apply a built-in preset, then persist the resulting per-band gains. */

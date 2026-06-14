@@ -117,6 +117,7 @@ fun EqualizerScreen(
                     maxMb = state.maxLevelMb,
                     enabled = state.enabled,
                     onLevelChange = { viewModel.setBandLevel(band.index, it) },
+                    onLevelChangeFinished = viewModel::persistBandLevels,
                 )
             }
         }
@@ -130,6 +131,7 @@ private fun BandRow(
     maxMb: Int,
     enabled: Boolean,
     onLevelChange: (Int) -> Unit,
+    onLevelChangeFinished: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -140,6 +142,7 @@ private fun BandRow(
         Slider(
             value = band.levelMb.toFloat(),
             onValueChange = { onLevelChange(it.toInt()) },
+            onValueChangeFinished = onLevelChangeFinished,
             valueRange = minMb.toFloat()..maxMb.toFloat(),
             enabled = enabled,
             modifier = Modifier.weight(1f),

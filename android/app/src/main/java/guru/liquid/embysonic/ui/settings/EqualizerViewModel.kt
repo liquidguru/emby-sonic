@@ -15,6 +15,7 @@ class EqualizerViewModel @Inject constructor(
 
     fun setEnabled(enabled: Boolean) = audioEffects.setEnabled(enabled)
     fun setBandLevel(index: Int, levelMb: Int) = audioEffects.setBandLevel(index, levelMb)
+    fun persistBandLevels() = audioEffects.persistBandLevels()
     fun usePreset(preset: Int) = audioEffects.usePreset(preset)
     fun reset() = audioEffects.reset()
 }
