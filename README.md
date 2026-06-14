@@ -7,8 +7,12 @@ discovery: similar tracks/artists/albums, track radio, sonic adventures, auto-cu
 mixes, and a Guest DJ.
 
 > **Status:** Phase 1 (Python analysis service) and Phase 2 (C# Emby plugin) complete.
-> Phase 3 (Android app, "liquidWave") in progress — browse, playback, sonic mixes
-> with per-mix refresh, and music crossfade. See [`docs/spec.md`](docs/spec.md) for the full architecture and roadmap.
+> Phase 3 (Android app, **liquidWave**) is well advanced and running on real
+> hardware — browse, Media3 playback, sonic mixes (per-mix refresh), crossfade
+> with artwork cross-dissolve, an in-app equalizer, Track Radio, Sonic Adventure,
+> Stations, Recent Plays, and search across music + audiobooks. See
+> [`docs/spec.md`](docs/spec.md) for the full architecture and milestone list,
+> and [`AGENTS.md`](AGENTS.md) for the working agreement / dev environment.
 
 ## Architecture
 
@@ -169,6 +173,58 @@ and restart Emby. The plugin then appears under **Dashboard → Plugins → Emby
 The plugin talks to the coordinator over HTTP; run the coordinator wherever it's
 convenient (same host or another LAN machine) and point the plugin's config page
 at its URL.
+
+## Phase 3 — Android app (liquidWave)
+
+A Kotlin / Jetpack Compose app (`android/`, package `guru.liquid.embysonic`,
+minSdk 26). Browse/stream/auth go to the **Emby API directly**; sonic features go
+to the **coordinator**. Stack: Compose + Hilt + Retrofit/OkHttp (two clients) +
+Media3 ExoPlayer + DataStore.
+
+**Features:** library + audiobook browse with A–Z fast-scroll; Now Playing with
+queue, shuffle/repeat, mini player, and a system media notification; durable
+audiobook resume; music crossfade with a synced artwork cross-dissolve; an in-app
+equalizer (presets + per-band, also broadcasts its session for external EQ apps);
+auto-curated sonic mixes (per-mix refresh, save as playlist); Track Radio; Sonic
+Adventure (a sonic journey from one track to another); Stations (Library / Random
+Album / Decade radios); Recent Plays; and search across music (tracks/albums/
+artists), audiobooks (books/authors), or everything from Home.
+
+### Build
+
+Requires the Android SDK (platform android-36) and JDK 17 (Android Studio's
+bundled JBR works).
+
+```bash
+cd android
+JAVA_HOME="<path-to-jdk17>" ./gradlew :app:assembleDebug
+# APK: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Install on a phone (USB or wireless ADB)
+
+The debug APK is fine for real use (debug vs release doesn't affect audio).
+
+**USB:** enable *Developer options → USB debugging*, plug in, then:
+
+```bash
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+**Wireless ADB** (no cable; Android 11+): on the phone, *Developer options →
+Wireless debugging*. Pair once, then connect and install — after pairing, only
+the port changes between sessions:
+
+```bash
+# one-time pairing (use the IP:port + 6-digit code from "Pair device with pairing code")
+adb pair <phone-ip>:<pair-port> <code>
+# then each session (IP:port from the main Wireless debugging screen):
+adb connect <phone-ip>:<connect-port>
+adb -s <phone-ip>:<connect-port> install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+On first launch, enter your Emby server URL + credentials and the coordinator URL
+in the login screen. The phone must be on the same LAN as Emby and the coordinator.
 
 ## License
 

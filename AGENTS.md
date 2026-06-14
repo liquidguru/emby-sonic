@@ -77,7 +77,7 @@ cd C:\Users\liqui\dev\emby-sonic\android
   cmdline-tools). Standalone Gradle dist at `C:\Users\liqui\dev\tools\gradle-8.11.1`.
 - APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-**Always verify UI changes on the emulator — don't ask the user to check by hand.**
+**Verify UI changes on a device — don't ask the user to check by hand.**
 
 ```powershell
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
@@ -88,6 +88,28 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 ```
 
 The emulator reaches the LAN directly (Emby + coordinator at 192.168.1.9).
+
+### Real device — Kaj's Pixel 8 Pro over wireless ADB (preferred for audio)
+
+The **emulator's software audio codecs are unreliable** for crossfade and
+equalizer work (two simultaneous decoders during a blend exhaust them → silent
+playback). **Judge anything audio/crossfade/EQ on the real phone, not the
+emulator.** Non-audio UI can still be emulator-tested (with crossfade OFF).
+
+The Pixel 8 Pro is **paired** for wireless debugging (pairing is permanent; only
+the connection port changes). To install a build:
+
+```powershell
+$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+& $adb devices    # phone shows as adb-39151FDJG00670-...._adb-tls-connect._tcp when connected
+& $adb -s "<phone-device-id>" install -r android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+If it's not connected (sleep / Wi-Fi blip), ask Kaj for the current **IP:port**
+from the phone's *Settings → Developer options → Wireless debugging* screen, then
+`& $adb connect 192.168.1.151:<port>` (no re-pair needed). First pairing only:
+"Pair device with pairing code" → `adb pair 192.168.1.151:<pairport> <code>`.
+On first launch the app needs login (Emby URL/creds + coordinator URL).
 
 ## Coordinator / workers ops
 
@@ -147,10 +169,30 @@ There is no other copy; don't rely on a local-only commit.
   shows the shape. Never commit real keys or put them in this file.
 - Kaj's Emby UserId: `a356b428d6ae419ea8ef9d7d92bd60ff` (id only, not a secret).
 
-## Current state
+## Current state (2026-06-14)
 
-- Phases 1 & 2 complete. Phase 3 (Android) in progress: browse + drill-down,
-  sonic playlist generation (saved to Emby), and an in-app Playlists browse
-  screen are done. **Next: M3 Now Playing + Media3 ExoPlayer**, then offline
-  prefetch buffer, then M4 Mixes UI. See `docs/spec.md` for the milestone list
-  and the audiobook coordinator-purge decision (still pending the owner's OK).
+Phases 1 & 2 complete. Phase 3 (Android "liquidWave") is well advanced and
+running on Kaj's Pixel 8 Pro. `docs/spec.md` has the full milestone list; in
+short, **shipped and verified on-device:**
+
+- Browse (artists/albums/tracks, authors/books), drill-down, A–Z picker.
+- Playback: Media3/ExoPlayer, queue, shuffle/repeat, mini player, MediaSession +
+  shade notification, audio focus / becoming-noisy / wake mode.
+- Audiobook resume (durable via Emby UserData; `/Audio/{id}/stream` for offset).
+- Music **crossfade** with synced **artwork cross-dissolve** (Now Playing + mini
+  player). Crossfade only blends direct-play tracks (transcoded → normal cut).
+- **Equalizer** (audiofx, shared session, presets, persistence).
+- Sonic **mixes** (list/detail/play, per-mix refresh, save-as-playlist, build).
+- **Track Radio**, **Sonic Adventure** (A→B), **Stations** (Library/Random
+  Album/Decade radios), **Recent plays**, **Search** (music + audiobooks + Home
+  all-scopes).
+- Home customization (sections, order, compact cards).
+
+**Next candidates** (see spec "M4 — Remaining"): sonic-similar sidebars on
+Artist/Album detail; wire up or hide the Guest DJ toggle; mini-player dissolve
+polish; coordinator-side dedupe of the adventure walk; offline prefetch buffer.
+
+**Known constraints:** judge audio/crossfade/EQ on the **real phone** (emulator
+codecs are unreliable for blends). Coordinator must be running on liquidBee for
+mixes/radio/adventure/search-of-sonic features (Emby browse/search/playback work
+without it).
