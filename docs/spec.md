@@ -1,7 +1,9 @@
 # Emby Sonic — Project Specification
 **Version:** 0.2
 **Author:** Kaj Maney
-**Status:** Phase 1 & 2 COMPLETE — Phase 3 (Android app) M3 complete
+**Status:** Phase 1 & 2 COMPLETE — Phase 3 (Android app "liquidWave") active;
+playback, mixes, crossfade, equalizer, search, Track Radio & Sonic Adventure
+shipping and verified on a Pixel 8 Pro (real device). See milestone list below.
 
 ---
 
@@ -657,8 +659,32 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     small offline cache.
   - (Done earlier in M4.5 phase 1: POST_NOTIFICATIONS runtime request,
     `setSessionActivity`, per-tab lazy-list state.)
-- **M4 — Remaining sonic features:** Track radio, Sonic adventure,
-  sonic-similar sidebars on Artist/Album detail, Guest DJ toggle.
+- **M4.6 — Equalizer (2026-06-14, verified Pixel 8 Pro):** in-app graphic EQ
+  via `android.media.audiofx.Equalizer`. Both ExoPlayers share one audio session
+  so the EQ covers playback and crossfade blends; `AudioEffectsController`
+  (singleton) owns the effect, persists enabled + per-band levels, and broadcasts
+  the audio session so external EQ apps (Wavelet) can attach. UI at
+  Settings → Equalizer (toggle, system presets, per-band sliders, Flat reset).
+- **M4.7 — Search + Track Radio + Sonic Adventure (2026-06-14):**
+  - *Track Radio:* Now Playing "Radio" tab generates a live sonic radio from the
+    current track (`/sonic/tracks/{id}/radio`).
+  - *Search:* reusable debounced Emby search. Music tab → Tracks/Albums/Artists;
+    Audiobooks tab → Books/Authors; Home search icon → all five. Library-scoped
+    per kind; the long-dead Search button is now wired.
+  - *Sonic Adventure:* A→B journey screen from the Home Stations strip
+    (`/sonic/adventure`). Endpoints via search sheet (Start defaults to
+    now-playing); bookended with the chosen tracks, de-duped by title+artist,
+    and length-compensated (over-request + even sample) so it lands on the chosen
+    length and ends on B. **Coordinator fix:** `build_adventure` now includes the
+    start/end tracks (was excluding both).
+  - *Stations:* Home strip (Library / Random Album / Decade radios + Sonic
+    Adventure), horizontally scrollable.
+  - *Recent plays:* Home row of recently played albums.
+  - *Nav fix:* bottom-nav tabs always land on their section root; Search/Adventure
+    overlays are not restored by a tab.
+- **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
+  detail; Guest DJ toggle (currently a disabled placeholder — wire to
+  `/sonic/queue/inject` or hide).
 - **M5 — Waveform + polish:** Real recents/mixes on Home, icon/theming. Real waveform
   (Option A) considered here, dropped in behind the `TrackProgress` interface.
 
