@@ -1,6 +1,7 @@
 package guru.liquid.embysonic.data.coordinator
 
 import guru.liquid.embysonic.data.coordinator.dto.TrackOutDto
+import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 
 /**
@@ -16,6 +17,9 @@ fun TrackOutDto.toLibraryItem(): LibraryItem = LibraryItem(
     trailingText = formatTrackDuration(durationMs),
     album = album,
     durationMs = durationMs,
+    // Sonic features (mixes/radio/adventure/similar) are music-only — the
+    // coordinator excludes spoken-word/audiobooks from analysis.
+    contentKind = ContentKind.MUSIC,
 )
 
 private fun formatTrackDuration(ms: Long?): String? {

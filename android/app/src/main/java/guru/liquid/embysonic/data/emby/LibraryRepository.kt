@@ -33,6 +33,13 @@ enum class DetailKind {
             AUTHOR_BOOKS -> BOOK_CHAPTERS
             ALBUM_TRACKS, BOOK_CHAPTERS, PLAYLIST_TRACKS -> null
         }
+
+    /** Playback content kind for the tracks this drill-down produces. */
+    fun contentKind(): ContentKind = when (this) {
+        ARTIST_ALBUMS, ALBUM_TRACKS -> ContentKind.MUSIC
+        AUTHOR_BOOKS, BOOK_CHAPTERS -> ContentKind.AUDIOBOOK
+        PLAYLIST_TRACKS -> ContentKind.UNKNOWN
+    }
 }
 
 data class AudioLibrary(
@@ -42,6 +49,15 @@ data class AudioLibrary(
 )
 
 /** Flattened item for library list/grid UIs, with its Emby image URL resolved. */
+/**
+ * Whether a playable item is music or an audiobook/long-form, decided explicitly
+ * from the source (library/endpoint) rather than inferred from duration. UNKNOWN
+ * means the producer couldn't tell (e.g. a mixed playlist), and playback falls
+ * back to the legacy duration heuristic. Drives resume, crossfade eligibility,
+ * the stream endpoint, and Played-on-completion in PlaybackController.
+ */
+enum class ContentKind { MUSIC, AUDIOBOOK, UNKNOWN }
+
 data class LibraryItem(
     val id: String,
     val title: String,
@@ -52,6 +68,7 @@ data class LibraryItem(
     val durationMs: Long? = null,
     val playbackPositionMs: Long = 0,
     val played: Boolean = false,
+    val contentKind: ContentKind = ContentKind.UNKNOWN,
 )
 
 /**
@@ -245,7 +262,7 @@ class LibraryRepository @Inject constructor(
 
     /** Free-text track/chapter search ([parentId] scopes to a library). */
     suspend fun searchTracks(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
-        searchItems(query, "Audio", parentId, limit) { it.toTrackItem() }
+        searchItems(query, "Audio", parentId, limit) { it.toTrackItem(ContentKind.MUSIC) }
 
     /** Free-text album search ([parentId] scopes to the music library). */
     suspend fun searchAlbums(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
@@ -289,7 +306,7 @@ class LibraryRepository @Inject constructor(
             includeItemTypes = "Audio",
             sortBy = "Random",
             limit = limit,
-        ).items.map { it.toTrackItem() }
+        ).items.map { it.toTrackItem(ContentKind.MUSIC) }
 
     /** Random tracks from a single decade ([decadeStart], e.g. 1990 → 1990–1999). */
     suspend fun decadeRadio(
@@ -304,7 +321,7 @@ class LibraryRepository @Inject constructor(
             sortBy = "Random",
             limit = limit,
             years = (decadeStart until decadeStart + 10).joinToString(","),
-        ).items.map { it.toTrackItem() }
+        ).items.map { it.toTrackItem(ContentKind.MUSIC) }
 
     /** A handful of random albums, played start-to-finish in sequence. */
     suspend fun randomAlbumRadio(libraryId: String, albumCount: Int = 6): List<LibraryItem> {
@@ -323,7 +340,7 @@ class LibraryRepository @Inject constructor(
                 includeItemTypes = "Audio",
                 sortBy = "ParentIndexNumber,IndexNumber",
                 limit = 100,
-            ).items.map { it.toTrackItem() }
+            ).items.map { it.toTrackItem(ContentKind.MUSIC) }
         }
         return out
     }
@@ -390,7 +407,7 @@ class LibraryRepository @Inject constructor(
             parentId = libraryId,
             includeItemTypes = "Audio",
             sortBy = "Album,SortName",
-        ).items.map { it.toTrackItem() }
+        ).items.map { it.toTrackItem(ContentKind.MUSIC) }
 
     /**
      * Children of a drill-down. Artists/authors → their albums/books (a grid);
@@ -418,7 +435,7 @@ class LibraryRepository @Inject constructor(
                     parentId = parentId,
                     includeItemTypes = "Audio",
                     sortBy = "ParentIndexNumber,IndexNumber",
-                ).items.map { it.toTrackItem() }
+                ).items.map { it.toTrackItem(kind.contentKind()) }
         }
 
     /** Tracks/chapters represented by a collection tile, suitable for direct playback. */
@@ -431,7 +448,7 @@ class LibraryRepository @Inject constructor(
                     albumArtistIds = collectionId,
                     sortBy = "Album,ParentIndexNumber,IndexNumber,SortName",
                     limit = BROWSE_LIMIT,
-                ).items.map { it.toTrackItem() }
+                ).items.map { it.toTrackItem(kind.contentKind()) }
 
             DetailKind.ALBUM_TRACKS, DetailKind.BOOK_CHAPTERS, DetailKind.PLAYLIST_TRACKS ->
                 childItems(collectionId, kind)
@@ -486,7 +503,7 @@ class LibraryRepository @Inject constructor(
     }
 
     /** Track row: art falls back to the parent album's Primary image, else null (placeholder). */
-    private fun EmbyItemDto.toTrackItem(): LibraryItem {
+    private fun EmbyItemDto.toTrackItem(kind: ContentKind = ContentKind.UNKNOWN): LibraryItem {
         return LibraryItem(
             id = id.orEmpty(),
             title = name.orEmpty(),
@@ -497,6 +514,7 @@ class LibraryRepository @Inject constructor(
             durationMs = durationMs,
             playbackPositionMs = userData?.playbackPositionTicks?.ticksToMs() ?: 0,
             played = userData?.played ?: false,
+            contentKind = kind,
         )
     }
 
@@ -511,6 +529,7 @@ class LibraryRepository @Inject constructor(
             imageUrl = art,
             durationMs = durationMs,
             playbackPositionMs = positionMs,
+            contentKind = ContentKind.AUDIOBOOK,
         )
     }
 

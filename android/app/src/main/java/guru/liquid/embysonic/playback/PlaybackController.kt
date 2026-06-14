@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.BuildConfig
+import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.EmbyApi
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.dto.PlaybackReportDto
@@ -581,8 +582,17 @@ class PlaybackController @Inject constructor(
         return (resume - LONG_FORM_RESUME_PREROLL_MS).coerceAtLeast(0)
     }
 
+    // Long-form (durable resume, server-offset /stream seek, no crossfade,
+    // Played-on-completion) is driven by the explicit content kind when known.
+    // Duration is only a fallback for UNKNOWN sources (e.g. mixed playlists) so a
+    // long *music* track no longer masquerades as an audiobook (false resume,
+    // suppressed crossfade) and a short audiobook chapter still resumes.
     private val PlaybackTrack.isLongForm: Boolean
-        get() = (durationMs ?: 0L) >= LONG_FORM_MIN_DURATION_MS
+        get() = when (contentKind) {
+            ContentKind.AUDIOBOOK -> true
+            ContentKind.MUSIC -> false
+            ContentKind.UNKNOWN -> (durationMs ?: 0L) >= LONG_FORM_MIN_DURATION_MS
+        }
 
     private fun PlaybackTrack.streamStartOffset(): Long =
         if (isLongForm) resumePositionForPlayback() else 0L
