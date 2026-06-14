@@ -32,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -139,6 +140,14 @@ class PlaybackController @Inject constructor(
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
 
+    // Gates the two ticking loops below so they only run while audio is actually
+    // playing. Idle, they did 20 main-thread wakeups/second forever (the 50ms
+    // crossfade poll) — wasting battery and, because the main looper was never
+    // quiet, blocking on-device uiautomator from ever reaching idle. Discrete
+    // state changes still publish via the onEvents listener; only the continuous
+    // position tick and blend poll pause when not playing. Updated from onEvents.
+    private val playbackActive = MutableStateFlow(false)
+
     private var queue: List<PlaybackTrack> = emptyList()
     private var queueShuffled: Boolean = false
     private var streamOffsetsByIndex: MutableMap<Int, Long> = mutableMapOf()
@@ -159,6 +168,7 @@ class PlaybackController @Inject constructor(
     init {
         player.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
+                playbackActive.value = player.isPlaying
                 publishState()
             }
 
@@ -200,17 +210,25 @@ class PlaybackController @Inject constructor(
                     publishState()
                 }
         }
+        // collectLatest cancels the inner loop the moment playback stops and
+        // relaunches it when it resumes, so neither loop spins while idle.
         scope.launch {
-            while (isActive) {
-                publishState()
-                reportProgressIfDue()
-                delay(500)
+            playbackActive.collectLatest { active ->
+                if (!active) return@collectLatest
+                while (isActive) {
+                    publishState()
+                    reportProgressIfDue()
+                    delay(500)
+                }
             }
         }
         scope.launch {
-            while (isActive) {
-                maybeStartCrossfade()
-                delay(CROSSFADE_POLL_MS)
+            playbackActive.collectLatest { active ->
+                if (!active) return@collectLatest
+                while (isActive) {
+                    maybeStartCrossfade()
+                    delay(CROSSFADE_POLL_MS)
+                }
             }
         }
         // Bind the equalizer to the players' shared session.
