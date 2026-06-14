@@ -14,6 +14,7 @@ import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
@@ -102,6 +103,12 @@ class HomeViewModel @Inject constructor(
     @Volatile
     private var musicLibraryId: String? = null
 
+    // The in-flight Home load. refresh() fires from init, the ON_RESUME
+    // lifecycle hook, and the manual refresh button, so two can overlap; cancel
+    // the previous so a slow earlier load can't land after and clobber a newer
+    // one (refresh writes _state.value wholesale).
+    private var refreshJob: Job? = null
+
     init {
         val snap = settings.snapshot()
         _state.update { it.copy(userName = snap.userName) }
@@ -117,7 +124,8 @@ class HomeViewModel @Inject constructor(
                 it.copy(error = null)
             }
         }
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             // Each section loads independently and in parallel: a coordinator
             // outage must not blank the Emby-backed rows (and vice versa), and a
             // single failed Emby query degrades only its own row rather than the

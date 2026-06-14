@@ -9,6 +9,7 @@ import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackUiState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +39,11 @@ class NowPlayingViewModel @Inject constructor(
     // recomposition but can refresh when the seed changes (or on explicit request).
     private var radioSeedId: String? = null
 
+    // The in-flight radio build. The seed can change while a request is pending
+    // (track auto-advances, or the user hits "New radio"); cancel the previous so
+    // a slow earlier response can't land after — and overwrite — a newer one.
+    private var radioJob: Job? = null
+
     fun togglePlayPause() = playback.togglePlayPause()
     fun seekTo(positionMs: Long) = playback.seekTo(positionMs)
     fun skipPrevious() = playback.skipPrevious()
@@ -53,7 +59,8 @@ class NowPlayingViewModel @Inject constructor(
         if (!force && seed.id == radioSeedId && _radio.value is RadioState.Data) return
         radioSeedId = seed.id
         _radio.value = RadioState.Loading
-        viewModelScope.launch {
+        radioJob?.cancel()
+        radioJob = viewModelScope.launch {
             runCatching {
                 val tracks = coordinator.trackRadio(seed.id).tracks.map { it.toLibraryItem() }
                 val art = runCatching { repository.artworkByIds(tracks.map { it.id }) }
