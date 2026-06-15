@@ -155,7 +155,7 @@ class PlaybackController @Inject constructor(
     private var queue: List<PlaybackTrack> = emptyList()
     private var queueShuffled: Boolean = false
     private var streamOffsetsByIndex: MutableMap<Int, Long> = mutableMapOf()
-    private var playSessionId: String = UUID.randomUUID().toString()
+    private var playSessionIdsByIndex: MutableMap<Int, String> = mutableMapOf()
     private var lastProgressReportMs: Long = 0
     private var lastReportedState: PlaybackUiState = PlaybackUiState()
     private var lastStartedItemId: String? = null
@@ -272,7 +272,9 @@ class PlaybackController @Inject constructor(
         player.volume = 1f
         reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
-        playSessionId = UUID.randomUUID().toString()
+        playSessionIdsByIndex = tracks.indices
+            .associateWith { UUID.randomUUID().toString() }
+            .toMutableMap()
         lastProgressReportMs = 0
         lastStartedItemId = null
         refreshHeaders()
@@ -286,11 +288,25 @@ class PlaybackController @Inject constructor(
             .toMap()
             .toMutableMap()
         val resumePosition = tracks.getOrNull(startIndex)?.playerStartPosition(startIndex) ?: 0
-        player.setMediaItems(tracks.mapIndexed { index, track -> mediaItem(track, streamOffsetsByIndex[index] ?: 0L) }, startIndex, resumePosition)
+        player.setMediaItems(
+            tracks.mapIndexed { index, track ->
+                mediaItem(
+                    track = track,
+                    startOffsetMs = streamOffsetsByIndex[index] ?: 0L,
+                    playbackSessionId = playbackSessionId(index),
+                )
+            },
+            startIndex,
+            resumePosition,
+        )
         if (playWhenReady) {
             player.prepare()
             playPrimary()
-            reportStarted(tracks[startIndex], tracks[startIndex].absolutePosition(startIndex, resumePosition))
+            reportStarted(
+                track = tracks[startIndex],
+                positionMs = tracks[startIndex].absolutePosition(startIndex, resumePosition),
+                index = startIndex,
+            )
         } else {
             player.pause()
         }
@@ -404,10 +420,14 @@ class PlaybackController @Inject constructor(
         reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
         streamOffsetsByIndex.remove(index)
-        player.replaceMediaItem(index, mediaItem(queue[index], 0L))
+        playSessionIdsByIndex[index] = UUID.randomUUID().toString()
+        player.replaceMediaItem(
+            index,
+            mediaItem(queue[index], 0L, playbackSessionId(index)),
+        )
         player.seekTo(index, 0L)
         playPrimary()
-        reportStarted(queue[index], 0L)
+        reportStarted(queue[index], 0L, index)
         publishState()
     }
 
@@ -416,6 +436,7 @@ class PlaybackController @Inject constructor(
         cancelCrossfade()
         val currentIndex = player.currentMediaItemIndex.coerceAtLeast(0)
         val currentTrack = queue.getOrNull(currentIndex)
+        val currentPlaybackSessionId = playSessionIdsByIndex[currentIndex]
         val currentPosition = player.currentPosition.coerceAtLeast(0)
         val wasPlaying = player.isPlaying
         val shuffledTail = queue
@@ -423,13 +444,29 @@ class PlaybackController @Inject constructor(
             .shuffled(Random(System.nanoTime()))
         queue = if (currentTrack != null) listOf(currentTrack) + shuffledTail else shuffledTail
         queueShuffled = true
+        playSessionIdsByIndex = queue.indices
+            .associateWith { index ->
+                currentPlaybackSessionId.takeIf { index == 0 && currentTrack != null }
+                    ?: UUID.randomUUID().toString()
+            }
+            .toMutableMap()
         streamOffsetsByIndex = queue
             .mapIndexedNotNull { index, track ->
                 track.streamStartOffset().takeIf { it > 0 }?.let { index to it }
             }
             .toMap()
             .toMutableMap()
-        player.setMediaItems(queue.mapIndexed { index, track -> mediaItem(track, streamOffsetsByIndex[index] ?: 0L) }, 0, currentPosition)
+        player.setMediaItems(
+            queue.mapIndexed { index, track ->
+                mediaItem(
+                    track = track,
+                    startOffsetMs = streamOffsetsByIndex[index] ?: 0L,
+                    playbackSessionId = playbackSessionId(index),
+                )
+            },
+            0,
+            currentPosition,
+        )
         player.prepare()
         if (wasPlaying) playPrimary() else player.pause()
         publishState()
@@ -451,7 +488,11 @@ class PlaybackController @Inject constructor(
         scope.launch { settings.setPlaybackRepeatMode(PlaybackRepeatMode.OFF.name) }
     }
 
-    private fun mediaItem(track: PlaybackTrack, startOffsetMs: Long): MediaItem {
+    private fun mediaItem(
+        track: PlaybackTrack,
+        startOffsetMs: Long,
+        playbackSessionId: String,
+    ): MediaItem {
         val metadata = MediaMetadata.Builder()
             .setTitle(track.title)
             .setArtist(track.artist)
@@ -461,12 +502,12 @@ class PlaybackController @Inject constructor(
 
         return MediaItem.Builder()
             .setMediaId(track.id)
-            .setUri(streamUrl(track.id, startOffsetMs))
+            .setUri(streamUrl(track.id, startOffsetMs, playbackSessionId))
             .setMediaMetadata(metadata)
             .build()
     }
 
-    private fun streamUrl(itemId: String, startOffsetMs: Long): String {
+    private fun streamUrl(itemId: String, startOffsetMs: Long, playbackSessionId: String): String {
         val snap = settings.snapshot()
         val base = snap.serverUrl?.trimEnd('/')
             ?: throw IllegalStateException("No Emby server configured")
@@ -481,7 +522,7 @@ class PlaybackController @Inject constructor(
             .appendQueryParameter("AudioCodec", if (startOffsetMs > 0) "mp3" else "mp3,aac,flac,vorbis,opus")
             .appendQueryParameter("TranscodingContainer", "mp3")
             .appendQueryParameter("TranscodingProtocol", "http")
-            .appendQueryParameter("PlaySessionId", playSessionId)
+            .appendQueryParameter("PlaySessionId", playbackSessionId)
         if (startOffsetMs > 0) {
             builder
                 .appendQueryParameter("Static", "false")
@@ -490,6 +531,9 @@ class PlaybackController @Inject constructor(
         }
         return builder.build().toString()
     }
+
+    private fun playbackSessionId(index: Int): String =
+        playSessionIdsByIndex.getOrPut(index) { UUID.randomUUID().toString() }
 
     private fun refreshHeaders() {
         val snap = settings.snapshot()
@@ -570,7 +614,7 @@ class PlaybackController @Inject constructor(
             reportStopped(previous, completedByCrossfade = completedByCrossfade)
         }
         if (nextState.currentTrack != null && nextState.currentTrack.id != lastStartedItemId && nextState.isPlaying) {
-            reportStarted(nextState.currentTrack, nextState.positionMs)
+            reportStarted(nextState.currentTrack, nextState.positionMs, nextState.currentIndex)
         }
         lastReportedState = nextState
         _state.value = nextState
@@ -636,9 +680,12 @@ class PlaybackController @Inject constructor(
         // — audio keeps coming from the old position while the position counter
         // shows the seek target. A fresh id forces a new job that honours the
         // offset (verified against Emby 4.10 for wma/mp3/m4b sources).
-        playSessionId = UUID.randomUUID().toString()
+        playSessionIdsByIndex[index] = UUID.randomUUID().toString()
         streamOffsetsByIndex[index] = nextOffset
-        player.replaceMediaItem(index, mediaItem(track, nextOffset))
+        player.replaceMediaItem(
+            index,
+            mediaItem(track, nextOffset, playbackSessionId(index)),
+        )
         player.seekTo(index, 0L)
         player.prepare()
         if (wasPlaying) playPrimary() else player.pause()
@@ -710,7 +757,17 @@ class PlaybackController @Inject constructor(
         val helper = fadePlayerInstance()
         helper.volume = 0f
         helper.playWhenReady = false
-        helper.setMediaItem(mediaItem(outgoing, 0L))
+        // The helper is a concurrent Emby playback request. Reusing the
+        // primary queue's PlaySessionId lets a helper transcode replace the
+        // server-side stream context, so the primary's next item can receive
+        // the wrong bytes and fail extraction during the handoff.
+        helper.setMediaItem(
+            mediaItem(
+                track = outgoing,
+                startOffsetMs = 0L,
+                playbackSessionId = UUID.randomUUID().toString(),
+            ),
+        )
         helper.seekTo(tailFromMs)
         helper.prepare()
         Log.d(
@@ -802,12 +859,9 @@ class PlaybackController @Inject constructor(
         endCrossfade()
     }
 
-    private fun reportStarted(track: PlaybackTrack, positionMs: Long) {
+    private fun reportStarted(track: PlaybackTrack, positionMs: Long, index: Int) {
         lastStartedItemId = track.id
-        // Snapshot the session id synchronously: setQueue/seekViaStreamOffset
-        // reassign the field, and reading it inside the coroutine would race
-        // that reassignment and stamp the report with the wrong session.
-        val sessionId = playSessionId
+        val sessionId = playbackSessionId(index)
         scope.launch {
             runCatching {
                 embyApi.reportPlaybackStarted(
@@ -839,7 +893,7 @@ class PlaybackController @Inject constructor(
         val now = System.currentTimeMillis()
         if (!force && now - lastProgressReportMs < PROGRESS_REPORT_INTERVAL_MS) return
         lastProgressReportMs = now
-        val sessionId = playSessionId
+        val sessionId = playbackSessionId(state.currentIndex)
         scope.launch {
             runCatching {
                 embyApi.reportPlaybackProgress(
@@ -878,7 +932,7 @@ class PlaybackController @Inject constructor(
         val track = state.currentTrack ?: return
         val completed = track.isCompletedAt(state.positionMs, completedByCrossfade)
         val reportPositionMs = if (completed || track.isLongForm) state.positionMs else 0L
-        val sessionId = playSessionId
+        val sessionId = playbackSessionId(state.currentIndex)
         scope.launch {
             runCatching {
                 embyApi.reportPlaybackStopped(

@@ -1,110 +1,113 @@
-# Crossfade regression investigation (2026-06-14)
+# Crossfade regression investigation (2026-06-14 to 2026-06-15)
 
-**Status: OPEN — paused for a high-effort model to resume.**
+**Status: RESOLVED and verified on Kaj's Pixel 8 Pro.**
 
-## Symptom (Pixel 8 Pro, real device)
+## Final root cause
 
-Music crossfade no longer produces an audible blend. Instead a track effectively
-**ends ~6 seconds early** (≈ the crossfade duration): the outgoing song goes
-quiet / cuts off about 6s before the track timer reaches the end, there is a
-short gap, then the next song starts at full volume with **no fade-in**. Which
-side is audible (outgoing tail vs incoming head) **varies between transitions**
-even though the logs are identical.
+Android audio output was not the defect. The primary queue and crossfade helper
+all reused one Emby `PlaySessionId`. Emby keys transcode jobs by that id. A
+concurrent helper request, or simply advancing between mixed direct/transcoded
+items, could therefore reuse or replace the wrong server-side stream context.
+The primary then received bytes for the wrong stream and failed with
+`UnrecognizedInputFormatException`, or a helper range seek failed in
+`DefaultHttpDataSource.skipFully`.
 
-Crossfade was verified **"excellent" on the same phone on 2026-06-13** (spec
-M4.5 / M4.4). It broke sometime after.
+During a crossfade this produced the reported shape: the engine advanced the
+primary about six seconds early, the incoming item failed or stalled, and the
+expected helper coverage was absent or unreliable. The volume/timing logs were
+correct because the failure was in Emby stream-session ownership, before the
+decoded streams reached the otherwise-working Android mixer.
 
-## What is PROVEN — the engine logic is correct (not the bug)
+The 2026-06-14 EQ work did not introduce an Android two-output limitation. It
+coincided with the regression report, but the reproducible fault was a latent
+queue-level `PlaySessionId` bug exposed by content requiring Emby transcoding.
 
-Instrumented `PlaybackController` logging of both players' volume + position
-through a blend (6s, 119 ramp steps):
+## Fix
 
-```
-armed:        primaryVol=1.0 primaryPos=173551        ← primary at FULL vol at arm (no pre-fire fade)
-fired:        helperVol=1.0 helperPos=185507 primaryPosAfterSeek=0
-ramp step 1:   primaryVol=0.30 primaryPos=0     helperVol=1.0  helperPos=185559
-ramp step 20:  primaryVol=0.67 primaryPos=883   helperVol=0.97 helperPos=186460   ← both positions advancing
-ramp step 60:  primaryVol=0.92 primaryPos=2934  helperVol=0.70 helperPos=188524
-ramp step 100: primaryVol=0.99 primaryPos=5022  helperVol=0.25 helperPos=190603
-ramp step 119: primaryVol=1.0  primaryPos=6024  helperVol=0.0  helperPos=191526
-```
+- Every primary queue item receives its own `PlaySessionId` when the queue is
+  built. Playback-start/progress/stopped reports use that item's id.
+- Replacing an item for a queue jump or server-side seek mints a fresh id.
+- The crossfade helper always receives a separate fresh id because it is a
+  concurrent Emby playback request.
+- The Android audio design is unchanged: the primary handles focus, the helper
+  does not, both share the generated Android audio-session id, and one
+  `Equalizer` therefore processes normal playback and both sides of a blend.
 
-- Both players have correct **complementary** volumes (primary 0.30→1.0, helper
-  1.0→0.0), both **positions advance**, both report `playing=true` the whole ramp.
-- `primaryVol=1.0` at arm proves the "volume going down ~19s before the end" the
-  user heard was the **song's own fade-out ending**, not our code (it appeared on
-  some tracks, not others).
+## Device evidence
 
-So the crossfade state machine, volume ramp, timing, arm/fire, and incoming
-readiness are all working. **The defect is below our code: the two simultaneous
-`ExoPlayer` instances are not both reaching the speaker** — only one is audible,
-and which one wins output varies per transition (classic audio-output
-contention). Because the engine advances the primary to the next track 6s early
-(expecting the inaudible helper to cover the tail), the early-advance is heard as
-an early-END.
+All audio judgments below were made on the real Pixel 8 Pro over wireless ADB
+(Android API 37 build `CP31.260522.006`), not the emulator.
 
-## What is RULED OUT
+### Two-player floor
 
-- **Equalizer processing** — reproduced identically with the EQ toggled OFF.
-- **Our volume/position/timing logic** — see proven logs above.
-- **Item-1 loop gating** (commit 9af8905, `playbackActive`/`collectLatest`) —
-  crossfade arms/fires/ramps correctly in the logs; `playWhenReady` stays true
-  through the fire seek so the blend is not cancelled. (Re-confirm if desired.)
-- **Explicit-content-kind change** (commit dca7e2b) — does not change crossfade
-  eligibility for normal <20min music.
+A debug-only `AudioOutputDiagnosticActivity` played two bare Emby streams with
+no `PlaybackController`, MediaSession, crossfade timing, or effects. Both tracks
+were simultaneously audible and AudioFlinger showed two active tracks for:
 
-## Key NEGATIVE result (the important open thread)
+- separate Android audio sessions, no player-managed focus;
+- primary `handleAudioFocus=true`, helper `false`;
+- one shared generated Android audio session.
 
-A diagnostic build restored the **exact 2026-06-13 audio path** — primary uses
-its own default ExoPlayer session (no `generateAudioSessionId`), and the EQ
-`attach()` + `ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION` broadcast were disabled —
-and the blend **still did not become audible** (songs still ended ~6s early).
+This disproves the earlier theory that only one ExoPlayer could reach the Pixel
+speaker. The two-player architecture is viable on this device/OS build.
 
-That means the 2026-06-14 EQ/audio-session infrastructure is **NOT the sole
-cause**, despite being the obvious suspect (it was the change between the
-"excellent" 06-13 verification and the breakage). Something else in the
-two-player output path regressed, OR the 06-13 config differs from what the
-diagnostic build reproduced.
+### Production engine
 
-### 06-14 changes that touched the audio path (suspects / bisect targets)
-- Equalizer: primary pinned to `generateAudioSessionId()`; `Equalizer` attached;
-  `ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION` broadcast (invites system/Wavelet
-  effects onto the primary session — fires regardless of the EQ on/off toggle).
-- Crossfade helper lifecycle: `fadePlayer` created per-crossfade and fully
-  `release()`d (M4.5 phase 2, 2026-06-13 — same day as the good verification).
-- Audio focus / wake mode / becoming-noisy added to the primary
-  (`handleAudioFocus=true`); helper uses `handleAudioFocus=false`.
+- Current HEAD before the fix, MP3 `119766` -> MP3 `2601686`: full six-second
+  blend sounded excellent; both AudioFlinger tracks were active with
+  complementary gains. The same test also sounded correct with the screen
+  locked. This cleared audio focus, lifecycle, shared Android session, EQ
+  attachment, and effect-session broadcast as causes.
+- Before the fix, WMA/ASF `2595215` -> MP3 `2601686` reproduced the failure.
+  The helper became ready and crossfade fired, then the primary entered idle
+  with `UnrecognizedInputFormatException` instead of reaching incoming READY.
+- After the fix, the same WMA -> MP3 transition reached incoming READY in 20 ms,
+  ran the full six-second ramp, raised no source error, and sounded correct to
+  Kaj. This also proves transcoded outgoing tracks can blend when their helper
+  owns an independent Emby session and can seek its transcode.
+- Final MP3 -> MP3 regression test after the fix also reached incoming READY in
+  20 ms, completed the ramp without error, and sounded correct to Kaj.
 
-## Suggested next steps (for tomorrow's high-effort pass)
+One attempted final diagnostic launch was rejected by Android with
+`BackgroundServiceStartNotAllowedException` while the debug activity was
+backgrounded/locked. Re-running awake passed; this was a harness launch issue,
+not a playback failure.
 
-1. **git bisect the audio path** between the 06-13 "excellent" commit and HEAD,
-   testing an actual blend on the phone at each step — the negative result above
-   means the regression may predate or sit beside the EQ change.
-2. **Minimal repro**: two bare `ExoPlayer`s playing two local/streamed tracks
-   simultaneously on the Pixel 8 Pro — confirm whether simultaneous output even
-   works at all on this device/OS build right now, independent of our code.
-3. Investigate **audio focus**: the primary holds focus
-   (`handleAudioFocus=true`); when the helper starts, or when the primary
-   re-requests focus on the `seekToNextMediaItem`, the framework may duck/route
-   one stream away. Try `handleAudioFocus=false` on the primary during a blend,
-   or a single shared focus request.
-4. Consider abandoning two players for blends: a **single `ExoPlayer` with two
-   `MediaSource`s mixed via a custom `AudioProcessor`**, or `ExoPlayer`'s
-   silence-skipping/gapless with a mixing pipeline — removes simultaneous-output
-   contention entirely.
+## History/bisect findings
 
-## Re-add this instrumentation to resume (was reverted to keep the tree clean)
+The known-good device verification was commit `0e9d0df` on 2026-06-13. The
+2026-06-14 audio-path change was EQ commit `5745cdb`; subsequent relevant
+commits changed reporting, content kind, service startup, and loop gating. The
+helper lifecycle and primary/helper focus split already existed in the
+known-good path. Restoring the pre-EQ Android session/effect path had previously
+failed to restore the reported blend, and current production playback with the
+EQ/shared session now blends correctly. The content-matrix reproduction above
+was therefore more discriminating than an Android-path commit bisect.
 
-In `PlaybackController`:
-- `armCrossfade` log: append `primaryVol=${player.volume} primaryPos=${player.currentPosition}`.
-- `fireCrossfade` log: append `helperVol=${helper.volume} helperPos=${helper.currentPosition} primaryPosAfterSeek=${player.currentPosition}`.
-- Ramp loop: log `step/steps primaryVol primaryPos primaryPlaying helperVol helperPos` (throttle: `step==1 || step%20==0 || step==steps`).
-- Pre-fire guard: if `crossfadeArmed && !crossfadeInProgress && player.volume < 0.99f` → `Log.w` ("primary already quiet before fire").
+## Architecture decision
 
-Capture with: `adb -s <phone> logcat -s PlaybackController:*`
+Keep the two-ExoPlayer design. It is the lowest-risk option that actually
+blends on the target device and keeps EQ on both sides:
 
-## Current tree state
+- A normal custom Media3 `AudioProcessor` sees PCM from one renderer; it cannot
+  independently decode and overlap the next media item by itself.
+- A custom mixing `AudioSink` would require coordinating two decoders/renderers,
+  timestamps, seeking, buffering, focus, and lifecycle. That is effectively a
+  new playback engine with a much larger regression surface.
+- A layered Media3 composition/mixer is aimed at composition/editing workflows,
+  not a MediaSession-backed interactive queue with shuffle, repeat, seeking,
+  reporting, and audiobook resume. Adopting it would be a major architecture
+  change and would still need proof for effects and background playback.
 
-Working tree reverted to clean HEAD (commit 839f843). The diagnostic build on the
-phone is NOT the committed code — rebuild from HEAD to get back to the shipped
-(broken-blend) state, or re-apply the experiments above.
+Revisit a single-output mixer only if a future Android release demonstrates a
+repeatable two-output failure in the bare floor test. Do not infer one from an
+Emby source/session error.
+
+## Repeatable diagnostic
+
+The minimal repro is debug-only (`android/app/src/debug`). It accepts two item
+ids and supports bare modes `separate`, `primary_focus`, `shared_session`, plus
+`engine` for the production crossfade path. `play_naturally=true` avoids an
+artificial seek when testing short transcodes. Drive it with `adb shell am
+start`; keep the phone awake when launching so Android permits the playback
+service start.

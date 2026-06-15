@@ -422,7 +422,8 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   queue + MediaSession player (when crossfade is off the path is byte-for-byte
   unchanged). A secondary `fadePlayer` plays the outgoing track's tail while the
   primary advances early, with equal-power-style volume ramps. Two-phase:
-  *arm* opens the normal direct-play source, seeks to the outgoing tail, and
+  *arm* opens the normal Emby source in an independent playback session, seeks
+  to the outgoing tail, and
   buffers it paused 12s ahead; *fire* occurs only once that helper is ready and
   the configured blend point is reached. The incoming ramp waits for the primary
   decoder to become ready, and late helper preparation falls back to the normal
@@ -537,14 +538,11 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     scroll down to the track list, tap again to scroll back up to the player
     hero. Previously, once scrolled to the queue the only top-bar buttons were
     Stop (X) and Collapse (down), so the player view felt unreachable.
-  - *Crossfade only applies to direct-play tracks* (confirmed 2026-06-13 by
-    reproducing a transition on an all-MP3 mix: armed → tail buffered → 6s
-    blend fired → ramped clean, per logs). On a **transcoded** track (WMA/ASF,
-    of which the library has many) the helper can't seek into the tail fast
-    enough and the engine falls back to a normal gapless transition — by
-    design, not a bug. A mix heavy on WMA will have some transitions that don't
-    blend. No cheap fix (can't seek into a live transcode); documented as a
-    known limitation.
+  - *Crossfade source compatibility* (updated 2026-06-15): direct-play MP3 and
+    Emby-transcoded WMA/ASF both blend on the Pixel 8 Pro when each player owns
+    an independent Emby `PlaySessionId`. If a helper cannot seek/buffer its
+    tail in time, the existing readiness guard still preserves the normal
+    transition instead of advancing early.
   - *Mix artwork hydration*: coordinator track lists carry no images, so sonic
     mixes showed grey placeholders everywhere (mix detail, Now Playing big art,
     mini player, queue). Mix tracks now resolve their Emby Primary cover in one
@@ -609,7 +607,7 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     the composable enters a blend, then finishes with a wall-clock tween; it does
     not continuously follow playback or pause while the incoming decoder buffers.
     PlaybackController publishes `crossfadeFromTrack` + `crossfadeBlendMs`. Only
-    active when a real blend fires (music, direct-play).
+    active only when a real blend fires (music with a helper-ready source).
     Now Playing verified on-device-good by Kaj; **mini-player dissolve pending
     real-device confirmation** (emulator silence during blends confounds it, and
     the mini player is only visible when not on Now Playing, so it must be
@@ -633,6 +631,28 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     confirmed excellent on real hardware — vindicates the "emulator codec
     ceiling" diagnosis. Ongoing real-device checks: mini-player dissolve during
     a natural transition, focus handling, media notification.
+  - *Crossfade regression root cause and fix (2026-06-15, verified Pixel 8
+    Pro).* The earlier diagnosis that Android allowed only one of the two
+    ExoPlayers to reach the speaker was disproven by a debug-only floor test:
+    two bare players were simultaneously audible with separate sessions,
+    primary-only focus, and a shared Android audio session. The production
+    engine also blended MP3→MP3 correctly with EQ/session handling intact,
+    including screen-off playback. The reproducible failure was Emby session
+    ownership: every primary queue item and the helper reused one
+    `PlaySessionId`, while Emby keys transcode jobs by that id. WMA/ASF→MP3
+    could therefore hand the incoming player bytes from the wrong server job,
+    producing `UnrecognizedInputFormatException` after the primary advanced
+    early. `PlaybackController` now mints a `PlaySessionId` per primary queue
+    item (and uses it for that item's playback reports), refreshes it when an
+    item is replaced/server-seeked, and gives each helper request its own id.
+    WMA→MP3 and MP3→MP3 six-second blends both reached incoming READY in 20ms,
+    completed without source errors, and were user-confirmed audible. Keep the
+    two-player architecture: it is proven on target hardware and keeps the
+    existing shared Android audio session/EQ path. A custom mixing
+    `AudioProcessor`/`AudioSink` would require a multi-decoder playback-engine
+    rewrite; Media3 composition mixing is not a low-risk replacement for the
+    interactive MediaSession queue. Full evidence and the repeatable debug
+    harness are in `docs/crossfade-investigation.md`.
   Phase 2 remaining (queued):
   - Guest DJ toggle (Now Playing) is currently a disabled placeholder — wire it
     to `/sonic/queue/inject` (inject similar tracks into the live queue) or hide
@@ -671,7 +691,9 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     `setSessionActivity`, per-tab lazy-list state.)
 - **M4.6 — Equalizer (2026-06-14, verified Pixel 8 Pro):** in-app graphic EQ
   via `android.media.audiofx.Equalizer`. Both ExoPlayers share one audio session
-  so the EQ covers playback and crossfade blends; `AudioEffectsController`
+  (the Android effect session, distinct from Emby's per-stream
+  `PlaySessionId`) so the EQ covers playback and crossfade blends;
+  `AudioEffectsController`
   (singleton) owns the effect, persists enabled + per-band levels, and broadcasts
   the audio session so external EQ apps (Wavelet) can attach. UI at
   Settings → Equalizer (toggle, system presets, per-band sliders, Flat reset).
