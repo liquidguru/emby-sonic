@@ -19,6 +19,7 @@ data class AppSettings(
     val eqEnabled: Boolean = false,
     // Per-band gains in millibels, indexed by equalizer band; empty = flat/default.
     val eqBandLevels: List<Int> = emptyList(),
+    val generatedMixTracks: Int = 25,
 ) {
     val isLoggedIn: Boolean
         get() = !serverUrl.isNullOrBlank() && !accessToken.isNullOrBlank()

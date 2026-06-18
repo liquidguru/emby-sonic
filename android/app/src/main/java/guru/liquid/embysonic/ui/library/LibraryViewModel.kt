@@ -34,6 +34,7 @@ sealed interface TabState {
 data class LibraryUiState(
     val artists: TabState = TabState.Loading,
     val albums: TabState = TabState.Loading,
+    val genres: TabState = TabState.Loading,
 )
 
 @HiltViewModel
@@ -61,7 +62,7 @@ class LibraryViewModel @Inject constructor(
      * inside a drill-down (Artist→Albums→Tracks, Author→Books→Chapters).
      */
     val tabTitles: List<String> = when (kind) {
-        LibraryKind.MUSIC -> listOf("Artists", "Albums")
+        LibraryKind.MUSIC -> listOf("Artists", "Albums", "Genres")
         LibraryKind.AUDIOBOOKS -> listOf("Authors", "Books")
     }
 
@@ -76,6 +77,7 @@ class LibraryViewModel @Inject constructor(
     init {
         loadArtists()
         loadAlbums()
+        if (kind == LibraryKind.MUSIC) loadGenres()
     }
 
     fun loadArtists() = load(
@@ -94,6 +96,11 @@ class LibraryViewModel @Inject constructor(
             else repository.albums(libraryId)
         },
         onResult = { tab -> _state.update { it.copy(albums = tab) } },
+    )
+
+    fun loadGenres() = load(
+        block = { repository.genres(libraryId) },
+        onResult = { tab -> _state.update { it.copy(genres = tab) } },
     )
 
     private fun load(

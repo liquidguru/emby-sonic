@@ -47,6 +47,7 @@ class SettingsRepository @Inject constructor(
         val CROSSFADE_DURATION_MS = intPreferencesKey("crossfade_duration_ms")
         val EQ_ENABLED = booleanPreferencesKey("eq_enabled")
         val EQ_BAND_LEVELS = stringPreferencesKey("eq_band_levels")
+        val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -78,6 +79,10 @@ class SettingsRepository @Inject constructor(
     /** Crossfade overlap length in milliseconds (both tracks audible together). */
     val crossfadeDurationMs: Flow<Int> =
         context.dataStore.data.map { it[Keys.CROSSFADE_DURATION_MS] ?: DEFAULT_CROSSFADE_MS }
+
+    /** Shared track-count choice for generated sonic mixes and genre mixes. */
+    val generatedMixTracks: Flow<Int> =
+        context.dataStore.data.map { it[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS }
 
     suspend fun setLibraryListView(value: Boolean) {
         context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
@@ -131,6 +136,10 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    suspend fun setGeneratedMixTracks(value: Int) {
+        context.dataStore.edit { it[Keys.GENERATED_MIX_TRACKS] = value }
+    }
+
     @Volatile
     private var cached: AppSettings? = null
 
@@ -156,6 +165,7 @@ class SettingsRepository @Inject constructor(
                 ?.splitCsv()
                 ?.mapNotNull { it.toIntOrNull() }
                 .orEmpty(),
+            generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
         )
     }
 
@@ -208,5 +218,6 @@ class SettingsRepository @Inject constructor(
 
     private companion object {
         const val DEFAULT_CROSSFADE_MS = 6_000
+        const val DEFAULT_GENERATED_MIX_TRACKS = 25
     }
 }

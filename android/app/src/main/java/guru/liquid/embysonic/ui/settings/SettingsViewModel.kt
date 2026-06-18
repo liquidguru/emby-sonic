@@ -29,6 +29,7 @@ data class SettingsUiState(
     val analysisStatus: AnalysisStatusUiState = AnalysisStatusUiState.Loading,
     val crossfadeEnabled: Boolean = false,
     val crossfadeSeconds: Int = 6,
+    val generatedMixTracks: Int = 25,
 )
 
 @HiltViewModel
@@ -50,6 +51,7 @@ class SettingsViewModel @Inject constructor(
                 userName = snap.userName.orEmpty(),
                 crossfadeEnabled = snap.crossfadeEnabled,
                 crossfadeSeconds = snap.crossfadeDurationMs / 1000,
+                generatedMixTracks = snap.generatedMixTracks,
             )
         }
         refreshAnalysisStatus()
@@ -63,6 +65,11 @@ class SettingsViewModel @Inject constructor(
     fun setCrossfadeSeconds(seconds: Int) {
         _state.update { it.copy(crossfadeSeconds = seconds) }
         viewModelScope.launch { settings.setCrossfadeDurationMs(seconds * 1000) }
+    }
+
+    fun setGeneratedMixTracks(count: Int) {
+        _state.update { it.copy(generatedMixTracks = count) }
+        viewModelScope.launch { settings.setGeneratedMixTracks(count) }
     }
 
     fun onCoordinatorUrlChange(value: String) =

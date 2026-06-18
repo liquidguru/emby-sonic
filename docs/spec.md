@@ -733,9 +733,59 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   ones. Note: the row starts empty on first install (history begins now); the old
   `recentlyPlayedAlbums` helper is no longer used by Home. This is the first piece
   of the play-history subsystem the spec deferred for "On This Day".
+- **M4.9 — Genre playlists + offline prefetch buffer (2026-06-18,
+  implementation built and installed on Pixel 8 Pro):**
+  - *Bluetooth/AVRCP duration fix:* `PlaybackController` now publishes positive
+    Emby `RunTimeTicks` durations into the Media3 `MediaMetadata` via
+    `setDurationMs()`. If a track arrives without a non-zero duration, the app
+    logs a warning and omits the metadata duration rather than exporting a wrong
+    zero. Phone Now Playing already had correct duration; this targets external
+    Bluetooth displays/head units that read duration from the `MediaSession`.
+    A diagnostic Pixel Bluetooth dump confirmed Android was advertising non-zero
+    durations for liquidWave (`duration=196728` for the active item, with queue
+    durations populated). The Triumph Tiger display still showed `0:00`, and the
+    same symptom then reproduced with other media apps, so the remaining field
+    issue appears to be in the Tiger/display/Bluetooth route rather than
+    liquidWave's `MediaSession` export.
+  - *Genre mixes/playlists:* live Emby probing confirmed music genres come from
+    `/Genres?UserId=...&ParentId=<musicLibraryId>&Recursive=true&IncludeItemTypes=Audio`,
+    and playable tracks come from `/Items?...&ParentId=<musicLibraryId>&GenreIds=<genreId>`.
+    Android adds a Music library `Genres` tab plus a Home `Genres` station card
+    that opens a genre picker. Selecting a genre opens a generated genre-mix
+    detail screen rather than dumping the whole tag: `/Items` is queried with
+    `SortBy=Random` and the same persisted track-count choice as Sonic mixes
+    (25/50/75/100, default/current 25), surfaced in Settings under "Generated
+    mixes". The generated list plays through
+    `PlaybackController.playQueue()`,
+    excludes audiobooks by scoping to the music library, supports the same
+    leaf-screen shuffle path, can be refreshed at a chosen count, and can be saved
+    as an Emby playlist. Recent plays records the exact generated list under
+    `PlaybackSource("genre:<genreName>", ...)`, so replay uses `itemsByIds` and
+    does not re-randomize.
+  - *Offline prefetch buffer:* while a music queue is active, `PlaybackController`
+    downloads the next 3 non-long-form tracks to a private cache under
+    `context.cacheDir/liquidwave-prefetch`. Cache keys include Emby item id plus
+    the current universal-stream quality key; cap is 5 files or 200 MB, with LRU
+    eviction and played-past entries deleted as the queue advances. Prefetched
+    files are swapped into future ExoPlayer media items as local `file://` URIs;
+    playback now uses Media3 `DefaultDataSource.Factory` so both authenticated
+    HTTP streams and local cache files work. Audiobooks/long-form chapters are
+    never prefetched.
+  - Verification so far: `./gradlew :app:assembleDebug` passes on dev-pc,
+    and the cleaned debug build (without the temporary legacy AVRCP diagnostic
+    session) was installed on Kaj's Pixel 8 Pro over wireless ADB. Earlier Pixel
+    interaction showed the Home Stations row with the new `Genres` card visible
+    and the generated genre list layout with Save/Refresh at the top. Kaj
+    verified the offline prefetch behavior on-device: after a queue had time to
+    pre-buffer, playback continued cleanly through a network interruption. Kaj
+    also checked the remaining genre flow on-device: generated-count behavior,
+    save-as-playlist, and Recent plays replay of a stored genre queue all looked
+    good.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail; Guest DJ toggle (currently a disabled placeholder — wire to
-  `/sonic/queue/inject` or hide).
+  `/sonic/queue/inject` or hide); add per-track removal inside Emby playlist
+  detail screens (requires preserving Emby's playlist-item id and calling the
+  matching playlist item delete endpoint, not deleting the underlying song).
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
   in behind the `TrackProgress` interface; remaining UI polish as identified.
 

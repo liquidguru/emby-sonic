@@ -14,6 +14,7 @@ class SonicPlaybackService : MediaSessionService() {
     lateinit var playback: PlaybackController
 
     private var mediaSession: MediaSession? = null
+    private var sessionPlayer: AvrcpDurationPlayer? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -24,7 +25,9 @@ class SonicPlaybackService : MediaSessionService() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        mediaSession = MediaSession.Builder(this, playback.player)
+        val player = AvrcpDurationPlayer(playback.player) { playback.currentMetadataDurationMs() }
+        sessionPlayer = player
+        mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity)
             .build()
     }
@@ -34,6 +37,7 @@ class SonicPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         mediaSession?.release()
         mediaSession = null
+        sessionPlayer = null
         super.onDestroy()
     }
 }

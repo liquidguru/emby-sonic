@@ -1,27 +1,40 @@
 package guru.liquid.embysonic.ui.library
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import guru.liquid.embysonic.data.emby.DetailKind
@@ -43,10 +56,16 @@ fun DetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listView by viewModel.listView.collectAsStateWithLifecycle()
+    val genreTracksPerMix by viewModel.genreTracksPerMix.collectAsStateWithLifecycle()
     val kind = viewModel.kind
     val snackbarHostState = remember { SnackbarHostState() }
     val hasPlayableItems = (state as? TabState.Data)?.items?.isNotEmpty() == true
-    val canShuffle = kind == DetailKind.ALBUM_TRACKS || kind == DetailKind.PLAYLIST_TRACKS
+    val canShuffle = kind == DetailKind.ALBUM_TRACKS ||
+        kind == DetailKind.GENRE_TRACKS ||
+        kind == DetailKind.PLAYLIST_TRACKS
+    val isGenreMix = kind == DetailKind.GENRE_TRACKS
+    var saveDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var refreshDialogOpen by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -56,7 +75,7 @@ fun DetailScreen(
     }
 
     // Sonic playlist actions belong to music tracks only, not audiobook chapters.
-    val trackActions = if (kind == DetailKind.ALBUM_TRACKS) {
+    val trackActions = if (kind == DetailKind.ALBUM_TRACKS || kind == DetailKind.GENRE_TRACKS) {
         listOf(
             TrackAction("More like this", viewModel::createSimilarPlaylist),
             TrackAction("Start radio", viewModel::createRadioPlaylist),
@@ -99,6 +118,17 @@ fun DetailScreen(
                                 Icon(Icons.Default.Shuffle, contentDescription = "Shuffle")
                             }
                         }
+                        if (isGenreMix) {
+                            IconButton(onClick = { refreshDialogOpen = true }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh genre mix")
+                            }
+                            IconButton(onClick = { saveDialogOpen = true }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.PlaylistAdd,
+                                    contentDescription = "Save as playlist",
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -130,16 +160,124 @@ fun DetailScreen(
                         )
                     }
                 } else {
-                    TrackList(
-                        items = items,
-                        placeholderBook = kind.usesBookIcon,
-                        actions = trackActions,
-                        onTrackClick = {
-                            viewModel.playFrom(it)
-                        },
-                    )
+                    if (isGenreMix) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Row(modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 20.dp, bottom = 8.dp)) {
+                                TextButton(onClick = { saveDialogOpen = true }) {
+                                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+                                    Text("Save as playlist", modifier = Modifier.padding(start = 8.dp))
+                                }
+                                TextButton(onClick = { refreshDialogOpen = true }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                    Text("Refresh $genreTracksPerMix", modifier = Modifier.padding(start = 8.dp))
+                                }
+                            }
+                            TrackList(
+                                items = items,
+                                placeholderBook = kind.usesBookIcon,
+                                actions = trackActions,
+                                onTrackClick = {
+                                    viewModel.playFrom(it)
+                                },
+                            )
+                        }
+                    } else {
+                        TrackList(
+                            items = items,
+                            placeholderBook = kind.usesBookIcon,
+                            actions = trackActions,
+                            onTrackClick = {
+                                viewModel.playFrom(it)
+                            },
+                        )
+                    }
                 }
             }
         }
     }
+
+    if (refreshDialogOpen) {
+        GenreMixRefreshDialog(
+            tracksPerMix = genreTracksPerMix,
+            onTracksPerMixChange = viewModel::setGenreTracksPerMix,
+            onDismiss = { refreshDialogOpen = false },
+            onRefresh = {
+                refreshDialogOpen = false
+                viewModel.load()
+            },
+        )
+    }
+    if (saveDialogOpen) {
+        SaveGenreMixDialog(
+            initialName = "${viewModel.title} genre mix",
+            onDismiss = { saveDialogOpen = false },
+            onSave = { name ->
+                saveDialogOpen = false
+                viewModel.saveCurrentAsPlaylist(name)
+            },
+        )
+    }
+}
+
+@Composable
+private fun GenreMixRefreshDialog(
+    tracksPerMix: Int,
+    onTracksPerMixChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Refresh genre mix") },
+        text = {
+            androidx.compose.foundation.layout.Column {
+                Text("Pick how many random tracks from this genre.")
+                androidx.compose.foundation.layout.Row(modifier = Modifier.padding(top = 16.dp)) {
+                    GenreMixTrackCounts.forEach { count ->
+                        FilterChip(
+                            selected = tracksPerMix == count,
+                            onClick = { onTracksPerMixChange(count) },
+                            label = { Text(count.toString()) },
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onRefresh) { Text("Refresh") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun SaveGenreMixDialog(
+    initialName: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Save as playlist") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text("Playlist name") },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name) }, enabled = name.isNotBlank()) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -215,7 +216,14 @@ private fun HomeContent(
         // Stations: tap-to-play radios. Shown when a music library is present
         // (any music-derived row has content).
         if (state.recentAlbums.isNotEmpty() || state.artists.isNotEmpty()) {
-            item(key = "stations") { StationsRow(onPlayStation, onOpenAdventure) }
+            item(key = "stations") {
+                StationsRow(
+                    genres = state.genres,
+                    onPlayStation = onPlayStation,
+                    onOpenGenre = { onOpenItem(it.id, it.title, DetailKind.GENRE_TRACKS) },
+                    onOpenAdventure = onOpenAdventure,
+                )
+            }
         }
 
         state.sectionPreferences
@@ -289,10 +297,13 @@ private fun HomeContent(
 
 @Composable
 private fun StationsRow(
+    genres: List<LibraryItem>,
     onPlayStation: (HomeStation, Int?) -> Unit,
+    onOpenGenre: (LibraryItem) -> Unit,
     onOpenAdventure: () -> Unit,
 ) {
     var decadePicker by remember { mutableStateOf(false) }
+    var genrePicker by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             "Stations",
@@ -311,6 +322,7 @@ private fun StationsRow(
                 onPlayStation(HomeStation.RANDOM_ALBUM, null)
             }
             StationCard(Icons.Default.DateRange, "Decade\nRadio") { decadePicker = true }
+            StationCard(Icons.Default.Category, "Genres") { genrePicker = true }
             StationCard(Icons.Default.Explore, "Sonic\nAdventure", onClick = onOpenAdventure)
             Spacer(Modifier.width(8.dp))
         }
@@ -321,6 +333,16 @@ private fun StationsRow(
             onPick = { decade ->
                 decadePicker = false
                 onPlayStation(HomeStation.DECADE, decade)
+            },
+        )
+    }
+    if (genrePicker) {
+        GenrePickerDialog(
+            genres = genres,
+            onDismiss = { genrePicker = false },
+            onPick = { genre ->
+                genrePicker = false
+                onOpenGenre(genre)
             },
         )
     }
@@ -376,6 +398,43 @@ private fun DecadePickerDialog(onDismiss: () -> Unit, onPick: (Int) -> Unit) {
                         }
                         // Pad a short final row so the tiles keep square sizing.
                         repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun GenrePickerDialog(
+    genres: List<LibraryItem>,
+    onDismiss: () -> Unit,
+    onPick: (LibraryItem) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Pick a genre") },
+        text = {
+            if (genres.isEmpty()) {
+                Text("No genres found yet.")
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(420.dp),
+                ) {
+                    items(genres, key = { it.id }) { genre ->
+                        ListItem(
+                            modifier = Modifier.clickable { onPick(genre) },
+                            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                            headlineContent = {
+                                Text(
+                                    genre.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
                     }
                 }
             }

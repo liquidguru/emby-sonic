@@ -42,6 +42,7 @@ data class HomeUiState(
     val sonicMixes: List<LibraryItem> = emptyList(),
     val recentAlbums: List<LibraryItem> = emptyList(),
     val artists: List<LibraryItem> = emptyList(),
+    val genres: List<LibraryItem> = emptyList(),
 )
 
 enum class HomeSectionKind(val id: String, val label: String) {
@@ -194,11 +195,15 @@ class HomeViewModel @Inject constructor(
             val artistsJob = async {
                 section { musicLibrary?.let { repository.artists(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
             }
+            val genresJob = async {
+                section { musicLibrary?.let { repository.genres(it.id) }.orEmpty() }
+            }
 
             val resumeAudiobooks = resumeJob.await()
             val playlists = playlistsJob.await()
             val albums = albumsJob.await()
             val artists = artistsJob.await()
+            val genres = genresJob.await()
 
             // Recent plays is a live local history (observeRecentPlays), not an
             // Emby fetch — preserve whatever the collector has already set.
@@ -221,6 +226,7 @@ class HomeViewModel @Inject constructor(
                 sonicMixes = _state.value.sonicMixes,
                 recentAlbums = albums,
                 artists = artists,
+                genres = genres,
             )
 
             // Sonic mixes live on the coordinator (a separate host that may be
