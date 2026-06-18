@@ -14,6 +14,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -37,6 +38,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -166,6 +168,11 @@ class PlaybackController @Inject constructor(
     private var lastStartedItemId: String? = null
     private var prefetchJob: Job? = null
     private var prefetchSignature: String? = null
+    private var sleepTimerJob: Job? = null
+    private var sleepTimerMode: SleepTimerMode = SleepTimerMode.OFF
+    private var sleepTimerEndsAtMs: Long = 0L
+    private var sleepTimerFiring = false
+    private var audiobookSpeed: Float = settings.snapshot().audiobookSpeed
 
     // A MediaController connected to our own MediaSessionService. The UI drives
     // the shared ExoPlayer directly, so without this nothing connects to the
@@ -195,6 +202,10 @@ class PlaybackController @Inject constructor(
             // helper keeps playing the outgoing tail over a paused primary.
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (!playWhenReady) cancelCrossfade()
+                if (!playWhenReady && !sleepTimerFiring && sleepTimerMode != SleepTimerMode.OFF) {
+                    clearSleepTimer()
+                    publishState()
+                }
             }
 
             // Seeks from the notification/MediaSession bypass seekTo()/skipNext().
@@ -221,6 +232,15 @@ class PlaybackController @Inject constructor(
                     publishState()
                 }
         }
+        scope.launch {
+            settings.audiobookSpeed
+                .distinctUntilChanged()
+                .collect { speed ->
+                    audiobookSpeed = speed
+                    applyPlaybackSpeed()
+                    publishState()
+                }
+        }
         // collectLatest cancels the inner loop the moment playback stops and
         // relaunches it when it resumes, so neither loop spins while idle.
         scope.launch {
@@ -229,6 +249,7 @@ class PlaybackController @Inject constructor(
                 while (isActive) {
                     publishState()
                     reportProgressIfDue()
+                    maybeFireEndOfTrackSleepTimer()
                     delay(500)
                 }
             }
@@ -306,6 +327,7 @@ class PlaybackController @Inject constructor(
             startIndex,
             resumePosition,
         )
+        applyPlaybackSpeed(startIndex)
         schedulePrefetch(startIndex)
         if (playWhenReady) {
             player.prepare()
@@ -343,6 +365,7 @@ class PlaybackController @Inject constructor(
     fun togglePlayPause() {
         cancelCrossfade()
         if (player.isPlaying) {
+            clearSleepTimer()
             player.pause()
         } else {
             if (player.playbackState == Player.STATE_IDLE || player.playerError != null) {
@@ -372,6 +395,7 @@ class PlaybackController @Inject constructor(
         streamOffsetsByIndex.clear()
         prefetchJob?.cancel()
         prefetchSignature = null
+        clearSleepTimer()
         lastStartedItemId = null
         // Release the controller first; a live binding would keep the service
         // alive past stopService and leave a stale notification behind.
@@ -414,12 +438,14 @@ class PlaybackController @Inject constructor(
 
     fun skipPrevious() {
         cancelCrossfade()
+        clearSleepTimer()
         if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else player.seekTo(0)
         publishState()
     }
 
     fun skipNext() {
         cancelCrossfade()
+        clearSleepTimer()
         if (player.hasNextMediaItem()) player.seekToNextMediaItem()
         publishState()
     }
@@ -427,6 +453,7 @@ class PlaybackController @Inject constructor(
     fun seekToQueueIndex(index: Int) {
         if (index !in queue.indices) return
         cancelCrossfade()
+        clearSleepTimer()
         reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
         streamOffsetsByIndex.remove(index)
@@ -436,6 +463,7 @@ class PlaybackController @Inject constructor(
             mediaItem(queue[index], 0L, playbackSessionId(index)),
         )
         player.seekTo(index, 0L)
+        applyPlaybackSpeed(index)
         playPrimary()
         reportStarted(queue[index], 0L, index)
         schedulePrefetch(index)
@@ -445,6 +473,17 @@ class PlaybackController @Inject constructor(
     fun currentMetadataDurationMs(): Long? {
         val index = player.currentMediaItemIndex.coerceAtLeast(0)
         return queue.getOrNull(index)?.durationMs?.takeIf { it > 0L }
+    }
+
+    fun currentSessionPositionMs(): Long? {
+        val index = player.currentMediaItemIndex.takeIf { it in queue.indices } ?: return null
+        return queue[index].absolutePosition(index, player.currentPosition.coerceAtLeast(0L))
+    }
+
+    fun currentSessionBufferedPositionMs(): Long? {
+        val index = player.currentMediaItemIndex.takeIf { it in queue.indices } ?: return null
+        val absolute = queue[index].absolutePosition(index, player.bufferedPosition.coerceAtLeast(0L))
+        return currentMetadataDurationMs()?.let { absolute.coerceAtMost(it) } ?: absolute
     }
 
     fun shuffleQueue() {
@@ -489,6 +528,42 @@ class PlaybackController @Inject constructor(
         publishState()
     }
 
+    fun setSleepTimer(durationMs: Long) {
+        require(durationMs > 0L) { "Sleep timer duration must be positive" }
+        sleepTimerJob?.cancel()
+        sleepTimerMode = SleepTimerMode.TIMED
+        sleepTimerEndsAtMs = System.currentTimeMillis() + durationMs
+        sleepTimerJob = scope.launch {
+            while (isActive) {
+                val remaining = sleepTimerEndsAtMs - System.currentTimeMillis()
+                if (remaining <= 0L) {
+                    sleepTimerJob = null
+                    fadeAndPauseForSleepTimer(completedTrack = false)
+                    return@launch
+                }
+                publishState()
+                delay(minOf(remaining, SLEEP_TIMER_TICK_MS))
+            }
+        }
+        publishState()
+    }
+
+    fun setSleepTimerEndOfTrack() {
+        sleepTimerJob?.cancel()
+        sleepTimerMode = SleepTimerMode.END_OF_TRACK
+        sleepTimerEndsAtMs = 0L
+        publishState()
+    }
+
+    fun cancelSleepTimer() {
+        clearSleepTimer()
+        publishState()
+    }
+
+    fun setAudiobookSpeed(speed: Float) {
+        scope.launch { settings.setAudiobookSpeed(speed) }
+    }
+
     fun cycleRepeatMode() {
         val nextMode = when (player.repeatMode) {
             Player.REPEAT_MODE_OFF -> PlaybackRepeatMode.ALL
@@ -503,6 +578,12 @@ class PlaybackController @Inject constructor(
     private fun resetRepeatForNewSession() {
         player.repeatMode = Player.REPEAT_MODE_OFF
         scope.launch { settings.setPlaybackRepeatMode(PlaybackRepeatMode.OFF.name) }
+    }
+
+    private fun applyPlaybackSpeed(indexOverride: Int? = null) {
+        val index = indexOverride ?: player.currentMediaItemIndex.coerceAtLeast(0)
+        val speed = if (queue.getOrNull(index)?.contentKind == ContentKind.AUDIOBOOK) audiobookSpeed else 1f
+        player.playbackParameters = PlaybackParameters(speed, 1f)
     }
 
     private fun mediaItem(
@@ -644,6 +725,9 @@ class PlaybackController @Inject constructor(
             positionMs = position,
             durationMs = duration.coerceAtLeast(0),
             bufferedMs = streamOffset + player.bufferedPosition.coerceAtLeast(0),
+            sleepTimerMode = sleepTimerMode,
+            sleepTimerRemainingMs = sleepTimerRemainingMs(),
+            audiobookSpeed = audiobookSpeed,
             crossfadeFromTrack = crossfadeFromTrack,
             crossfadeBlendMs = crossfadeBlendMs,
         )
@@ -658,11 +742,66 @@ class PlaybackController @Inject constructor(
             reportStarted(nextState.currentTrack, nextState.positionMs, nextState.currentIndex)
         }
         if (nextState.currentTrack != null && previous.currentIndex != nextState.currentIndex) {
+            applyPlaybackSpeed()
             schedulePrefetch(nextState.currentIndex)
         }
         lastReportedState = nextState
         _state.value = nextState
     }
+
+    private fun maybeFireEndOfTrackSleepTimer() {
+        if (sleepTimerMode != SleepTimerMode.END_OF_TRACK || sleepTimerFiring) return
+        val state = lastReportedState
+        val track = state.currentTrack ?: return
+        if (track.contentKind != ContentKind.AUDIOBOOK) return
+        if (state.durationMs <= 0L) return
+        val remaining = state.durationMs - state.positionMs
+        if (remaining in 1..SLEEP_TIMER_FADE_MS) {
+            scope.launch { fadeAndPauseForSleepTimer(completedTrack = true) }
+        }
+    }
+
+    private suspend fun fadeAndPauseForSleepTimer(completedTrack: Boolean) {
+        if (sleepTimerFiring) return
+        sleepTimerFiring = true
+        val currentJob = currentCoroutineContext()[Job]
+        sleepTimerJob?.takeIf { it != currentJob }?.cancel()
+        sleepTimerJob = null
+        cancelCrossfade()
+        val startingVolume = player.volume.coerceIn(0f, 1f).takeIf { it > 0f } ?: 1f
+        val steps = (SLEEP_TIMER_FADE_MS / SLEEP_TIMER_FADE_STEP_MS).toInt().coerceAtLeast(1)
+        repeat(steps) { step ->
+            val progress = (step + 1).toFloat() / steps
+            player.volume = startingVolume * (1f - progress)
+            delay(SLEEP_TIMER_FADE_STEP_MS)
+        }
+        if (completedTrack) {
+            val state = lastReportedState
+            reportStopped(state.copy(positionMs = state.durationMs.coerceAtLeast(state.positionMs)))
+        }
+        player.pause()
+        player.volume = 1f
+        sleepTimerFiring = false
+        clearSleepTimer()
+        publishState()
+    }
+
+    private fun clearSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        sleepTimerMode = SleepTimerMode.OFF
+        sleepTimerEndsAtMs = 0L
+    }
+
+    private fun sleepTimerRemainingMs(): Long =
+        when (sleepTimerMode) {
+            SleepTimerMode.TIMED -> (sleepTimerEndsAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
+            SleepTimerMode.END_OF_TRACK -> {
+                val state = lastReportedState
+                (state.durationMs - state.positionMs).takeIf { state.durationMs > 0L }?.coerceAtLeast(0L) ?: 0L
+            }
+            SleepTimerMode.OFF -> 0L
+        }
 
     private fun schedulePrefetch(anchorIndex: Int) {
         val queueSnapshot = queue
@@ -1095,6 +1234,9 @@ class PlaybackController @Inject constructor(
         const val INCOMING_FADE_EXPONENT = 0.5
         const val INCOMING_START_VOLUME = 0.18f
         const val PREFETCH_AHEAD_COUNT = 3
+        const val SLEEP_TIMER_TICK_MS = 1_000L
+        const val SLEEP_TIMER_FADE_MS = 3_000L
+        const val SLEEP_TIMER_FADE_STEP_MS = 100L
         const val TAG = "PlaybackController"
     }
 }

@@ -11,6 +11,9 @@ import androidx.media3.common.util.UnstableApi
 class AvrcpDurationPlayer(
     player: Player,
     private val fallbackDurationMs: () -> Long?,
+    private val positionMs: () -> Long?,
+    private val bufferedPositionMs: () -> Long?,
+    private val onSeekToMs: (Long) -> Unit,
 ) : ForwardingPlayer(player) {
     override fun getMediaMetadata(): MediaMetadata {
         val metadata = super.getMediaMetadata()
@@ -30,6 +33,18 @@ class AvrcpDurationPlayer(
     }
 
     override fun getContentDuration(): Long = super.getContentDuration().withFallback()
+
+    override fun getCurrentPosition(): Long = positionMs()?.takeIf { it >= 0L } ?: super.getCurrentPosition()
+
+    override fun getContentPosition(): Long = getCurrentPosition()
+
+    override fun getBufferedPosition(): Long = bufferedPositionMs()?.takeIf { it >= 0L } ?: super.getBufferedPosition()
+
+    override fun getContentBufferedPosition(): Long = getBufferedPosition()
+
+    override fun seekTo(positionMs: Long) {
+        onSeekToMs(positionMs.coerceAtLeast(0L))
+    }
 
     private fun Long.withFallback(): Long =
         if (this != C.TIME_UNSET && this > 0L) {

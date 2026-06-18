@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -48,6 +49,7 @@ class SettingsRepository @Inject constructor(
         val EQ_ENABLED = booleanPreferencesKey("eq_enabled")
         val EQ_BAND_LEVELS = stringPreferencesKey("eq_band_levels")
         val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
+        val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -83,6 +85,9 @@ class SettingsRepository @Inject constructor(
     /** Shared track-count choice for generated sonic mixes and genre mixes. */
     val generatedMixTracks: Flow<Int> =
         context.dataStore.data.map { it[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS }
+
+    val audiobookSpeed: Flow<Float> =
+        context.dataStore.data.map { (it[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed() }
 
     suspend fun setLibraryListView(value: Boolean) {
         context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
@@ -140,6 +145,11 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { it[Keys.GENERATED_MIX_TRACKS] = value }
     }
 
+    suspend fun setAudiobookSpeed(value: Float) {
+        context.dataStore.edit { it[Keys.AUDIOBOOK_SPEED] = value.coerceInAudioSpeed() }
+        refreshCache()
+    }
+
     @Volatile
     private var cached: AppSettings? = null
 
@@ -166,6 +176,7 @@ class SettingsRepository @Inject constructor(
                 ?.mapNotNull { it.toIntOrNull() }
                 .orEmpty(),
             generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
+            audiobookSpeed = (this[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed(),
         )
     }
 
@@ -219,5 +230,9 @@ class SettingsRepository @Inject constructor(
     private companion object {
         const val DEFAULT_CROSSFADE_MS = 6_000
         const val DEFAULT_GENERATED_MIX_TRACKS = 25
+        const val DEFAULT_AUDIOBOOK_SPEED = 1f
     }
 }
+
+private fun Float.coerceInAudioSpeed(): Float =
+    takeIf { it.isFinite() }?.coerceIn(0.75f, 2.0f) ?: 1f

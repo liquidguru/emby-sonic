@@ -35,7 +35,10 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Waves
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -71,8 +75,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.playback.PlaybackRepeatMode
+import guru.liquid.embysonic.playback.SleepTimerMode
 import guru.liquid.embysonic.playback.PlaybackTrack
 import guru.liquid.embysonic.playback.PlaybackUiState
 import guru.liquid.embysonic.ui.library.Artwork
@@ -88,6 +94,8 @@ fun NowPlayingScreen(
     val progress = remember { SliderTrackProgress }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var queueFocusRequest by remember { mutableIntStateOf(0) }
+    var sleepTimerDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var speedDialogOpen by rememberSaveable { mutableStateOf(false) }
 
     // Generate a sonic radio when the Radio tab is opened (and when the seed
     // track changes while it's open).
@@ -113,6 +121,12 @@ fun NowPlayingScreen(
                     )
                 },
                 actions = {
+                    IconButton(
+                        onClick = { sleepTimerDialogOpen = true },
+                        enabled = state.currentTrack != null,
+                    ) {
+                        Icon(Icons.Default.Timer, contentDescription = "Sleep timer")
+                    }
                     IconButton(
                         onClick = {
                             selectedTab = 0
@@ -151,6 +165,8 @@ fun NowPlayingScreen(
                     onNext = viewModel::skipNext,
                     onShuffleQueue = viewModel::shuffleQueue,
                     onCycleRepeat = viewModel::cycleRepeatMode,
+                    onCancelSleepTimer = viewModel::cancelSleepTimer,
+                    onOpenSpeedDialog = { speedDialogOpen = true },
                     onQueueItemClick = viewModel::seekToQueueIndex,
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
@@ -162,6 +178,30 @@ fun NowPlayingScreen(
                 )
             } ?: EmptyPlayer(onCollapse)
         }
+    }
+    if (sleepTimerDialogOpen) {
+        SleepTimerDialog(
+            isAudiobook = state.currentTrack?.contentKind == ContentKind.AUDIOBOOK,
+            onDismiss = { sleepTimerDialogOpen = false },
+            onSelectDuration = {
+                sleepTimerDialogOpen = false
+                viewModel.setSleepTimer(it)
+            },
+            onEndOfTrack = {
+                sleepTimerDialogOpen = false
+                viewModel.setSleepTimerEndOfTrack()
+            },
+        )
+    }
+    if (speedDialogOpen) {
+        AudiobookSpeedDialog(
+            currentSpeed = state.audiobookSpeed,
+            onDismiss = { speedDialogOpen = false },
+            onSelect = {
+                speedDialogOpen = false
+                viewModel.setAudiobookSpeed(it)
+            },
+        )
     }
 }
 
@@ -176,6 +216,8 @@ private fun PlayerContent(
     onNext: () -> Unit,
     onShuffleQueue: () -> Unit,
     onCycleRepeat: () -> Unit,
+    onCancelSleepTimer: () -> Unit,
+    onOpenSpeedDialog: () -> Unit,
     onQueueItemClick: (Int) -> Unit,
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
@@ -236,6 +278,12 @@ private fun PlayerContent(
                 )
             }
             Spacer(Modifier.height(18.dp))
+            PlaybackStatusChips(
+                state = state,
+                onCancelSleepTimer = onCancelSleepTimer,
+                onOpenSpeedDialog = onOpenSpeedDialog,
+            )
+            Spacer(Modifier.height(8.dp))
             TransportControls(state, onPrevious, onToggle, onNext)
             Spacer(Modifier.height(8.dp))
             PlaybackModeControls(
@@ -271,6 +319,64 @@ private fun PlayerContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PlaybackStatusChips(
+    state: PlaybackUiState,
+    onCancelSleepTimer: () -> Unit,
+    onOpenSpeedDialog: () -> Unit,
+) {
+    val showSleep = state.sleepTimerMode != SleepTimerMode.OFF
+    val showSpeed = state.currentTrack?.contentKind == ContentKind.AUDIOBOOK
+    if (!showSleep && !showSpeed) return
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showSleep) {
+            StatusChip(
+                text = when (state.sleepTimerMode) {
+                    SleepTimerMode.TIMED -> "Sleep ${formatRemainingTimer(state.sleepTimerRemainingMs)}"
+                    SleepTimerMode.END_OF_TRACK -> "Sleep end of chapter"
+                    SleepTimerMode.OFF -> ""
+                },
+                onClick = onCancelSleepTimer,
+            )
+        }
+        if (showSpeed) {
+            StatusChip(
+                text = "${formatSpeed(state.audiobookSpeed)}x",
+                icon = { Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                onClick = onOpenSpeedDialog,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(
+    text: String,
+    onClick: () -> Unit,
+    icon: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.76f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        icon?.invoke()
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(start = if (icon == null) 0.dp else 6.dp),
+        )
     }
 }
 
@@ -617,3 +723,86 @@ private fun EmptyPlayer(onCollapse: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun SleepTimerDialog(
+    isAudiobook: Boolean,
+    onDismiss: () -> Unit,
+    onSelectDuration: (Long) -> Unit,
+    onEndOfTrack: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sleep timer") },
+        text = {
+            Column {
+                SleepTimerMinutes.forEach { minutes ->
+                    TextButton(
+                        onClick = { onSelectDuration(minutes * 60_000L) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("$minutes min")
+                    }
+                }
+                if (isAudiobook) {
+                    TextButton(onClick = onEndOfTrack, modifier = Modifier.fillMaxWidth()) {
+                        Text("End of chapter")
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun AudiobookSpeedDialog(
+    currentSpeed: Float,
+    onDismiss: () -> Unit,
+    onSelect: (Float) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Audiobook speed") },
+        text = {
+            Column {
+                AudiobookSpeeds.forEach { speed ->
+                    TextButton(
+                        onClick = { onSelect(speed) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = "${formatSpeed(speed)}x${if (speed == currentSpeed) "  current" else ""}",
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+private fun formatRemainingTimer(ms: Long): String {
+    val totalMinutes = ((ms + 59_999L) / 60_000L).coerceAtLeast(0)
+    return if (totalMinutes >= 60) {
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+        if (minutes == 0L) "${hours}h" else "${hours}h ${minutes}m"
+    } else {
+        "${totalMinutes}m"
+    }
+}
+
+private fun formatSpeed(speed: Float): String =
+    if (speed % 1f == 0f) speed.toInt().toString() else "%.2f".format(speed).trimEnd('0')
+
+private val SleepTimerMinutes = listOf(5, 10, 15, 30, 45, 60)
+private val AudiobookSpeeds = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)

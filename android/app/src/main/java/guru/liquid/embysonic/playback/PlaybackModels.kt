@@ -21,6 +21,12 @@ enum class PlaybackRepeatMode {
     ONE,
 }
 
+enum class SleepTimerMode {
+    OFF,
+    TIMED,
+    END_OF_TRACK,
+}
+
 /**
  * Describes where a playback queue came from, so it can be recorded in the
  * Recent plays history. [key] is a stable identity for de-duping repeated plays
@@ -63,6 +69,9 @@ data class PlaybackUiState(
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val bufferedMs: Long = 0,
+    val sleepTimerMode: SleepTimerMode = SleepTimerMode.OFF,
+    val sleepTimerRemainingMs: Long = 0,
+    val audiobookSpeed: Float = 1f,
     // During an active music crossfade, the outgoing track and the blend length,
     // so Now Playing can cross-dissolve the artwork in step with the audio.
     val crossfadeFromTrack: PlaybackTrack? = null,

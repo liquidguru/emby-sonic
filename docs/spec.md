@@ -680,13 +680,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     sliders still update the live effect continuously, but persist band levels to
     DataStore only when the drag finishes.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
-    browse tree, drag scrubbing, queue reorder, swipe-to-dismiss mini player,
-    small offline cache.
+    browse tree, Chromecast/Google Cast output, home-screen Now Playing widget,
+    drag scrubbing, queue reorder, swipe-to-dismiss mini player, small offline
+    cache.
   - "On This Day" — needs a play-history log (Emby only stores last-played per
     item), i.e. a new coordinator subsystem. Deferred.
   - Accepted product ideas: audiobook playback speed, sleep timer, Android Auto
-    browse tree, drag scrubbing, queue reorder, swipe-to-dismiss mini player,
-    small offline cache.
+    browse tree, Chromecast/Google Cast output, home-screen Now Playing widget,
+    drag scrubbing, queue reorder, swipe-to-dismiss mini player, small offline
+    cache.
   - (Done earlier in M4.5 phase 1: POST_NOTIFICATIONS runtime request,
     `setSessionActivity`, per-tab lazy-list state.)
 - **M4.6 — Equalizer (2026-06-14, verified Pixel 8 Pro):** in-app graphic EQ
@@ -792,6 +794,62 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   2 and the selected `PlaylistItemId` disappeared; the temp playlist was deleted.
   `./gradlew :app:assembleDebug` passes and the debug build was installed on the
   Pixel 8 Pro.
+- **M4.11 — Sleep timer, audiobook speed, Android Auto browse tree
+  (2026-06-18, implementation built and installed on Pixel 8 Pro):**
+  - *Sleep timer:* Now Playing has a timer action with 5/10/15/30/45/60 minute
+    options for all playback and an extra "End of chapter" option for
+    audiobooks. Active timers show a compact countdown/status chip below the
+    progress control; tapping the chip cancels the timer. Timers are in-memory
+    only and are cleared by manual pause, skip, seek, stop, or loading a new
+    queue. When the timer fires, `PlaybackController` fades ExoPlayer volume to
+    zero over about 3 seconds, pauses playback, restores volume for the next
+    session, and clears the chip. The timed 5-minute path was verified on Kaj's
+    Pixel 8 Pro: the chip counted down, music faded out, and playback ended
+    paused/stopped without closing Now Playing.
+  - *Audiobook speed:* audiobook queues now use a persisted DataStore playback
+    speed (`0.75x`, `1x`, `1.25x`, `1.5x`, `1.75x`, `2x`) applied through
+    Media3 `PlaybackParameters(speed, 1f)` so pitch is preserved. The speed chip
+    appears only for `ContentKind.AUDIOBOOK`; music playback always resets to
+    `1x`. Kaj verified the audiobook speed UI and playback behavior on the
+    Pixel 8 Pro after installing the debug build.
+  - *Android Auto:* `SonicPlaybackService` is now a `MediaLibraryService` while
+    retaining the normal phone `MediaSession` behavior. The Auto browse root
+    exposes Recent plays, Sonic Mixes, Albums, Artists, and Audiobooks. The
+    Audiobooks branch contains Resume audiobooks, Books, and Authors, and book
+    starts use the same resume-aware chapter selection as the phone UI. Recent
+    plays replay the stored exact queue via `itemsByIds`; mixes load coordinator
+    mix detail; albums/artists/books/authors hydrate their queues and start
+    playback through the same `PlaybackController.playQueue()` path, preserving
+    equalizer and audiobook behavior. The app also declares the automotive media
+    descriptor at `@xml/automotive_app_desc`. Verification so far: the debug
+    build passes, the APK is installed on the Pixel, and Android's installed
+    package dump resolves `SonicPlaybackService` for
+    `androidx.media3.session.MediaSessionService`,
+    `androidx.media3.session.MediaLibraryService`, and the platform
+    `android.media.browse.MediaBrowserService` action required by Android Auto
+    media-app discovery. This was added after a car test showed audio routing
+    worked but the app/player surface was not visible in Android Auto. A follow-up
+    car test confirmed the app appears; a later build added the Audiobooks branch
+    after the car only showed music choices. Final car verification confirmed
+    audiobook resume works from Android Auto and the car progress bar reports the
+    absolute book position after the `AvrcpDurationPlayer` session wrapper began
+    exporting stream-offset-corrected position and buffered-position values.
+- **Cast roadmap note (accepted 2026-06-18):** Chromecast/Google Cast output is
+  accepted as a future Android feature, separate from Bluetooth/AVRCP and
+  Android Auto. It should likely use the Media3 Cast extension / `CastPlayer`
+  and switch playback between local ExoPlayer and remote Cast playback. Because
+  Cast devices fetch and decode the stream themselves, implementation must solve
+  cast-safe Emby stream URLs/auth first. Local-only features such as in-app
+  Equalizer, crossfade, and offline prefetch should be treated as unavailable or
+  differently implemented while casting unless explicitly reworked.
+- **Widget roadmap note (accepted 2026-06-18):** an Android home-screen widget is
+  accepted as a future liquidWave feature. The first version should be a Now
+  Playing widget with artwork, title/artist, play/pause, previous/next, and a tap
+  target that opens Now Playing. A compact one-row mini-player variant is the
+  preferred initial shape. Widget commands should route through the same
+  MediaSession/PlaybackController path as the notification and app UI so normal
+  playback behavior stays consistent. Later extensions can add Recent
+  plays/mix/genre shortcuts, sleep timer status, or audiobook-focused controls.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail; Guest DJ toggle (currently a disabled placeholder — wire to
   `/sonic/queue/inject` or hide).

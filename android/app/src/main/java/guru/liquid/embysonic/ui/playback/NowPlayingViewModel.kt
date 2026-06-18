@@ -53,6 +53,10 @@ class NowPlayingViewModel @Inject constructor(
     fun shuffleQueue() = playback.shuffleQueue()
     fun cycleRepeatMode() = playback.cycleRepeatMode()
     fun stopPlayback() = playback.stopPlayback()
+    fun setSleepTimer(durationMs: Long) = playback.setSleepTimer(durationMs)
+    fun setSleepTimerEndOfTrack() = playback.setSleepTimerEndOfTrack()
+    fun cancelSleepTimer() = playback.cancelSleepTimer()
+    fun setAudiobookSpeed(speed: Float) = playback.setAudiobookSpeed(speed)
 
     /** Generate a sonic radio for the current track (no-op if already loaded for it). */
     fun loadRadioForCurrent(force: Boolean = false) {
