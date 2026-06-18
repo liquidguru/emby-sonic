@@ -781,11 +781,20 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     also checked the remaining genre flow on-device: generated-count behavior,
     save-as-playlist, and Recent plays replay of a stored genre queue all looked
     good.
+- **M4.10 — Playlist item removal (2026-06-18, built + endpoint verified):**
+  Emby playlist track rows now expose a per-track overflow action, "Remove from
+  playlist", with confirmation. This removes only the stored playlist entry, not
+  the underlying library song. Implementation preserves `PlaylistItemId` from
+  `GET /Playlists/{Id}/Items` on playlist-track `LibraryItem`s and calls
+  `DELETE /Playlists/{Id}/Items?EntryIds=<PlaylistItemId>`. The row is removed
+  from the visible list after a successful server response. Endpoint behavior was
+  verified against Emby 4.10 using a temporary playlist: count changed from 3 to
+  2 and the selected `PlaylistItemId` disappeared; the temp playlist was deleted.
+  `./gradlew :app:assembleDebug` passes and the debug build was installed on the
+  Pixel 8 Pro.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail; Guest DJ toggle (currently a disabled placeholder — wire to
-  `/sonic/queue/inject` or hide); add per-track removal inside Emby playlist
-  detail screens (requires preserving Emby's playlist-item id and calling the
-  matching playlist item delete endpoint, not deleting the underlying song).
+  `/sonic/queue/inject` or hide).
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
   in behind the `TrackProgress` interface; remaining UI polish as identified.
 

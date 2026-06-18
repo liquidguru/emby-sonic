@@ -70,6 +70,7 @@ data class LibraryItem(
     val playbackPositionMs: Long = 0,
     val played: Boolean = false,
     val contentKind: ContentKind = ContentKind.UNKNOWN,
+    val playlistItemId: String? = null,
 )
 
 /**
@@ -409,7 +410,7 @@ class LibraryRepository @Inject constructor(
 
     /** A playlist's tracks, in stored playlist order. */
     suspend fun playlistTracks(playlistId: String): List<LibraryItem> =
-        embyApi.getPlaylistItems(playlistId, userId()).items.map { it.toTrackItem() }
+        embyApi.getPlaylistItems(playlistId, userId()).items.map { it.toTrackItem(playlistItemId = it.playlistItemId) }
 
     suspend fun tracks(libraryId: String): List<LibraryItem> =
         embyApi.getItems(
@@ -557,7 +558,10 @@ class LibraryRepository @Inject constructor(
     }
 
     /** Track row: art falls back to the parent album's Primary image, else null (placeholder). */
-    private fun EmbyItemDto.toTrackItem(kind: ContentKind = ContentKind.UNKNOWN): LibraryItem {
+    private fun EmbyItemDto.toTrackItem(
+        kind: ContentKind = ContentKind.UNKNOWN,
+        playlistItemId: String? = null,
+    ): LibraryItem {
         return LibraryItem(
             id = id.orEmpty(),
             title = name.orEmpty(),
@@ -569,6 +573,7 @@ class LibraryRepository @Inject constructor(
             playbackPositionMs = userData?.playbackPositionTicks?.ticksToMs() ?: 0,
             played = userData?.played ?: false,
             contentKind = kind,
+            playlistItemId = playlistItemId,
         )
     }
 

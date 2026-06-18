@@ -66,6 +66,7 @@ fun DetailScreen(
     val isGenreMix = kind == DetailKind.GENRE_TRACKS
     var saveDialogOpen by rememberSaveable { mutableStateOf(false) }
     var refreshDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var removeTarget by remember { mutableStateOf<LibraryItem?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -75,13 +76,15 @@ fun DetailScreen(
     }
 
     // Sonic playlist actions belong to music tracks only, not audiobook chapters.
-    val trackActions = if (kind == DetailKind.ALBUM_TRACKS || kind == DetailKind.GENRE_TRACKS) {
-        listOf(
+    val trackActions = when (kind) {
+        DetailKind.ALBUM_TRACKS, DetailKind.GENRE_TRACKS -> listOf(
             TrackAction("More like this", viewModel::createSimilarPlaylist),
             TrackAction("Start radio", viewModel::createRadioPlaylist),
         )
-    } else {
-        emptyList()
+        DetailKind.PLAYLIST_TRACKS -> listOf(
+            TrackAction("Remove from playlist") { removeTarget = it },
+        )
+        DetailKind.ARTIST_ALBUMS, DetailKind.AUTHOR_BOOKS, DetailKind.BOOK_CHAPTERS -> emptyList()
     }
 
     Scaffold(
@@ -214,6 +217,26 @@ fun DetailScreen(
             onSave = { name ->
                 saveDialogOpen = false
                 viewModel.saveCurrentAsPlaylist(name)
+            },
+        )
+    }
+    removeTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { removeTarget = null },
+            title = { Text("Remove from playlist") },
+            text = { Text("Remove \"${target.title}\" from this playlist? The song stays in your library.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        removeTarget = null
+                        viewModel.removePlaylistItem(target)
+                    },
+                ) {
+                    Text("Remove")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { removeTarget = null }) { Text("Cancel") }
             },
         )
     }
