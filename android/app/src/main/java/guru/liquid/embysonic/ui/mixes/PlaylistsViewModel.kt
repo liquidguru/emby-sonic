@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -65,8 +66,20 @@ class PlaylistsViewModel @Inject constructor(
     private var lastList: SonicMixesState.ListData? = null
 
     init {
+        observeGeneratedMixTracks()
         load()
         loadSonicMixes()
+    }
+
+    private fun observeGeneratedMixTracks() {
+        viewModelScope.launch {
+            settings.generatedMixTracks.distinctUntilChanged().collect { count ->
+                _mixOptions.value = _mixOptions.value.copy(
+                    tracksPerMix = count,
+                    refreshTracksPerMix = count,
+                )
+            }
+        }
     }
 
     fun load() {
@@ -233,10 +246,12 @@ class PlaylistsViewModel @Inject constructor(
 
     fun setTracksPerMix(value: Int) {
         _mixOptions.value = _mixOptions.value.copy(tracksPerMix = value)
+        viewModelScope.launch { settings.setGeneratedMixTracks(value) }
     }
 
     fun setRefreshTracksPerMix(value: Int) {
         _mixOptions.value = _mixOptions.value.copy(refreshTracksPerMix = value)
+        viewModelScope.launch { settings.setGeneratedMixTracks(value) }
     }
 
     fun generateSonicMixes() {
@@ -311,8 +326,8 @@ class PlaylistsViewModel @Inject constructor(
 }
 
 data class SonicMixOptions(
-    val tracksPerMix: Int = 50,
-    val refreshTracksPerMix: Int = 50,
+    val tracksPerMix: Int = 25,
+    val refreshTracksPerMix: Int = 25,
     val generating: Boolean = false,
     val message: String? = null,
 )

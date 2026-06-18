@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -52,17 +53,41 @@ class DetailViewModel @Inject constructor(
 
     fun toggleListView() = viewModelScope.launch { settings.setLibraryListView(!listView.value) }
 
+    private val _genreTracksPerMix = MutableStateFlow(DEFAULT_GENRE_MIX_TRACKS)
+    val genreTracksPerMix: StateFlow<Int> = _genreTracksPerMix.asStateFlow()
+
+    fun setGenreTracksPerMix(value: Int) {
+        _genreTracksPerMix.value = value
+        viewModelScope.launch { settings.setGeneratedMixTracks(value) }
+    }
+
     private val _state = MutableStateFlow<TabState>(TabState.Loading)
     val state: StateFlow<TabState> = _state.asStateFlow()
 
     init {
+        observeGeneratedMixTracks()
         load()
+    }
+
+    private fun observeGeneratedMixTracks() {
+        viewModelScope.launch {
+            settings.generatedMixTracks.distinctUntilChanged().collect { count ->
+                _genreTracksPerMix.value = count
+                if (kind == DetailKind.GENRE_TRACKS) load()
+            }
+        }
     }
 
     fun load() {
         _state.value = TabState.Loading
         viewModelScope.launch {
-            runCatching { repository.childItems(itemId, kind) }.fold(
+            runCatching {
+                if (kind == DetailKind.GENRE_TRACKS) {
+                    repository.genreTracks(itemId, _genreTracksPerMix.value)
+                } else {
+                    repository.childItems(itemId, kind)
+                }
+            }.fold(
                 onSuccess = { _state.value = TabState.Data(it) },
                 onFailure = { _state.value = TabState.Error(it.message ?: "Failed to load") },
             )
@@ -119,6 +144,22 @@ class DetailViewModel @Inject constructor(
         playback.prepareQueue(shuffled, shuffled = true, source = currentSource(shuffled.firstOrNull()?.imageUrl))
     }
 
+    fun saveCurrentAsPlaylist(name: String) {
+        val items = (state.value as? TabState.Data)?.items.orEmpty()
+        if (items.isEmpty()) return
+        viewModelScope.launch {
+            runCatching {
+                playlists.createPlaylist(
+                    name = name.ifBlank { defaultPlaylistName() },
+                    trackIds = items.map { it.id },
+                )
+            }.fold(
+                onSuccess = { _messages.send("Saved $it tracks to Playlists") },
+                onFailure = { _messages.send("Couldn't save playlist: ${it.message}") },
+            )
+        }
+    }
+
     fun playCollection(item: LibraryItem) {
         viewModelScope.launch {
             val targetKind = kind.childKind ?: kind
@@ -146,6 +187,12 @@ class DetailViewModel @Inject constructor(
         }
     }
 }
+
+private fun DetailViewModel.defaultPlaylistName(): String =
+    if (kind == DetailKind.GENRE_TRACKS) "$title genre mix" else title.ifBlank { "New playlist" }
+
+internal val GenreMixTrackCounts = listOf(25, 50, 75, 100)
+private const val DEFAULT_GENRE_MIX_TRACKS = 25
 
 private fun List<LibraryItem>.shuffledMovingFirst(): List<LibraryItem> {
     if (size < 2) return this

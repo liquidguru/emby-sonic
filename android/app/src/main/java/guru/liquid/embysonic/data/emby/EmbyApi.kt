@@ -46,9 +46,23 @@ interface EmbyApi {
         @Query("Limit") limit: Int = 200,
         @Query("ParentId") parentId: String? = null,
         @Query("AlbumArtistIds") albumArtistIds: String? = null,
+        @Query("GenreIds") genreIds: String? = null,
         @Query("Filters") filters: String? = null,
         @Query("Years") years: String? = null,
         @Query("SearchTerm") searchTerm: String? = null,
+    ): QueryResult<EmbyItemDto>
+
+    /** Music genres within a library. Track playback is resolved through `/Items?GenreIds=...`. */
+    @GET("Genres")
+    suspend fun getGenres(
+        @Query("UserId") userId: String,
+        @Query("ParentId") parentId: String,
+        @Query("Recursive") recursive: Boolean = true,
+        @Query("IncludeItemTypes") includeItemTypes: String = "Audio",
+        @Query("SortBy") sortBy: String = "SortName",
+        @Query("SortOrder") sortOrder: String = "Ascending",
+        @Query("StartIndex") startIndex: Int = 0,
+        @Query("Limit") limit: Int = 200,
     ): QueryResult<EmbyItemDto>
 
     /**

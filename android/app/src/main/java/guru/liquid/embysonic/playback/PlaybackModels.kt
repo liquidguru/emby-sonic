@@ -44,6 +44,7 @@ fun playbackSourceFor(kind: DetailKind, item: LibraryItem, cover: String? = item
     when (kind) {
         DetailKind.ALBUM_TRACKS -> PlaybackSource("album:${item.id}", item.title, "Album", cover)
         DetailKind.ARTIST_ALBUMS -> PlaybackSource("artist:${item.id}", item.title, "Artist", cover)
+        DetailKind.GENRE_TRACKS -> PlaybackSource("genre:${item.title}", item.title, "Genre", cover)
         DetailKind.PLAYLIST_TRACKS -> PlaybackSource("playlist:${item.id}", item.title, "Playlist", cover)
         DetailKind.AUTHOR_BOOKS, DetailKind.BOOK_CHAPTERS -> null
     }

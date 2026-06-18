@@ -4,8 +4,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.media.MediaMetadata as PlatformMediaMetadata
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -13,6 +15,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -58,9 +61,11 @@ class PlaybackController @Inject constructor(
     private val settings: SettingsRepository,
     private val audioEffects: AudioEffectsController,
     private val recentPlays: RecentPlaysRepository,
+    private val prefetchCache: OfflinePrefetchCache,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
+    private val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 
     private val mediaAudioAttributes = AudioAttributes.Builder()
         .setUsage(C.USAGE_MEDIA)
@@ -73,7 +78,7 @@ class PlaybackController @Inject constructor(
         (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
-        .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
+        .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory))
         .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ true)
         .setHandleAudioBecomingNoisy(true)
         .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -92,7 +97,7 @@ class PlaybackController @Inject constructor(
     /** The crossfade helper, created (with its listener) if it doesn't exist yet. */
     private fun fadePlayerInstance(): ExoPlayer =
         fadePlayer ?: ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(httpDataSourceFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory))
             .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ false)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
@@ -159,6 +164,8 @@ class PlaybackController @Inject constructor(
     private var lastProgressReportMs: Long = 0
     private var lastReportedState: PlaybackUiState = PlaybackUiState()
     private var lastStartedItemId: String? = null
+    private var prefetchJob: Job? = null
+    private var prefetchSignature: String? = null
 
     // A MediaController connected to our own MediaSessionService. The UI drives
     // the shared ExoPlayer directly, so without this nothing connects to the
@@ -299,6 +306,7 @@ class PlaybackController @Inject constructor(
             startIndex,
             resumePosition,
         )
+        schedulePrefetch(startIndex)
         if (playWhenReady) {
             player.prepare()
             playPrimary()
@@ -362,6 +370,8 @@ class PlaybackController @Inject constructor(
         queue = emptyList()
         queueShuffled = false
         streamOffsetsByIndex.clear()
+        prefetchJob?.cancel()
+        prefetchSignature = null
         lastStartedItemId = null
         // Release the controller first; a live binding would keep the service
         // alive past stopService and leave a stale notification behind.
@@ -428,7 +438,13 @@ class PlaybackController @Inject constructor(
         player.seekTo(index, 0L)
         playPrimary()
         reportStarted(queue[index], 0L, index)
+        schedulePrefetch(index)
         publishState()
+    }
+
+    fun currentMetadataDurationMs(): Long? {
+        val index = player.currentMediaItemIndex.coerceAtLeast(0)
+        return queue.getOrNull(index)?.durationMs?.takeIf { it > 0L }
     }
 
     fun shuffleQueue() {
@@ -469,6 +485,7 @@ class PlaybackController @Inject constructor(
         )
         player.prepare()
         if (wasPlaying) playPrimary() else player.pause()
+        schedulePrefetch(0)
         publishState()
     }
 
@@ -493,16 +510,36 @@ class PlaybackController @Inject constructor(
         startOffsetMs: Long,
         playbackSessionId: String,
     ): MediaItem {
-        val metadata = MediaMetadata.Builder()
+        val metadataBuilder = MediaMetadata.Builder()
             .setTitle(track.title)
             .setArtist(track.artist)
             .setAlbumTitle(track.album)
             .setArtworkUri(track.imageUrl?.let(Uri::parse))
-            .build()
+        val duration = track.durationMs?.takeIf { it > 0 }
+        if (duration != null) {
+            metadataBuilder.setDurationMs(duration)
+            metadataBuilder.setExtras(
+                Bundle().apply {
+                    putString(PlatformMediaMetadata.METADATA_KEY_MEDIA_ID, track.id)
+                    putString(PlatformMediaMetadata.METADATA_KEY_TITLE, track.title)
+                    putString(PlatformMediaMetadata.METADATA_KEY_ARTIST, track.artist)
+                    putString(PlatformMediaMetadata.METADATA_KEY_ALBUM, track.album)
+                    putLong(PlatformMediaMetadata.METADATA_KEY_DURATION, duration)
+                },
+            )
+        } else {
+            Log.w(TAG, "Track ${track.id} has no Emby duration for MediaSession metadata")
+        }
+        val metadata = metadataBuilder.build()
+        val localUri = if (startOffsetMs == 0L && !track.isLongForm) {
+            prefetchCache.cachedUri(track.id)
+        } else {
+            null
+        }
 
         return MediaItem.Builder()
             .setMediaId(track.id)
-            .setUri(streamUrl(track.id, startOffsetMs, playbackSessionId))
+            .setUri(localUri ?: Uri.parse(streamUrl(track.id, startOffsetMs, playbackSessionId)))
             .setMediaMetadata(metadata)
             .build()
     }
@@ -536,8 +573,12 @@ class PlaybackController @Inject constructor(
         playSessionIdsByIndex.getOrPut(index) { UUID.randomUUID().toString() }
 
     private fun refreshHeaders() {
+        httpDataSourceFactory.setDefaultRequestProperties(playbackHeaders())
+    }
+
+    private fun playbackHeaders(): LinkedHashMap<String, String> {
         val snap = settings.snapshot()
-        val headers = linkedMapOf(
+        return linkedMapOf(
             "X-Emby-Authorization" to buildString {
                 append("MediaBrowser ")
                 append("Client=\"liquidWave\", ")
@@ -545,9 +586,9 @@ class PlaybackController @Inject constructor(
                 append("DeviceId=\"${snap.deviceId}\", ")
                 append("Version=\"${BuildConfig.VERSION_NAME}\"")
             },
-        )
-        snap.accessToken?.takeIf { it.isNotBlank() }?.let { headers["X-Emby-Token"] = it }
-        httpDataSourceFactory.setDefaultRequestProperties(headers)
+        ).also { headers ->
+            snap.accessToken?.takeIf { it.isNotBlank() }?.let { headers["X-Emby-Token"] = it }
+        }
     }
 
     /** Start primary playback only after its foreground service/session are connected. */
@@ -616,8 +657,46 @@ class PlaybackController @Inject constructor(
         if (nextState.currentTrack != null && nextState.currentTrack.id != lastStartedItemId && nextState.isPlaying) {
             reportStarted(nextState.currentTrack, nextState.positionMs, nextState.currentIndex)
         }
+        if (nextState.currentTrack != null && previous.currentIndex != nextState.currentIndex) {
+            schedulePrefetch(nextState.currentIndex)
+        }
         lastReportedState = nextState
         _state.value = nextState
+    }
+
+    private fun schedulePrefetch(anchorIndex: Int) {
+        val queueSnapshot = queue
+        val upcoming = queueSnapshot
+            .drop(anchorIndex + 1)
+            .take(PREFETCH_AHEAD_COUNT)
+            .filterNot { it.isLongForm }
+        val signature = buildString {
+            append(anchorIndex)
+            append(':')
+            append(queueSnapshot.joinToString(",") { it.id })
+        }
+        if (signature == prefetchSignature) return
+        prefetchSignature = signature
+        prefetchJob?.cancel()
+        prefetchJob = scope.launch(Dispatchers.IO) {
+            prefetchCache.deleteTracks(queueSnapshot.take(anchorIndex).map { it.id })
+            val headers = playbackHeaders()
+            upcoming.forEach { track ->
+                val index = queueSnapshot.indexOfFirst { it.id == track.id }
+                if (index <= anchorIndex) return@forEach
+                val uri = prefetchCache.prefetch(
+                    trackId = track.id,
+                    streamUrl = streamUrl(track.id, 0L, UUID.randomUUID().toString()),
+                    headers = headers,
+                ) ?: return@forEach
+                scope.launch {
+                    if (queue.getOrNull(index)?.id == track.id && player.currentMediaItemIndex < index) {
+                        Log.d(TAG, "Using prefetched file for ${track.id}: $uri")
+                        player.replaceMediaItem(index, mediaItem(track, 0L, playbackSessionId(index)))
+                    }
+                }
+            }
+        }
     }
 
     private fun Int.toPlaybackRepeatMode(): PlaybackRepeatMode = when (this) {
@@ -1015,6 +1094,7 @@ class PlaybackController @Inject constructor(
         const val CROSSFADE_COMPLETION_SLACK_MS = 1_000L
         const val INCOMING_FADE_EXPONENT = 0.5
         const val INCOMING_START_VOLUME = 0.18f
+        const val PREFETCH_AHEAD_COUNT = 3
         const val TAG = "PlaybackController"
     }
 }

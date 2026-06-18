@@ -51,5 +51,5 @@ object Routes {
 
     /** Concrete detail route. [detailKind] is a [DetailKind] name; [title] is shown in the bar. */
     fun detail(itemId: String, detailKind: String, title: String): String =
-        "detail?$ARG_ITEM_ID=$itemId&$ARG_DETAIL_KIND=$detailKind&$ARG_TITLE=${Uri.encode(title)}"
+        "detail?$ARG_ITEM_ID=${Uri.encode(itemId)}&$ARG_DETAIL_KIND=$detailKind&$ARG_TITLE=${Uri.encode(title)}"
 }

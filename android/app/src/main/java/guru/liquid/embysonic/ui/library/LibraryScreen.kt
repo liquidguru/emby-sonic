@@ -60,6 +60,7 @@ fun LibraryScreen(
     val selectedIds by viewModel.selectedIds.collectAsStateWithLifecycle()
     val tabTitles = viewModel.tabTitles
     val isMusic = viewModel.kind == LibraryKind.MUSIC
+    val canMakePlaylistFromSelection = isMusic && selectedTab < 2
     val placeholderBook = !isMusic
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -105,7 +106,7 @@ fun LibraryScreen(
                     title = { Text(viewModel.title) },
                     actions = {
                         ViewToggleAction(listView = listView, onToggle = viewModel::toggleListView)
-                        if (isMusic) {
+                        if (canMakePlaylistFromSelection) {
                             IconButton(onClick = viewModel::enterSelection) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.PlaylistAdd,
@@ -136,7 +137,11 @@ fun LibraryScreen(
             // Tab 0 = Artists/Authors, Tab 1 = Albums/Books. Tapping a cell drills down,
             // or toggles selection while building a playlist.
             val detailKind = viewModel.kind.detailKindFor(selectedTab)
-            val tabState = if (selectedTab == 0) state.artists else state.albums
+            val tabState = when (selectedTab) {
+                0 -> state.artists
+                1 -> state.albums
+                else -> state.genres
+            }
             // Each tab owns its scroll state. Without the holder both tabs flow
             // through one composable slot and share a single LazyGrid/List state,
             // so Albums inherits Artists' scroll offset (and vice versa).
@@ -197,6 +202,10 @@ fun LibraryScreen(
 
 /** Which drill-down a tapped cell opens, given the library kind and tab index. */
 private fun LibraryKind.detailKindFor(tab: Int): DetailKind = when (this) {
-    LibraryKind.MUSIC -> if (tab == 0) DetailKind.ARTIST_ALBUMS else DetailKind.ALBUM_TRACKS
+    LibraryKind.MUSIC -> when (tab) {
+        0 -> DetailKind.ARTIST_ALBUMS
+        1 -> DetailKind.ALBUM_TRACKS
+        else -> DetailKind.GENRE_TRACKS
+    }
     LibraryKind.AUDIOBOOKS -> if (tab == 0) DetailKind.AUTHOR_BOOKS else DetailKind.BOOK_CHAPTERS
 }

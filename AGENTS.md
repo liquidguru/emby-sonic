@@ -115,10 +115,16 @@ On first launch the app needs login (Emby URL/creds + coordinator URL).
 
 - Coordinator runs on **liquidBee (192.168.1.9:8765)** as a Windows scheduled
   task `EmbySonicCoordinator` (auto-start at boot). `Start/Stop/Get-ScheduledTask`.
+  The task must run `C:\Users\liqui\dev\emby-sonic\.venv\Scripts\python.exe`
+  with working directory `C:\Users\liqui\dev\emby-sonic`; plain system `python`
+  on liquidBee does not have the coordinator dependencies (`fastapi`, etc.).
 - Health check: `curl http://192.168.1.9:8765/sonic/status` (returns
   "Not authenticated" without a token — that just means it's up).
 - After a coordinator code change: push from dev → `git pull` on liquidBee →
   kill PID on 8765 → `Start-ScheduledTask -TaskName EmbySonicCoordinator`.
+- If the coordinator is unreachable, confirm the scheduled task is `Running`,
+  check that `8765` is listening, and test manually from liquidBee with
+  `.\.venv\Scripts\python.exe main.py` before recreating the task.
 - Emby: 192.168.1.9:8096 (v4.10, ServerName LIQUIDBEE).
 
 ---

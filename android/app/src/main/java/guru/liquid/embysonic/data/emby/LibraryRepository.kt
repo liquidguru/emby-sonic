@@ -16,6 +16,7 @@ enum class LibraryKind { MUSIC, AUDIOBOOKS }
 enum class DetailKind {
     ARTIST_ALBUMS,
     ALBUM_TRACKS,
+    GENRE_TRACKS,
     AUTHOR_BOOKS,
     BOOK_CHAPTERS,
     PLAYLIST_TRACKS;
@@ -31,12 +32,12 @@ enum class DetailKind {
         get() = when (this) {
             ARTIST_ALBUMS -> ALBUM_TRACKS
             AUTHOR_BOOKS -> BOOK_CHAPTERS
-            ALBUM_TRACKS, BOOK_CHAPTERS, PLAYLIST_TRACKS -> null
+            ALBUM_TRACKS, GENRE_TRACKS, BOOK_CHAPTERS, PLAYLIST_TRACKS -> null
         }
 
     /** Playback content kind for the tracks this drill-down produces. */
     fun contentKind(): ContentKind = when (this) {
-        ARTIST_ALBUMS, ALBUM_TRACKS -> ContentKind.MUSIC
+        ARTIST_ALBUMS, ALBUM_TRACKS, GENRE_TRACKS -> ContentKind.MUSIC
         AUTHOR_BOOKS, BOOK_CHAPTERS -> ContentKind.AUDIOBOOK
         PLAYLIST_TRACKS -> ContentKind.UNKNOWN
     }
@@ -110,6 +111,8 @@ private const val RADIO_QUEUE_LIMIT = 60
 
 /** Max results for a track search. */
 private const val SEARCH_LIMIT = 60
+private const val GENRE_ID_SEPARATOR = "|"
+private const val DEFAULT_GENRE_MIX_TRACKS = 50
 
 private fun formatDuration(ms: Long?): String? {
     if (ms == null || ms <= 0) return null
@@ -189,6 +192,13 @@ class LibraryRepository @Inject constructor(
     suspend fun albums(libraryId: String): List<LibraryItem> =
         embyApi.getItems(userId(), parentId = libraryId, includeItemTypes = "MusicAlbum", limit = BROWSE_LIMIT)
             .items.map { it.toCollectionItem() }
+
+    suspend fun genres(libraryId: String): List<LibraryItem> =
+        embyApi.getGenres(
+            userId = userId(),
+            parentId = libraryId,
+            limit = BROWSE_LIMIT,
+        ).items.mapNotNull { it.toGenreItem(libraryId) }
 
     suspend fun recentlyAddedAlbums(libraryId: String, limit: Int): List<LibraryItem> =
         embyApi.getItems(
@@ -429,6 +439,8 @@ class LibraryRepository @Inject constructor(
             // Playlists keep their own stored order via the dedicated endpoint.
             DetailKind.PLAYLIST_TRACKS -> playlistTracks(parentId)
 
+            DetailKind.GENRE_TRACKS -> genreTracks(parentId)
+
             DetailKind.ALBUM_TRACKS, DetailKind.BOOK_CHAPTERS ->
                 embyApi.getItems(
                     userId = userId(),
@@ -452,7 +464,24 @@ class LibraryRepository @Inject constructor(
 
             DetailKind.ALBUM_TRACKS, DetailKind.BOOK_CHAPTERS, DetailKind.PLAYLIST_TRACKS ->
                 childItems(collectionId, kind)
+
+            DetailKind.GENRE_TRACKS -> genreTracks(collectionId)
         }
+
+    suspend fun genreTracks(
+        packedGenreId: String,
+        limit: Int = DEFAULT_GENRE_MIX_TRACKS,
+    ): List<LibraryItem> {
+        val (libraryId, genreId) = unpackGenreItemId(packedGenreId) ?: return emptyList()
+        return embyApi.getItems(
+            userId = userId(),
+            parentId = libraryId,
+            includeItemTypes = "Audio",
+            genreIds = genreId,
+            sortBy = "Random",
+            limit = limit,
+        ).items.map { it.toTrackItem(ContentKind.MUSIC) }
+    }
 
     /**
      * Artist or album cell: art comes from the item's own Primary image. The URL is
@@ -468,6 +497,18 @@ class LibraryRepository @Inject constructor(
         },
         imageUrl = imageTags["Primary"]?.let { imageUrls.primary(id.orEmpty(), it) },
     )
+
+    private fun EmbyItemDto.toGenreItem(libraryId: String): LibraryItem? {
+        val genreId = id?.takeIf { it.isNotBlank() } ?: return null
+        val genreName = name?.takeIf { it.isNotBlank() } ?: return null
+        return LibraryItem(
+            id = packGenreItemId(libraryId, genreId),
+            title = genreName,
+            subtitle = "Genre",
+            imageUrl = null,
+            contentKind = ContentKind.MUSIC,
+        )
+    }
 
     /** Playlist cell: own Primary art if present (often absent → placeholder); track count as subtitle. */
     private fun EmbyItemDto.toPlaylistItem(): LibraryItem = LibraryItem(
@@ -554,4 +595,13 @@ class LibraryRepository @Inject constructor(
     }
 
     private fun Long.ticksToMs(): Long = this / 10_000
+
+    private fun packGenreItemId(libraryId: String, genreId: String): String =
+        "$libraryId$GENRE_ID_SEPARATOR$genreId"
+
+    private fun unpackGenreItemId(value: String): Pair<String, String>? {
+        val separator = value.indexOf(GENRE_ID_SEPARATOR)
+        if (separator <= 0 || separator == value.lastIndex) return null
+        return value.substring(0, separator) to value.substring(separator + 1)
+    }
 }
