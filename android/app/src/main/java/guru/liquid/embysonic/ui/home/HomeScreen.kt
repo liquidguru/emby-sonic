@@ -1,11 +1,11 @@
 package guru.liquid.embysonic.ui.home
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -295,6 +295,7 @@ private fun HomeContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StationsRow(
     genres: List<LibraryItem>,
@@ -310,11 +311,14 @@ private fun StationsRow(
             modifier = Modifier.padding(horizontal = 20.dp),
             style = MaterialTheme.typography.titleLarge,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        // All stations visible at once: a 3-per-row grid that wraps (3 + 2) so
+        // nothing is hidden behind a horizontal scroll.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            maxItemsInEachRow = 3,
         ) {
-            Spacer(Modifier.width(8.dp))
             StationCard(Icons.Default.Shuffle, "Library\nRadio") {
                 onPlayStation(HomeStation.LIBRARY, null)
             }
@@ -324,7 +328,6 @@ private fun StationsRow(
             StationCard(Icons.Default.DateRange, "Decade\nRadio") { decadePicker = true }
             StationCard(Icons.Default.Category, "Genres") { genrePicker = true }
             StationCard(Icons.Default.Explore, "Sonic\nAdventure", onClick = onOpenAdventure)
-            Spacer(Modifier.width(8.dp))
         }
     }
     if (decadePicker) {
@@ -355,7 +358,7 @@ private fun StationCard(
     onClick: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.size(116.dp).clickable(onClick = onClick),
+        modifier = Modifier.size(108.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
