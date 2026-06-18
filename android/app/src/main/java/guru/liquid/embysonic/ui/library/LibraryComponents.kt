@@ -398,7 +398,7 @@ internal fun TrackList(
         contentPadding = PaddingValues(vertical = 8.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(items, key = { it.id }) { item ->
+        items(items, key = { it.playlistItemId ?: it.id }) { item ->
             ListItem(
                 modifier = Modifier.clickable { onTrackClick(item) },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),

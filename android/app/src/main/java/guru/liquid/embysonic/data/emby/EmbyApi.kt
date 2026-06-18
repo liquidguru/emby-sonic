@@ -120,6 +120,13 @@ interface EmbyApi {
     @DELETE("Items/{itemId}")
     suspend fun deleteItem(@Path("itemId") itemId: String)
 
+    /** Removes entries from a playlist. [entryIds] are PlaylistItemId values, not track ids. */
+    @DELETE("Playlists/{playlistId}/Items")
+    suspend fun deletePlaylistItems(
+        @Path("playlistId") playlistId: String,
+        @Query("EntryIds") entryIds: String,
+    )
+
     /** Album artists within a library ([parentId] scopes to that library). */
     @GET("Artists/AlbumArtists")
     suspend fun getAlbumArtists(

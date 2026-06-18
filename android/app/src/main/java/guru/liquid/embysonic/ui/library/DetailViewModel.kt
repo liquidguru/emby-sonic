@@ -160,6 +160,30 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    fun removePlaylistItem(item: LibraryItem) {
+        if (kind != DetailKind.PLAYLIST_TRACKS) return
+        val entryId = item.playlistItemId
+        if (entryId.isNullOrBlank()) {
+            viewModelScope.launch { _messages.send("Couldn't remove \"${item.title}\": missing playlist entry id") }
+            return
+        }
+        viewModelScope.launch {
+            runCatching { playlists.removePlaylistItem(itemId, entryId) }.fold(
+                onSuccess = {
+                    _state.update { current ->
+                        if (current is TabState.Data) {
+                            current.copy(items = current.items.filterNot { it.playlistItemId == entryId })
+                        } else {
+                            current
+                        }
+                    }
+                    _messages.send("Removed \"${item.title}\" from playlist")
+                },
+                onFailure = { _messages.send("Couldn't remove track: ${it.message}") },
+            )
+        }
+    }
+
     fun playCollection(item: LibraryItem) {
         viewModelScope.launch {
             val targetKind = kind.childKind ?: kind

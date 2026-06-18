@@ -64,6 +64,9 @@ data class EmbyItemDto(
 
     @SerialName("UserData")
     val userData: UserDataDto? = null,
+
+    @SerialName("PlaylistItemId")
+    val playlistItemId: String? = null,
 ) {
     val durationMs: Long?
         get() = runTimeTicks?.let { it / 10_000 }

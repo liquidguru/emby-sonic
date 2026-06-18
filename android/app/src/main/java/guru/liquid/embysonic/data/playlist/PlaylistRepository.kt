@@ -75,4 +75,10 @@ class PlaylistRepository @Inject constructor(
     suspend fun deletePlaylist(itemId: String) {
         embyApi.deleteItem(itemId)
     }
+
+    /** Removes one stored entry from an Emby playlist without deleting the underlying track. */
+    suspend fun removePlaylistItem(playlistId: String, playlistItemId: String) {
+        require(playlistItemId.isNotBlank()) { "Missing playlist entry id" }
+        embyApi.deletePlaylistItems(playlistId = playlistId, entryIds = playlistItemId)
+    }
 }
