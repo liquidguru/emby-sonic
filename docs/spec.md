@@ -863,6 +863,14 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   on the Pixel 8 Pro: the switch enabled on a music queue, similar tracks were
   appended near the end, and enabling repeat disabled the switch with the
   explanatory "Turn repeat off to use Guest DJ" row text.
+- **M4.13 — Stations grid on Home (2026-06-19, built + Pixel verified):** the
+  Home "Stations" section no longer hides tiles behind a horizontal scroll. The
+  scrolling `Row` is now a `FlowRow` capped at three tiles per row, so all five
+  stations (Library Radio, Random Album, Decade Radio, Genres, Sonic Adventure)
+  are visible at once in a 3 + 2 grid. Station cards shrank 116dp → 108dp so
+  three fit cleanly within the Pixel 8 Pro's usable width, and the grid is padded
+  to 20dp to align with the section title. Verified on the Pixel 8 Pro: all five
+  tiles show without swiping and each still launches its station/picker.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
