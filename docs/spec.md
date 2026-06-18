@@ -850,9 +850,21 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   MediaSession/PlaybackController path as the notification and app UI so normal
   playback behavior stays consistent. Later extensions can add Recent
   plays/mix/genre shortcuts, sleep timer status, or audiobook-focused controls.
+- **M4.12 — Guest DJ queue injection (2026-06-19, built + Pixel verified):**
+  The Now Playing Guest DJ row is now a real switch instead of a disabled
+  placeholder. It is a music queue extender, not a replacement radio mode: when
+  enabled, `PlaybackController` watches the current queue and, once fewer than
+  three upcoming tracks remain, calls `/sonic/queue/inject` with the current
+  track id and appends up to five deduped, artwork-hydrated similar tracks.
+  Existing injected tracks stay in the queue when the switch is turned off, but
+  no further injections run. Guest DJ is disabled for audiobooks/long-form
+  playback and is also disabled while repeat-all or repeat-one is active; turning
+  repeat on while Guest DJ is enabled immediately turns Guest DJ off. Verification
+  on the Pixel 8 Pro: the switch enabled on a music queue, similar tracks were
+  appended near the end, and enabling repeat disabled the switch with the
+  explanatory "Turn repeat off to use Guest DJ" row text.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
-  detail; Guest DJ toggle (currently a disabled placeholder — wire to
-  `/sonic/queue/inject` or hide).
+  detail.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
   in behind the `TrackProgress` interface; remaining UI polish as identified.
 

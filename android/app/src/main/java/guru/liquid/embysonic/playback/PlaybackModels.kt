@@ -72,6 +72,9 @@ data class PlaybackUiState(
     val sleepTimerMode: SleepTimerMode = SleepTimerMode.OFF,
     val sleepTimerRemainingMs: Long = 0,
     val audiobookSpeed: Float = 1f,
+    val guestDjEnabled: Boolean = false,
+    val guestDjAvailable: Boolean = false,
+    val guestDjLoading: Boolean = false,
     // During an active music crossfade, the outgoing track and the blend length,
     // so Now Playing can cross-dissolve the artwork in step with the audio.
     val crossfadeFromTrack: PlaybackTrack? = null,
