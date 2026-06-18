@@ -167,6 +167,7 @@ fun NowPlayingScreen(
                     onCycleRepeat = viewModel::cycleRepeatMode,
                     onCancelSleepTimer = viewModel::cancelSleepTimer,
                     onOpenSpeedDialog = { speedDialogOpen = true },
+                    onGuestDjChange = viewModel::setGuestDjEnabled,
                     onQueueItemClick = viewModel::seekToQueueIndex,
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
@@ -218,6 +219,7 @@ private fun PlayerContent(
     onCycleRepeat: () -> Unit,
     onCancelSleepTimer: () -> Unit,
     onOpenSpeedDialog: () -> Unit,
+    onGuestDjChange: (Boolean) -> Unit,
     onQueueItemClick: (Int) -> Unit,
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
@@ -292,7 +294,7 @@ private fun PlayerContent(
                 onCycleRepeat = onCycleRepeat,
             )
             Spacer(Modifier.height(18.dp))
-            GuestDjRow()
+            GuestDjRow(state, onGuestDjChange)
             Spacer(Modifier.height(20.dp))
             PlaybackTabs(selected = selectedTab, onSelect = onSelectTab)
             Spacer(Modifier.height(8.dp))
@@ -617,7 +619,16 @@ private fun PlaybackModeControls(
 }
 
 @Composable
-private fun GuestDjRow() {
+private fun GuestDjRow(state: PlaybackUiState, onGuestDjChange: (Boolean) -> Unit) {
+    val repeatOff = state.repeatMode == PlaybackRepeatMode.OFF
+    val enabled = state.guestDjAvailable
+    val subtitle = when {
+        !repeatOff -> "Turn repeat off to use Guest DJ"
+        !state.guestDjAvailable -> "Music queues only"
+        state.guestDjLoading -> "Adding similar tracks"
+        state.guestDjEnabled -> "Keeping this queue going"
+        else -> "Add similar tracks near the end"
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -637,9 +648,13 @@ private fun GuestDjRow() {
         }
         Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
             Text("Guest DJ", style = MaterialTheme.typography.titleMedium)
-            Text("Similar tracks", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = false, onCheckedChange = null, enabled = false)
+        Switch(
+            checked = state.guestDjEnabled,
+            onCheckedChange = onGuestDjChange,
+            enabled = enabled,
+        )
     }
 }
 

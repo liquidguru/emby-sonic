@@ -20,6 +20,17 @@ data class SimilarTrackDto(
     @SerialName("score") val score: Double = 0.0,
 )
 
+@Serializable
+data class QueueInjectRequestDto(
+    @SerialName("current_track_id") val currentTrackId: String,
+    @SerialName("queue_length") val queueLength: Int = 5,
+)
+
+@Serializable
+data class QueueInjectDto(
+    @SerialName("injected") val injected: List<TrackOutDto> = emptyList(),
+)
+
 /** Response of `GET /sonic/tracks/{id}/radio`. */
 @Serializable
 data class RadioPlaylistDto(

@@ -26,9 +26,13 @@ import androidx.core.content.ContextCompat
 import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.BuildConfig
+import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
+import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.EmbyApi
 import guru.liquid.embysonic.data.emby.LibraryItem
+import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.dto.PlaybackReportDto
 import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
 import guru.liquid.embysonic.data.recent.RecentPlay
@@ -64,6 +68,8 @@ class PlaybackController @Inject constructor(
     private val audioEffects: AudioEffectsController,
     private val recentPlays: RecentPlaysRepository,
     private val prefetchCache: OfflinePrefetchCache,
+    private val coordinator: CoordinatorApi,
+    private val library: LibraryRepository,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
@@ -173,6 +179,9 @@ class PlaybackController @Inject constructor(
     private var sleepTimerEndsAtMs: Long = 0L
     private var sleepTimerFiring = false
     private var audiobookSpeed: Float = settings.snapshot().audiobookSpeed
+    private var guestDjEnabled = false
+    private var guestDjLoading = false
+    private var guestDjAttemptSignature: String? = null
 
     // A MediaController connected to our own MediaSessionService. The UI drives
     // the shared ExoPlayer directly, so without this nothing connects to the
@@ -229,6 +238,11 @@ class PlaybackController @Inject constructor(
                 .distinctUntilChanged()
                 .collect { repeatMode ->
                     player.repeatMode = repeatMode.toPlayerRepeatMode()
+                    if (repeatMode.uppercase() != PlaybackRepeatMode.OFF.name && guestDjEnabled) {
+                        guestDjEnabled = false
+                        guestDjLoading = false
+                        guestDjAttemptSignature = null
+                    }
                     publishState()
                 }
         }
@@ -250,6 +264,7 @@ class PlaybackController @Inject constructor(
                     publishState()
                     reportProgressIfDue()
                     maybeFireEndOfTrackSleepTimer()
+                    maybeInjectGuestDj()
                     delay(500)
                 }
             }
@@ -294,6 +309,7 @@ class PlaybackController @Inject constructor(
         recordRecentPlay(source, tracks)
         cancelCrossfade()
         suppressCrossfadeIndex = -1
+        clearGuestDjState()
         // Guarantee audible playback for a new queue even if the volume was left
         // low by an interrupted ramp or external glitch (self-heals "silent but
         // advancing").
@@ -395,6 +411,7 @@ class PlaybackController @Inject constructor(
         streamOffsetsByIndex.clear()
         prefetchJob?.cancel()
         prefetchSignature = null
+        clearGuestDjState()
         clearSleepTimer()
         lastStartedItemId = null
         // Release the controller first; a live binding would keep the service
@@ -499,6 +516,7 @@ class PlaybackController @Inject constructor(
             .shuffled(Random(System.nanoTime()))
         queue = if (currentTrack != null) listOf(currentTrack) + shuffledTail else shuffledTail
         queueShuffled = true
+        guestDjAttemptSignature = null
         playSessionIdsByIndex = queue.indices
             .associateWith { index ->
                 currentPlaybackSessionId.takeIf { index == 0 && currentTrack != null }
@@ -564,6 +582,17 @@ class PlaybackController @Inject constructor(
         scope.launch { settings.setAudiobookSpeed(speed) }
     }
 
+    fun setGuestDjEnabled(enabled: Boolean) {
+        val current = queue.getOrNull(player.currentMediaItemIndex.coerceAtLeast(0))
+        guestDjEnabled = enabled &&
+            player.repeatMode == Player.REPEAT_MODE_OFF &&
+            current?.guestDjEligible == true
+        guestDjLoading = false
+        guestDjAttemptSignature = null
+        publishState()
+        if (guestDjEnabled) maybeInjectGuestDj()
+    }
+
     fun cycleRepeatMode() {
         val nextMode = when (player.repeatMode) {
             Player.REPEAT_MODE_OFF -> PlaybackRepeatMode.ALL
@@ -571,6 +600,11 @@ class PlaybackController @Inject constructor(
             else -> PlaybackRepeatMode.OFF
         }
         player.repeatMode = nextMode.toPlayerRepeatMode()
+        if (nextMode != PlaybackRepeatMode.OFF && guestDjEnabled) {
+            guestDjEnabled = false
+            guestDjLoading = false
+            guestDjAttemptSignature = null
+        }
         scope.launch { settings.setPlaybackRepeatMode(nextMode.name) }
         publishState()
     }
@@ -706,13 +740,14 @@ class PlaybackController @Inject constructor(
         val streamOffset = streamOffsetsByIndex[index] ?: 0L
         val position = streamOffset + player.currentPosition.coerceAtLeast(0)
         val originalDuration = queue.getOrNull(index)?.durationMs
+        val currentTrack = queue.getOrNull(index)
         val duration = if (streamOffset > 0) {
             originalDuration ?: player.duration.takeIf { it != C.TIME_UNSET } ?: 0
         } else {
             player.duration.takeIf { it != C.TIME_UNSET } ?: originalDuration ?: 0
         }
         val nextState = PlaybackUiState(
-            currentTrack = queue.getOrNull(index),
+            currentTrack = currentTrack,
             queue = queue,
             currentIndex = index,
             isPlaying = player.isPlaying,
@@ -728,6 +763,9 @@ class PlaybackController @Inject constructor(
             sleepTimerMode = sleepTimerMode,
             sleepTimerRemainingMs = sleepTimerRemainingMs(),
             audiobookSpeed = audiobookSpeed,
+            guestDjEnabled = guestDjEnabled,
+            guestDjAvailable = currentTrack?.guestDjEligible == true && player.repeatMode == Player.REPEAT_MODE_OFF,
+            guestDjLoading = guestDjLoading,
             crossfadeFromTrack = crossfadeFromTrack,
             crossfadeBlendMs = crossfadeBlendMs,
         )
@@ -802,6 +840,83 @@ class PlaybackController @Inject constructor(
             }
             SleepTimerMode.OFF -> 0L
         }
+
+    private fun maybeInjectGuestDj() {
+        if (!guestDjEnabled || guestDjLoading) return
+        if (player.repeatMode != Player.REPEAT_MODE_OFF) {
+            clearGuestDjState()
+            publishState()
+            return
+        }
+        val index = player.currentMediaItemIndex.takeIf { it in queue.indices } ?: return
+        val current = queue[index]
+        if (!current.guestDjEligible) {
+            clearGuestDjState()
+            publishState()
+            return
+        }
+        val remaining = queue.lastIndex - index
+        if (remaining >= GUEST_DJ_TRIGGER_REMAINING) return
+        val signature = "$index:${current.id}:${queue.size}:${queue.lastOrNull()?.id}"
+        if (signature == guestDjAttemptSignature) return
+        guestDjAttemptSignature = signature
+        guestDjLoading = true
+        publishState()
+        scope.launch {
+            val result = runCatching {
+                coordinator.injectQueue(
+                    QueueInjectRequestDto(
+                        currentTrackId = current.id,
+                        queueLength = GUEST_DJ_INJECT_COUNT,
+                    ),
+                ).injected.map { it.toLibraryItem() }.withArtwork()
+            }
+            result.onSuccess { injected ->
+                val seen = queue.map { it.id }.toMutableSet()
+                val additions = injected
+                    .filter { it.contentKind == ContentKind.MUSIC && seen.add(it.id) }
+                    .take(GUEST_DJ_INJECT_COUNT)
+                if (guestDjEnabled && additions.isNotEmpty()) {
+                    appendGuestDjItems(additions)
+                }
+            }.onFailure { error ->
+                Log.w(TAG, "Guest DJ injection failed", error)
+            }
+            guestDjLoading = false
+            publishState()
+        }
+    }
+
+    private fun appendGuestDjItems(items: List<LibraryItem>) {
+        if (items.isEmpty()) return
+        val tracks = items.map { it.toPlaybackTrack() }
+        val startIndex = queue.size
+        tracks.forEachIndexed { offset, _ ->
+            playSessionIdsByIndex[startIndex + offset] = UUID.randomUUID().toString()
+        }
+        queue = queue + tracks
+        player.addMediaItems(
+            tracks.mapIndexed { offset, track ->
+                val index = startIndex + offset
+                mediaItem(track, startOffsetMs = 0L, playbackSessionId = playbackSessionId(index))
+            },
+        )
+        schedulePrefetch(player.currentMediaItemIndex.coerceAtLeast(0))
+    }
+
+    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
+        val art = runCatching { library.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
+        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
+    }
+
+    private fun clearGuestDjState() {
+        guestDjEnabled = false
+        guestDjLoading = false
+        guestDjAttemptSignature = null
+    }
+
+    private val PlaybackTrack.guestDjEligible: Boolean
+        get() = contentKind == ContentKind.MUSIC || (contentKind == ContentKind.UNKNOWN && !isLongForm)
 
     private fun schedulePrefetch(anchorIndex: Int) {
         val queueSnapshot = queue
@@ -1234,6 +1349,8 @@ class PlaybackController @Inject constructor(
         const val INCOMING_FADE_EXPONENT = 0.5
         const val INCOMING_START_VOLUME = 0.18f
         const val PREFETCH_AHEAD_COUNT = 3
+        const val GUEST_DJ_TRIGGER_REMAINING = 3
+        const val GUEST_DJ_INJECT_COUNT = 5
         const val SLEEP_TIMER_TICK_MS = 1_000L
         const val SLEEP_TIMER_FADE_MS = 3_000L
         const val SLEEP_TIMER_FADE_STEP_MS = 100L
