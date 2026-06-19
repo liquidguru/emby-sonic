@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -48,6 +49,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,6 +79,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.LibraryItem
+import guru.liquid.embysonic.playback.CastVolumeState
 import guru.liquid.embysonic.playback.PlaybackRepeatMode
 import guru.liquid.embysonic.playback.SleepTimerMode
 import guru.liquid.embysonic.playback.PlaybackTrack
@@ -169,6 +172,7 @@ fun NowPlayingScreen(
                     onCycleRepeat = viewModel::cycleRepeatMode,
                     onCancelSleepTimer = viewModel::cancelSleepTimer,
                     onOpenSpeedDialog = { speedDialogOpen = true },
+                    onCastVolumeChange = viewModel::setCastVolume,
                     onGuestDjChange = viewModel::setGuestDjEnabled,
                     onQueueItemClick = viewModel::seekToQueueIndex,
                     selectedTab = selectedTab,
@@ -221,6 +225,7 @@ private fun PlayerContent(
     onCycleRepeat: () -> Unit,
     onCancelSleepTimer: () -> Unit,
     onOpenSpeedDialog: () -> Unit,
+    onCastVolumeChange: (Float) -> Unit,
     onGuestDjChange: (Boolean) -> Unit,
     onQueueItemClick: (Int) -> Unit,
     selectedTab: Int,
@@ -287,6 +292,13 @@ private fun PlayerContent(
                 onCancelSleepTimer = onCancelSleepTimer,
                 onOpenSpeedDialog = onOpenSpeedDialog,
             )
+            if (state.castVolume.available) {
+                Spacer(Modifier.height(12.dp))
+                CastVolumeControl(
+                    volume = state.castVolume,
+                    onVolumeChange = onCastVolumeChange,
+                )
+            }
             Spacer(Modifier.height(8.dp))
             TransportControls(state, onPrevious, onToggle, onNext)
             Spacer(Modifier.height(8.dp))
@@ -357,6 +369,59 @@ private fun PlaybackStatusChips(
                 onClick = onOpenSpeedDialog,
             )
         }
+    }
+}
+
+@Composable
+private fun CastVolumeControl(
+    volume: CastVolumeState,
+    onVolumeChange: (Float) -> Unit,
+) {
+    val percent = (volume.volume * 100).toInt().coerceIn(0, 100)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.68f))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Icon(
+                    Icons.AutoMirrored.Filled.VolumeUp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    volume.deviceName?.let { "Casting to $it" } ?: "Cast volume",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            Text(
+                "$percent%",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (volume.pending) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+        Slider(
+            value = volume.volume.coerceIn(0f, 1f),
+            onValueChange = onVolumeChange,
+            valueRange = 0f..1f,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

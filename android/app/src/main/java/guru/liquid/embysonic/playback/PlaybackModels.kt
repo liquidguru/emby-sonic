@@ -27,6 +27,13 @@ enum class SleepTimerMode {
     END_OF_TRACK,
 }
 
+data class CastVolumeState(
+    val available: Boolean = false,
+    val volume: Float = 1f,
+    val deviceName: String? = null,
+    val pending: Boolean = false,
+)
+
 /**
  * Describes where a playback queue came from, so it can be recorded in the
  * Recent plays history. [key] is a stable identity for de-duping repeated plays
@@ -75,6 +82,7 @@ data class PlaybackUiState(
     val guestDjEnabled: Boolean = false,
     val guestDjAvailable: Boolean = false,
     val guestDjLoading: Boolean = false,
+    val castVolume: CastVolumeState = CastVolumeState(),
     // During an active music crossfade, the outgoing track and the blend length,
     // so Now Playing can cross-dissolve the artwork in step with the audio.
     val crossfadeFromTrack: PlaybackTrack? = null,
