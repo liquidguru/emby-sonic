@@ -51,6 +51,7 @@ class SettingsRepository @Inject constructor(
         val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
         val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
         val THEME_CHOICE = stringPreferencesKey("theme_choice")
+        val CAST_SERVER_URL = stringPreferencesKey("cast_server_url")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -93,6 +94,10 @@ class SettingsRepository @Inject constructor(
     /** Selected app colour theme; drives the Compose color scheme app-wide. */
     val themeChoice: Flow<ThemeChoice> =
         context.dataStore.data.map { ThemeChoice.fromKey(it[Keys.THEME_CHOICE]) }
+
+    /** Direct LAN Emby URL for casting; blank means fall back to [serverUrl]. */
+    val castServerUrl: Flow<String?> =
+        context.dataStore.data.map { it[Keys.CAST_SERVER_URL] }
 
     suspend fun setLibraryListView(value: Boolean) {
         context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
@@ -160,6 +165,14 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    suspend fun setCastServerUrl(url: String) {
+        context.dataStore.edit { prefs ->
+            val trimmed = url.trim().trimEnd('/')
+            if (trimmed.isEmpty()) prefs.remove(Keys.CAST_SERVER_URL) else prefs[Keys.CAST_SERVER_URL] = trimmed
+        }
+        refreshCache()
+    }
+
     @Volatile
     private var cached: AppSettings? = null
 
@@ -188,6 +201,7 @@ class SettingsRepository @Inject constructor(
             generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
             audiobookSpeed = (this[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed(),
             themeChoice = ThemeChoice.fromKey(this[Keys.THEME_CHOICE]),
+            castServerUrl = this[Keys.CAST_SERVER_URL],
         )
     }
 

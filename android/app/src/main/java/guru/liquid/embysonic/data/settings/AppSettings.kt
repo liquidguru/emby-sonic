@@ -22,6 +22,11 @@ data class AppSettings(
     val generatedMixTracks: Int = 25,
     val audiobookSpeed: Float = 1f,
     val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,
+    // Direct LAN Emby URL (e.g. http://192.168.1.9:8096) used only for casting:
+    // cast receivers fetch the stream themselves and accept cleartext http on the
+    // local network, whereas the remote/reverse-proxied serverUrl may not be
+    // reachable or cert-valid for them. Falls back to serverUrl when blank.
+    val castServerUrl: String? = null,
 ) {
     val isLoggedIn: Boolean
         get() = !serverUrl.isNullOrBlank() && !accessToken.isNullOrBlank()

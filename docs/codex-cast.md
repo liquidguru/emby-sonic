@@ -43,6 +43,12 @@ Phase 0 does NOT do: queue handoff, transport routing to the cast device,
 progress reporting from cast, disconnect handover, or feature gating.
 
 ## Phase 1 — Active-player switching (the big one)
+> **User-visible priority:** in Phase 0 the cast is a *separate* session the app
+> doesn't own, so the in-app mini-player/notification don't control it and there's
+> no in-app stop (control is via the system cast tile only). Swapping the
+> MediaSession to the CastPlayer (below) is what restores in-app control + a stop
+> button while casting.
+
 - Add a `CastPlayer` (media3-cast) backed by the shared `CastContext`.
 - Introduce an `activePlayer: Player` concept in `PlaybackController` (local
   ExoPlayer by default; CastPlayer when a cast session is connected). Route all
@@ -62,18 +68,20 @@ progress reporting from cast, disconnect handover, or feature gating.
   pauses local playback, and pause/play from the system shade works. (Proves the
   cast-safe URL, `api_key` auth, and mp3 transcode.) The cast shows as a separate
   session you can't drive from the in-app player — expected; that's Phase 1.
-- **NVIDIA SHIELD (Android TV): FAILS.** Metadata appears briefly, then nothing
-  plays and it falls back to the cast logo. Strongly suggests a modern Android TV
-  receiver **rejecting the media URL** where the speaker tolerated it — most
-  likely **cleartext `http://` and/or no range support** on the transcoded
-  stream. **Phase 2 action:** build cast stream + artwork URLs from the **HTTPS,
-  valid-cert endpoint** (`tv.liquid.guru` via NPM), not the LAN `http` base. The
-  app currently stores only one `serverUrl` (LAN http), so Phase 2 needs a
-  configurable/derived remote (cast) base URL. Confirm Emby is reachable at
-  `https://tv.liquid.guru` with a publicly-valid cert first.
-- **Artwork:** fixed in Phase 0 — `CastManager.castImageUrl()` now appends
-  `api_key`. (If artwork still fails on the SHIELD, it's the same http/https
-  issue as the stream.)
+- **NVIDIA SHIELD (Android TV): FIXED.** Initially failed (`idleReason=4` ERROR):
+  the app's `serverUrl` is the remote `https://tv.liquid.guru` route, which for
+  **LAN clients** resolves (local DNS rewrite) to `192.168.1.100:443` = Synology
+  **DSM** (serving the `liquidguru.synology.me` cert), NOT NPM. NPM actually
+  listens on `192.168.1.100:4430` with a valid `*.liquid.guru` cert and proxies
+  `tv.liquid.guru` → `http://192.168.1.9:8096` (Emby on liquidBee). The phone app
+  works because it doesn't enforce hostname verification; the SHIELD does, so TLS
+  failed. **Fix:** cast against the **direct LAN Emby URL** — added a
+  `castServerUrl` setting (Settings → "Cast server URL (LAN)", e.g.
+  `http://192.168.1.9:8096`); `CastManager` uses it (falling back to `serverUrl`)
+  for the stream and rebases artwork onto it too. Cast receivers accept cleartext
+  http on the LAN. Verified on the SHIELD: plays with album art.
+- **Artwork:** `CastManager.castImageUrl()` appends `api_key` and rebases onto
+  the cast base. Working.
 
 ## Phase 2 — Queue, metadata, reporting on cast
 - Build cast `MediaQueueItem`s / `MediaInfo` for the whole queue using

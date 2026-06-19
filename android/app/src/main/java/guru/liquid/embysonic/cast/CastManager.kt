@@ -93,7 +93,10 @@ class CastManager @Inject constructor(
             .setCurrentTime(positionMs.coerceAtLeast(0))
             .build()
         Log.d(TAG, "Casting ${track.id} -> $url")
-        client.load(request)
+        client.load(request).setResultCallback { result ->
+            val s = result.status
+            if (!s.isSuccess) Log.w(TAG, "Cast load failed: code=${s.statusCode} msg=${s.statusMessage}")
+        }
     }
 
     /**
@@ -101,10 +104,16 @@ class CastManager @Inject constructor(
      * own: LAN http base, token as the `api_key` query param (the receiver can't
      * send our X-Emby-Token header), forced to mp3 so the Default Media Receiver
      * can decode it (it can't reliably do FLAC).
+     *
+     * Uses the configured [castServerUrl][guru.liquid.embysonic.data.settings.AppSettings.castServerUrl]
+     * (direct LAN Emby) when set, falling back to the app's serverUrl. Cast
+     * receivers on the LAN accept cleartext http and fetch the stream themselves,
+     * whereas a reverse-proxied/remote serverUrl may be unreachable or cert-invalid
+     * for them.
      */
     private fun castStreamUrl(itemId: String): String? {
         val snap = settings.snapshot()
-        val base = snap.serverUrl?.trimEnd('/') ?: return null
+        val base = castBase() ?: return null
         val token = snap.accessToken ?: return null
         val userId = snap.userId ?: return null
         return Uri.parse("$base/Audio/${Uri.encode(itemId)}/universal")
@@ -125,10 +134,25 @@ class CastManager @Inject constructor(
     /** Append the Emby token so the cast receiver can fetch artwork without our auth header. */
     private fun castImageUrl(imageUrl: String?): String? {
         val url = imageUrl ?: return null
-        val token = settings.snapshot().accessToken ?: return url
-        if (url.contains("api_key=")) return url
-        val separator = if (url.contains('?')) '&' else '?'
-        return "$url${separator}api_key=$token"
+        val snap = settings.snapshot()
+        // Rebase artwork onto the cast (LAN) endpoint too (same reason as the stream).
+        val base = castBase()
+        val rebased = if (base != null) {
+            snap.serverUrl?.trimEnd('/')?.let { url.replace(it, base) } ?: url
+        } else {
+            url
+        }
+        val token = snap.accessToken ?: return rebased
+        if (rebased.contains("api_key=")) return rebased
+        val separator = if (rebased.contains('?')) '&' else '?'
+        return "$rebased${separator}api_key=$token"
+    }
+
+    /** The base URL cast receivers should fetch from: the LAN cast URL if set, else serverUrl. */
+    private fun castBase(): String? {
+        val snap = settings.snapshot()
+        return snap.castServerUrl?.takeIf { it.isNotBlank() }?.trimEnd('/')
+            ?: snap.serverUrl?.trimEnd('/')
     }
 
     private fun playServicesAvailable(context: Context): Boolean =
