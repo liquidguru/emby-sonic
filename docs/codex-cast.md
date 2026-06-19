@@ -1,5 +1,12 @@
 # Codex task — Casting (Chromecast / Google Cast)
 
+> **NEXT: Phase 1 — active-player switching (in-app control of the cast).**
+> Phase 0 is done and verified (speaker + SHIELD, with album art). Start at the
+> "Phase 1" section below. The user-visible goal: the in-app mini-player,
+> notification, and lock screen control the cast as one session (today's cast is
+> a separate, app-uncontrollable session). Music only; verify on the real Pixel 8
+> Pro **and** a real cast target on the LAN.
+
 liquidWave (emby-sonic Android) should cast music to Chromecast / Google TV /
 cast-enabled speakers. Read `AGENTS.md` and `docs/spec.md` first. Decisions are
 locked (see below); follow the phased plan. Judge audio behaviour on the real
