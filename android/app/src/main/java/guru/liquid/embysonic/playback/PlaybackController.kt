@@ -3,6 +3,8 @@ package guru.liquid.embysonic.playback
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.media.AudioManager
 import android.media.MediaMetadata as PlatformMediaMetadata
 import android.net.Uri
@@ -23,6 +25,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.core.content.ContextCompat
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.BuildConfig
@@ -38,6 +43,7 @@ import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
 import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
+import guru.liquid.embysonic.widget.NowPlayingWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,6 +52,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -205,6 +212,10 @@ class PlaybackController @Inject constructor(
                 }
             }
 
+            override fun onPlayerError(error: PlaybackException) {
+                recoverFromSourceError(error)
+            }
+
             // Pauses can arrive without going through togglePlayPause — media
             // notification, Bluetooth controls, audio-focus loss, becoming-noisy.
             // Any of them must abort a pending or in-flight crossfade, or the
@@ -280,7 +291,47 @@ class PlaybackController @Inject constructor(
         }
         // Bind the equalizer to the players' shared session.
         audioEffects.attach(sharedAudioSessionId)
+        startWidgetUpdates()
     }
+
+    // --- Home-screen widget -------------------------------------------------
+    // The widget mirrors the same state flow the in-app UI consumes. We only
+    // re-render when the widget-relevant fields change (not on every 500ms
+    // position tick) and cache the decoded artwork so it isn't reloaded for a
+    // mere play/pause toggle.
+    private var lastWidgetArtUrl: String? = null
+    private var lastWidgetBitmap: Bitmap? = null
+
+    private fun startWidgetUpdates() {
+        scope.launch {
+            state.map { NowPlayingWidget.snapshotFrom(it) }
+                .distinctUntilChanged()
+                .collect { snapshot ->
+                    if (snapshot.imageUrl != lastWidgetArtUrl) {
+                        lastWidgetArtUrl = snapshot.imageUrl
+                        lastWidgetBitmap = snapshot.imageUrl?.let { loadWidgetArt(it) }
+                    }
+                    NowPlayingWidget.render(context, snapshot, lastWidgetBitmap)
+                }
+        }
+    }
+
+    /** Repaint the widget immediately from current state (e.g. when one is added). */
+    fun refreshWidget() {
+        val snapshot = NowPlayingWidget.snapshotFrom(state.value)
+        val art = if (snapshot.imageUrl == lastWidgetArtUrl) lastWidgetBitmap else null
+        NowPlayingWidget.render(context, snapshot, art)
+    }
+
+    private suspend fun loadWidgetArt(url: String): Bitmap? = runCatching {
+        val request = ImageRequest.Builder(context)
+            .data(url)
+            .allowHardware(false) // RemoteViews require a software bitmap.
+            .size(256)
+            .build()
+        val result = context.imageLoader.execute(request) as? SuccessResult
+        (result?.drawable as? BitmapDrawable)?.bitmap
+    }.getOrNull()
 
     fun playQueue(items: List<LibraryItem>, startItem: LibraryItem, source: PlaybackSource? = null) {
         setQueue(items = items, startItem = startItem, shuffled = false, playWhenReady = true, source = source)
@@ -934,6 +985,13 @@ class PlaybackController @Inject constructor(
         prefetchJob?.cancel()
         prefetchJob = scope.launch(Dispatchers.IO) {
             prefetchCache.deleteTracks(queueSnapshot.take(anchorIndex).map { it.id })
+            // Those behind-anchor tracks had their MediaItems swapped to the local
+            // cache files we just deleted. Revert them to streaming URLs so skipping
+            // back re-streams instead of opening a missing file (ENOENT -> Source
+            // error -> a player stuck in ERROR where play does nothing).
+            if (anchorIndex > 0) {
+                scope.launch { restoreStreamingItems(queueSnapshot, anchorIndex) }
+            }
             val headers = playbackHeaders()
             upcoming.forEach { track ->
                 val index = queueSnapshot.indexOfFirst { it.id == track.id }
@@ -951,6 +1009,43 @@ class PlaybackController @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Rebuild the MediaItems for the already-played tracks before [beforeIndex]
+     * as streaming URLs. Their prefetch cache files have just been deleted, so
+     * [mediaItem] now resolves them to the network stream rather than a dangling
+     * local file. Never touches the current item, so playback is not disturbed.
+     */
+    private fun restoreStreamingItems(queueSnapshot: List<PlaybackTrack>, beforeIndex: Int) {
+        val current = player.currentMediaItemIndex
+        for (index in 0 until beforeIndex.coerceAtMost(player.mediaItemCount)) {
+            if (index == current) continue
+            val track = queue.getOrNull(index) ?: continue
+            if (queueSnapshot.getOrNull(index)?.id != track.id) continue
+            player.replaceMediaItem(
+                index,
+                mediaItem(track, streamOffsetsByIndex[index] ?: 0L, playbackSessionId(index)),
+            )
+        }
+    }
+
+    /**
+     * Self-heal a source error caused by a dangling local prefetch URI (the cache
+     * file was evicted out from under a still-referenced MediaItem). Re-resolve the
+     * current item to a streaming URL and resume, so the player never gets stuck in
+     * ERROR — where play() is a no-op and only skipping forward escapes.
+     */
+    private fun recoverFromSourceError(error: PlaybackException) {
+        if (error.errorCode != PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) return
+        val index = player.currentMediaItemIndex.takeIf { it in queue.indices } ?: return
+        val wasPlaying = player.playWhenReady
+        player.replaceMediaItem(
+            index,
+            mediaItem(queue[index], streamOffsetsByIndex[index] ?: 0L, playbackSessionId(index)),
+        )
+        player.prepare()
+        if (wasPlaying) playPrimary()
     }
 
     private fun Int.toPlaybackRepeatMode(): PlaybackRepeatMode = when (this) {

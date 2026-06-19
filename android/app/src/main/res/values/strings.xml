@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">liquidWave</string>
+    <string name="widget_description">liquidWave mini player — control playback from your home screen.</string>
+    <string name="widget_idle_subtitle">Tap to open</string>
+    <string name="widget_art_description">Album artwork</string>
+    <string name="widget_previous">Previous track</string>
+    <string name="widget_play_pause">Play or pause</string>
+    <string name="widget_next">Next track</string>
 </resources>
