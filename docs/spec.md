@@ -871,6 +871,31 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   three fit cleanly within the Pixel 8 Pro's usable width, and the grid is padded
   to 20dp to align with the section title. Verified on the Pixel 8 Pro: all five
   tiles show without swiping and each still launches its station/picker.
+- **M4.14 — Now Playing home-screen widget (2026-06-19, built + Pixel verified):**
+  a compact one-row mini-player widget (`RemoteViews`/`AppWidgetProvider`, not
+  Glance). It shows artwork, title, and artist with previous / play-pause / next
+  controls; tapping the body opens the app. Display is driven from
+  `PlaybackController.state` via a collector that only re-renders when the
+  widget-relevant fields change (not on every position tick) and caches the
+  Coil-decoded artwork bitmap so a play/pause toggle doesn't reload it. Button
+  taps broadcast to `NowPlayingWidgetProvider`, which reaches the singleton
+  `PlaybackController` through a Hilt `EntryPoint` and calls the same
+  `togglePlayPause()` / `skipNext()` / `skipPrevious()` the in-app UI and media
+  notification use. When nothing is loaded the widget shows "liquidWave / Tap to
+  open" with the transport controls hidden. Idle/cold-start playback is out of
+  scope for v1 (controls act on an existing session). Verified on the Pixel 8 Pro.
+  - *Prefetch backward-skip fix (surfaced by the widget, also fixed in-app):*
+    the offline prefetch cache swapped each track's `MediaItem` to a local cache
+    file once downloaded, but deleting those files (behind-anchor cleanup in
+    `schedulePrefetch` and size-cap `evictIfNeeded`) left the `MediaItem`s
+    pointing at missing files. Skipping **back** opened a deleted file →
+    `ENOENT` → `Source error` → the player jammed in `STATE_ERROR` where play()
+    was a no-op and only skipping forward escaped (confirmed via on-device
+    logcat). Fix: `schedulePrefetch` now reverts behind-anchor tracks'
+    `MediaItem`s to streaming URLs after their cache files are deleted, and a new
+    `onPlayerError` handler re-streams the current item on
+    `ERROR_CODE_IO_FILE_NOT_FOUND` as a safety net against cache-eviction races.
+    Verified on the Pixel 8 Pro: skip-back now keeps playing with no source error.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
