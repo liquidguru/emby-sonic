@@ -5,7 +5,9 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
 import guru.liquid.embysonic.MainActivity
@@ -46,23 +48,50 @@ object NowPlayingWidget {
     }
 
     /** Push [snapshot] (and the already-loaded [artwork], if any) to every widget instance. */
-    fun render(context: Context, snapshot: Snapshot, artwork: Bitmap?) {
+    fun render(context: Context, snapshot: Snapshot, artwork: Bitmap?, palette: WidgetPalette) {
         val manager = AppWidgetManager.getInstance(context) ?: return
         val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetProvider::class.java))
         if (ids.isEmpty()) return
-        manager.updateAppWidget(ids, buildViews(context, snapshot, artwork))
+        manager.updateAppWidget(ids, buildViews(context, snapshot, artwork, palette))
     }
 
-    fun buildViews(context: Context, snapshot: Snapshot, artwork: Bitmap?): RemoteViews {
+    fun buildViews(
+        context: Context,
+        snapshot: Snapshot,
+        artwork: Bitmap?,
+        palette: WidgetPalette,
+    ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_now_playing)
 
         views.setTextViewText(R.id.widget_title, snapshot.title)
         views.setTextViewText(R.id.widget_artist, snapshot.artist)
 
+        // Recolour to match the in-app theme. setColorFilter works on all API
+        // levels; background tinting (rounded shapes) needs API 31+.
+        views.setTextColor(R.id.widget_title, palette.textPrimary)
+        views.setTextColor(R.id.widget_artist, palette.textSecondary)
+        views.setInt(R.id.widget_previous, "setColorFilter", palette.textPrimary)
+        views.setInt(R.id.widget_next, "setColorFilter", palette.textPrimary)
+        views.setInt(R.id.widget_play_pause, "setColorFilter", palette.accent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            views.setColorStateList(
+                R.id.widget_root,
+                "setBackgroundTintList",
+                ColorStateList.valueOf(palette.surface),
+            )
+            views.setColorStateList(
+                R.id.widget_art,
+                "setBackgroundTintList",
+                ColorStateList.valueOf(palette.artBackground),
+            )
+        }
+
         if (artwork != null) {
             views.setImageViewBitmap(R.id.widget_art, artwork)
         } else {
             views.setImageViewResource(R.id.widget_art, R.drawable.ic_widget_placeholder)
+            // Tint only the placeholder glyph — never a real artwork bitmap.
+            views.setInt(R.id.widget_art, "setColorFilter", palette.accent)
         }
 
         views.setImageViewResource(

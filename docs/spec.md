@@ -896,6 +896,21 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     `onPlayerError` handler re-streams the current item on
     `ERROR_CODE_IO_FILE_NOT_FOUND` as a safety net against cache-eviction races.
     Verified on the Pixel 8 Pro: skip-back now keeps playing with no source error.
+- **M4.15 — Theming / Material You (2026-06-19, built + Pixel verified):** the
+  app's single hardcoded dark palette is now a user choice. `EmbySonicTheme`
+  takes a `ThemeChoice` and resolves the Compose color scheme: `DYNAMIC` uses
+  `dynamicDarkColorScheme(context)` (Material You, Android 12+, falls back to
+  liquidWave below), plus fixed dark palettes liquidWave (default), Ember,
+  Violet, Forest, and Rose. The choice persists in DataStore
+  (`SettingsRepository.themeChoice`) and is collected reactively in
+  `MainActivity`, so a new "Appearance" card in Settings recolours the whole app
+  live (no restart). Still dark-first; no light theme. The Now Playing widget
+  also follows the selected theme: `PlaybackController` watches `themeChoice`
+  alongside playback state and repaints the widget, which recolours icons/text
+  via `setColorFilter` (all API levels) and tints its rounded backgrounds on
+  API 31+; `DYNAMIC` maps to the `system_accent1`/`system_neutral1` resources so
+  the widget tracks the wallpaper too. Verified on the Pixel 8 Pro across all
+  six themes, in-app and on the home-screen widget.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped

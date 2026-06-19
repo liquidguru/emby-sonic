@@ -44,6 +44,7 @@ import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.widget.NowPlayingWidget
+import guru.liquid.embysonic.widget.WidgetTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,6 +52,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -304,14 +306,21 @@ class PlaybackController @Inject constructor(
 
     private fun startWidgetUpdates() {
         scope.launch {
-            state.map { NowPlayingWidget.snapshotFrom(it) }
-                .distinctUntilChanged()
-                .collect { snapshot ->
+            combine(
+                state.map { NowPlayingWidget.snapshotFrom(it) }.distinctUntilChanged(),
+                settings.themeChoice.distinctUntilChanged(),
+            ) { snapshot, theme -> snapshot to theme }
+                .collect { (snapshot, theme) ->
                     if (snapshot.imageUrl != lastWidgetArtUrl) {
                         lastWidgetArtUrl = snapshot.imageUrl
                         lastWidgetBitmap = snapshot.imageUrl?.let { loadWidgetArt(it) }
                     }
-                    NowPlayingWidget.render(context, snapshot, lastWidgetBitmap)
+                    NowPlayingWidget.render(
+                        context,
+                        snapshot,
+                        lastWidgetBitmap,
+                        WidgetTheme.paletteFor(context, theme),
+                    )
                 }
         }
     }
@@ -320,7 +329,8 @@ class PlaybackController @Inject constructor(
     fun refreshWidget() {
         val snapshot = NowPlayingWidget.snapshotFrom(state.value)
         val art = if (snapshot.imageUrl == lastWidgetArtUrl) lastWidgetBitmap else null
-        NowPlayingWidget.render(context, snapshot, art)
+        val palette = WidgetTheme.paletteFor(context, settings.snapshot().themeChoice)
+        NowPlayingWidget.render(context, snapshot, art, palette)
     }
 
     private suspend fun loadWidgetArt(url: String): Bitmap? = runCatching {
