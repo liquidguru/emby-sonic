@@ -11,6 +11,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import androidx.annotation.OptIn
+import androidx.media3.cast.CastPlayer
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -18,6 +20,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -69,6 +72,7 @@ import kotlin.random.Random
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@OptIn(UnstableApi::class)
 @Singleton
 class PlaybackController @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -165,6 +169,10 @@ class PlaybackController @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
+    private val _activePlayer = MutableStateFlow<Player>(player)
+    val activePlayer: StateFlow<Player> = _activePlayer.asStateFlow()
+    private var activePlayerRef: Player = player
+    private var castPlayer: CastPlayer? = null
 
     // Gates the two ticking loops below so they only run while audio is actually
     // playing. Idle, they did 20 main-thread wakeups/second forever (the 50ms
@@ -191,6 +199,8 @@ class PlaybackController @Inject constructor(
     private var guestDjEnabled = false
     private var guestDjLoading = false
     private var guestDjAttemptSignature: String? = null
+    private var lastCastIndex: Int = C.INDEX_UNSET
+    private var lastCastPositionMs: Long = C.TIME_UNSET
 
     // A MediaController connected to our own MediaSessionService. The UI drives
     // the shared ExoPlayer directly, so without this nothing connects to the
@@ -204,8 +214,7 @@ class PlaybackController @Inject constructor(
     init {
         player.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
-                playbackActive.value = player.isPlaying
-                publishState()
+                publishFromPlayer(player)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -251,6 +260,7 @@ class PlaybackController @Inject constructor(
                 .distinctUntilChanged()
                 .collect { repeatMode ->
                     player.repeatMode = repeatMode.toPlayerRepeatMode()
+                    castPlayer?.repeatMode = repeatMode.toPlayerRepeatMode()
                     if (repeatMode.uppercase() != PlaybackRepeatMode.OFF.name && guestDjEnabled) {
                         guestDjEnabled = false
                         guestDjLoading = false
@@ -285,6 +295,7 @@ class PlaybackController @Inject constructor(
         scope.launch {
             playbackActive.collectLatest { active ->
                 if (!active) return@collectLatest
+                if (isCasting) return@collectLatest
                 while (isActive) {
                     maybeStartCrossfade()
                     delay(CROSSFADE_POLL_MS)
@@ -294,6 +305,108 @@ class PlaybackController @Inject constructor(
         // Bind the equalizer to the players' shared session.
         audioEffects.attach(sharedAudioSessionId)
         startWidgetUpdates()
+    }
+
+    fun attachCastPlayer(player: CastPlayer) {
+        if (castPlayer === player) return
+        castPlayer = player
+        player.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                publishFromPlayer(player)
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && !sleepTimerFiring && sleepTimerMode != SleepTimerMode.OFF) {
+                    clearSleepTimer()
+                    publishState()
+                }
+            }
+        })
+    }
+
+    fun activePlayerSnapshot(): Player = activePlayerRef
+
+    fun onCastSessionAvailable() {
+        val remote = castPlayer ?: return
+        if (activePlayerRef === remote) return
+        val startIndex = player.currentMediaItemIndex.takeIf { it in queue.indices } ?: return
+        val current = queue.getOrNull(startIndex) ?: return
+        if (current.isLongForm) {
+            Log.i(TAG, "Audiobook casting is not supported yet; keeping local playback active")
+            return
+        }
+        val handoffPosition = currentSessionPositionMs()?.coerceAtLeast(0L)
+            ?: player.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = player.isPlaying || player.playWhenReady
+        cancelCrossfade()
+        prefetchJob?.cancel()
+        prefetchSignature = null
+        audioEffects.setSuppressedForRemotePlayback(true)
+        player.pause()
+        remote.repeatMode = player.repeatMode
+        setActivePlayer(remote)
+        Log.i(
+            TAG,
+            "Cast handoff local->remote queue=${queue.size} index=$startIndex positionMs=$handoffPosition wasPlaying=$wasPlaying",
+        )
+        remote.setMediaItems(castMediaItems(), startIndex, handoffPosition)
+        remote.prepare()
+        if (wasPlaying) playActive() else remote.pause()
+        publishState()
+    }
+
+    fun onCastSessionUnavailable() {
+        val remote = castPlayer ?: return
+        if (activePlayerRef !== remote) return
+        if (queue.isEmpty()) {
+            setActivePlayer(player)
+            audioEffects.setSuppressedForRemotePlayback(false)
+            lastCastIndex = C.INDEX_UNSET
+            lastCastPositionMs = C.TIME_UNSET
+            publishState()
+            return
+        }
+        val startIndex = remote.currentMediaItemIndex.takeIf { it in queue.indices }
+            ?: state.value.currentIndex.takeIf { it in queue.indices }
+            ?: lastCastIndex.takeIf { it in queue.indices }
+            ?: 0
+        val remotePosition = remote.currentPosition.coerceAtLeast(0L)
+        val statePosition = state.value
+            .takeIf { it.currentIndex == startIndex && it.positionMs > 0L }
+            ?.positionMs
+        val snapshotPosition = lastCastPositionMs
+            .takeIf { lastCastIndex == startIndex && it != C.TIME_UNSET && it > 0L }
+        val handoffPosition = maxOf(remotePosition, statePosition ?: 0L, snapshotPosition ?: 0L)
+        val wasPlaying = remote.isPlaying || remote.playWhenReady
+        val repeatMode = remote.repeatMode
+        setActivePlayer(player)
+        audioEffects.setSuppressedForRemotePlayback(false)
+        player.volume = 1f
+        player.repeatMode = repeatMode
+        Log.i(
+            TAG,
+            "Cast handoff remote->local queue=${queue.size} index=$startIndex positionMs=$handoffPosition wasPlaying=$wasPlaying",
+        )
+        player.setMediaItems(localMediaItems(), startIndex, localPlayerPosition(startIndex, handoffPosition))
+        player.prepare()
+        if (wasPlaying && queue.isNotEmpty()) playActive() else player.pause()
+        lastCastIndex = C.INDEX_UNSET
+        lastCastPositionMs = C.TIME_UNSET
+        schedulePrefetch(startIndex)
+        publishState()
+    }
+
+    private fun publishFromPlayer(eventPlayer: Player) {
+        if (eventPlayer !== activePlayerRef) return
+        playbackActive.value = eventPlayer.isPlaying
+        publishState()
+    }
+
+    private fun setActivePlayer(next: Player) {
+        if (activePlayerRef === next) return
+        activePlayerRef = next
+        _activePlayer.value = next
+        playbackActive.value = next.isPlaying
     }
 
     // --- Home-screen widget -------------------------------------------------
@@ -354,7 +467,13 @@ class PlaybackController @Inject constructor(
 
     fun prepareQueue(items: List<LibraryItem>, shuffled: Boolean, source: PlaybackSource? = null) {
         val startItem = items.firstOrNull() ?: return
-        setQueue(items = items, startItem = startItem, shuffled = shuffled, playWhenReady = player.isPlaying, source = source)
+        setQueue(
+            items = items,
+            startItem = startItem,
+            shuffled = shuffled,
+            playWhenReady = activePlayerRef.isPlaying,
+            source = source,
+        )
     }
 
     private fun setQueue(
@@ -393,29 +512,23 @@ class PlaybackController @Inject constructor(
             .toMap()
             .toMutableMap()
         val resumePosition = tracks.getOrNull(startIndex)?.playerStartPosition(startIndex) ?: 0
-        player.setMediaItems(
-            tracks.mapIndexed { index, track ->
-                mediaItem(
-                    track = track,
-                    startOffsetMs = streamOffsetsByIndex[index] ?: 0L,
-                    playbackSessionId = playbackSessionId(index),
-                )
-            },
+        activePlayerRef.setMediaItems(
+            activeMediaItems(),
             startIndex,
-            resumePosition,
+            if (isCasting) tracks[startIndex].absolutePosition(startIndex, resumePosition) else resumePosition,
         )
         applyPlaybackSpeed(startIndex)
         schedulePrefetch(startIndex)
         if (playWhenReady) {
-            player.prepare()
-            playPrimary()
+            activePlayerRef.prepare()
+            playActive()
             reportStarted(
                 track = tracks[startIndex],
                 positionMs = tracks[startIndex].absolutePosition(startIndex, resumePosition),
                 index = startIndex,
             )
         } else {
-            player.pause()
+            activePlayerRef.pause()
         }
         publishState()
     }
@@ -440,6 +553,7 @@ class PlaybackController @Inject constructor(
     }
 
     fun togglePlayPause() {
+        val player = activePlayerRef
         cancelCrossfade()
         if (player.isPlaying) {
             clearSleepTimer()
@@ -448,7 +562,7 @@ class PlaybackController @Inject constructor(
             if (player.playbackState == Player.STATE_IDLE || player.playerError != null) {
                 player.prepare()
             }
-            playPrimary()
+            playActive()
         }
         publishState()
         reportProgress(
@@ -473,8 +587,12 @@ class PlaybackController @Inject constructor(
         // a music position. Audiobooks keep their resume point.
         reportStopped(lastReportedState)
         lastReportedState = PlaybackUiState()
-        player.stop()
-        player.clearMediaItems()
+        activePlayerRef.stop()
+        activePlayerRef.clearMediaItems()
+        if (activePlayerRef !== player) {
+            player.stop()
+            player.clearMediaItems()
+        }
         queue = emptyList()
         queueShuffled = false
         streamOffsetsByIndex.clear()
@@ -491,6 +609,7 @@ class PlaybackController @Inject constructor(
     }
 
     fun seekTo(positionMs: Long) {
+        val player = activePlayerRef
         cancelCrossfade()
         val index = player.currentMediaItemIndex.coerceAtLeast(0)
         val track = queue.getOrNull(index)
@@ -499,7 +618,7 @@ class PlaybackController @Inject constructor(
         // ExoPlayer marks the window unseekable, and an in-player seek on an
         // unseekable stream restarts from zero. Only trust the seekable flag
         // once READY — before that every stream looks unseekable.
-        val needsServerSeek = track != null && (
+        val needsServerSeek = activePlayerRef === this.player && track != null && (
             track.isLongForm ||
                 (player.playbackState == Player.STATE_READY && !player.isCurrentMediaItemSeekable)
             )
@@ -523,6 +642,7 @@ class PlaybackController @Inject constructor(
     }
 
     fun skipPrevious() {
+        val player = activePlayerRef
         cancelCrossfade()
         clearSleepTimer()
         if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else player.seekTo(0)
@@ -530,6 +650,7 @@ class PlaybackController @Inject constructor(
     }
 
     fun skipNext() {
+        val player = activePlayerRef
         cancelCrossfade()
         clearSleepTimer()
         if (player.hasNextMediaItem()) player.seekToNextMediaItem()
@@ -544,29 +665,31 @@ class PlaybackController @Inject constructor(
         lastReportedState = PlaybackUiState()
         streamOffsetsByIndex.remove(index)
         playSessionIdsByIndex[index] = UUID.randomUUID().toString()
-        player.replaceMediaItem(
+        activePlayerRef.replaceMediaItem(
             index,
-            mediaItem(queue[index], 0L, playbackSessionId(index)),
+            activeMediaItem(index),
         )
-        player.seekTo(index, 0L)
+        activePlayerRef.seekTo(index, 0L)
         applyPlaybackSpeed(index)
-        playPrimary()
+        playActive()
         reportStarted(queue[index], 0L, index)
         schedulePrefetch(index)
         publishState()
     }
 
     fun currentMetadataDurationMs(): Long? {
-        val index = player.currentMediaItemIndex.coerceAtLeast(0)
+        val index = activePlayerRef.currentMediaItemIndex.coerceAtLeast(0)
         return queue.getOrNull(index)?.durationMs?.takeIf { it > 0L }
     }
 
     fun currentSessionPositionMs(): Long? {
+        val player = activePlayerRef
         val index = player.currentMediaItemIndex.takeIf { it in queue.indices } ?: return null
         return queue[index].absolutePosition(index, player.currentPosition.coerceAtLeast(0L))
     }
 
     fun currentSessionBufferedPositionMs(): Long? {
+        val player = activePlayerRef
         val index = player.currentMediaItemIndex.takeIf { it in queue.indices } ?: return null
         val absolute = queue[index].absolutePosition(index, player.bufferedPosition.coerceAtLeast(0L))
         return currentMetadataDurationMs()?.let { absolute.coerceAtMost(it) } ?: absolute
@@ -575,6 +698,7 @@ class PlaybackController @Inject constructor(
     fun shuffleQueue() {
         if (queue.size < 2) return
         cancelCrossfade()
+        val player = activePlayerRef
         val currentIndex = player.currentMediaItemIndex.coerceAtLeast(0)
         val currentTrack = queue.getOrNull(currentIndex)
         val currentPlaybackSessionId = playSessionIdsByIndex[currentIndex]
@@ -599,18 +723,12 @@ class PlaybackController @Inject constructor(
             .toMap()
             .toMutableMap()
         player.setMediaItems(
-            queue.mapIndexed { index, track ->
-                mediaItem(
-                    track = track,
-                    startOffsetMs = streamOffsetsByIndex[index] ?: 0L,
-                    playbackSessionId = playbackSessionId(index),
-                )
-            },
+            activeMediaItems(),
             0,
             currentPosition,
         )
         player.prepare()
-        if (wasPlaying) playPrimary() else player.pause()
+        if (wasPlaying) playActive() else player.pause()
         schedulePrefetch(0)
         publishState()
     }
@@ -652,6 +770,7 @@ class PlaybackController @Inject constructor(
     }
 
     fun setGuestDjEnabled(enabled: Boolean) {
+        val player = activePlayerRef
         val current = queue.getOrNull(player.currentMediaItemIndex.coerceAtLeast(0))
         guestDjEnabled = enabled &&
             player.repeatMode == Player.REPEAT_MODE_OFF &&
@@ -663,12 +782,15 @@ class PlaybackController @Inject constructor(
     }
 
     fun cycleRepeatMode() {
+        val player = activePlayerRef
         val nextMode = when (player.repeatMode) {
             Player.REPEAT_MODE_OFF -> PlaybackRepeatMode.ALL
             Player.REPEAT_MODE_ALL -> PlaybackRepeatMode.ONE
             else -> PlaybackRepeatMode.OFF
         }
         player.repeatMode = nextMode.toPlayerRepeatMode()
+        if (player !== this.player) this.player.repeatMode = nextMode.toPlayerRepeatMode()
+        castPlayer?.takeIf { it !== player }?.repeatMode = nextMode.toPlayerRepeatMode()
         if (nextMode != PlaybackRepeatMode.OFF && guestDjEnabled) {
             guestDjEnabled = false
             guestDjLoading = false
@@ -680,10 +802,12 @@ class PlaybackController @Inject constructor(
 
     private fun resetRepeatForNewSession() {
         player.repeatMode = Player.REPEAT_MODE_OFF
+        castPlayer?.repeatMode = Player.REPEAT_MODE_OFF
         scope.launch { settings.setPlaybackRepeatMode(PlaybackRepeatMode.OFF.name) }
     }
 
     private fun applyPlaybackSpeed(indexOverride: Int? = null) {
+        val player = activePlayerRef
         val index = indexOverride ?: player.currentMediaItemIndex.coerceAtLeast(0)
         val speed = if (queue.getOrNull(index)?.contentKind == ContentKind.AUDIOBOOK) audiobookSpeed else 1f
         player.playbackParameters = PlaybackParameters(speed, 1f)
@@ -728,6 +852,41 @@ class PlaybackController @Inject constructor(
             .build()
     }
 
+    private fun activeMediaItems(): List<MediaItem> =
+        if (isCasting) castMediaItems() else localMediaItems()
+
+    private fun activeMediaItem(index: Int): MediaItem =
+        if (isCasting) castMediaItem(index) else localMediaItem(index)
+
+    private fun localMediaItems(): List<MediaItem> =
+        queue.indices.map(::localMediaItem)
+
+    private fun localMediaItem(index: Int): MediaItem =
+        mediaItem(
+            track = queue[index],
+            startOffsetMs = streamOffsetsByIndex[index] ?: 0L,
+            playbackSessionId = playbackSessionId(index),
+        )
+
+    private fun castMediaItems(): List<MediaItem> =
+        queue.indices.map(::castMediaItem)
+
+    private fun castMediaItem(index: Int): MediaItem {
+        val track = queue[index]
+        val metadataBuilder = MediaMetadata.Builder()
+            .setTitle(track.title)
+            .setArtist(track.artist)
+            .setAlbumTitle(track.album)
+            .setArtworkUri(castImageUrl(track.imageUrl)?.let(Uri::parse))
+        track.durationMs?.takeIf { it > 0L }?.let { metadataBuilder.setDurationMs(it) }
+        return MediaItem.Builder()
+            .setMediaId(track.id)
+            .setUri(Uri.parse(castStreamUrl(track.id, playbackSessionId(index))))
+            .setMimeType(CAST_MIME)
+            .setMediaMetadata(metadataBuilder.build())
+            .build()
+    }
+
     private fun streamUrl(itemId: String, startOffsetMs: Long, playbackSessionId: String): String {
         val snap = settings.snapshot()
         val base = snap.serverUrl?.trimEnd('/')
@@ -753,6 +912,56 @@ class PlaybackController @Inject constructor(
         return builder.build().toString()
     }
 
+    private fun castStreamUrl(itemId: String, playbackSessionId: String): String {
+        val snap = settings.snapshot()
+        val base = castBase()
+            ?: throw IllegalStateException("No Cast server configured")
+        val token = snap.accessToken?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Not signed in")
+        val userId = snap.userId?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Not signed in")
+        return Uri.parse("$base/Audio/${Uri.encode(itemId)}/universal")
+            .buildUpon()
+            .appendQueryParameter("UserId", userId)
+            .appendQueryParameter("DeviceId", snap.deviceId)
+            .appendQueryParameter("MaxStreamingBitrate", "140000000")
+            .appendQueryParameter("Container", "mp3")
+            .appendQueryParameter("AudioCodec", "mp3")
+            .appendQueryParameter("TranscodingContainer", "mp3")
+            .appendQueryParameter("TranscodingProtocol", "http")
+            .appendQueryParameter("api_key", token)
+            .appendQueryParameter("PlaySessionId", playbackSessionId)
+            .build()
+            .toString()
+    }
+
+    private fun castImageUrl(imageUrl: String?): String? {
+        val url = imageUrl ?: return null
+        val snap = settings.snapshot()
+        val base = castBase()
+        val rebased = if (base != null) {
+            snap.serverUrl?.trimEnd('/')?.let { url.replace(it, base) } ?: url
+        } else {
+            url
+        }
+        val token = snap.accessToken?.takeIf { it.isNotBlank() } ?: return rebased
+        if (rebased.contains("api_key=")) return rebased
+        val separator = if (rebased.contains('?')) '&' else '?'
+        return "$rebased${separator}api_key=$token"
+    }
+
+    private fun castBase(): String? {
+        val snap = settings.snapshot()
+        return snap.castServerUrl?.takeIf { it.isNotBlank() }?.trimEnd('/')
+            ?: snap.serverUrl?.trimEnd('/')
+    }
+
+    private val isCasting: Boolean
+        get() = activePlayerRef === castPlayer
+
+    private fun localPlayerPosition(index: Int, absolutePositionMs: Long): Long =
+        (absolutePositionMs - (streamOffsetsByIndex[index] ?: 0L)).coerceAtLeast(0L)
+
     private fun playbackSessionId(index: Int): String =
         playSessionIdsByIndex.getOrPut(index) { UUID.randomUUID().toString() }
 
@@ -775,10 +984,10 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    /** Start primary playback only after its foreground service/session are connected. */
-    private fun playPrimary() {
+    /** Start playback only after the foreground service/session are connected. */
+    private fun playActive() {
         ensurePlaybackService()
-        player.play()
+        activePlayerRef.play()
     }
 
     private fun ensurePlaybackService() {
@@ -805,6 +1014,7 @@ class PlaybackController @Inject constructor(
     }
 
     private fun publishState() {
+        val player = activePlayerRef
         val index = player.currentMediaItemIndex.coerceAtLeast(0)
         val streamOffset = streamOffsetsByIndex[index] ?: 0L
         val position = streamOffset + player.currentPosition.coerceAtLeast(0)
@@ -838,6 +1048,10 @@ class PlaybackController @Inject constructor(
             crossfadeFromTrack = crossfadeFromTrack,
             crossfadeBlendMs = crossfadeBlendMs,
         )
+        if (isCasting && currentTrack != null) {
+            lastCastIndex = index
+            lastCastPositionMs = position
+        }
         val previous = lastReportedState
         if (previous.currentTrack?.id != null && previous.currentTrack.id != nextState.currentTrack?.id) {
             val completedByCrossfade = crossfadeInProgress &&
@@ -871,6 +1085,7 @@ class PlaybackController @Inject constructor(
     private suspend fun fadeAndPauseForSleepTimer(completedTrack: Boolean) {
         if (sleepTimerFiring) return
         sleepTimerFiring = true
+        val player = activePlayerRef
         val currentJob = currentCoroutineContext()[Job]
         sleepTimerJob?.takeIf { it != currentJob }?.cancel()
         sleepTimerJob = null
@@ -912,6 +1127,7 @@ class PlaybackController @Inject constructor(
 
     private fun maybeInjectGuestDj() {
         if (!guestDjEnabled || guestDjLoading) return
+        val player = activePlayerRef
         if (player.repeatMode != Player.REPEAT_MODE_OFF) {
             clearGuestDjState()
             publishState()
@@ -964,13 +1180,17 @@ class PlaybackController @Inject constructor(
             playSessionIdsByIndex[startIndex + offset] = UUID.randomUUID().toString()
         }
         queue = queue + tracks
-        player.addMediaItems(
+        activePlayerRef.addMediaItems(
             tracks.mapIndexed { offset, track ->
                 val index = startIndex + offset
-                mediaItem(track, startOffsetMs = 0L, playbackSessionId = playbackSessionId(index))
+                if (isCasting) {
+                    castMediaItem(index)
+                } else {
+                    mediaItem(track, startOffsetMs = 0L, playbackSessionId = playbackSessionId(index))
+                }
             },
         )
-        schedulePrefetch(player.currentMediaItemIndex.coerceAtLeast(0))
+        schedulePrefetch(activePlayerRef.currentMediaItemIndex.coerceAtLeast(0))
     }
 
     private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
@@ -988,6 +1208,11 @@ class PlaybackController @Inject constructor(
         get() = contentKind == ContentKind.MUSIC || (contentKind == ContentKind.UNKNOWN && !isLongForm)
 
     private fun schedulePrefetch(anchorIndex: Int) {
+        if (isCasting) {
+            prefetchJob?.cancel()
+            prefetchSignature = null
+            return
+        }
         val queueSnapshot = queue
         val upcoming = queueSnapshot
             .drop(anchorIndex + 1)
@@ -1063,7 +1288,7 @@ class PlaybackController @Inject constructor(
             mediaItem(queue[index], streamOffsetsByIndex[index] ?: 0L, playbackSessionId(index)),
         )
         player.prepare()
-        if (wasPlaying) playPrimary()
+        if (wasPlaying) playActive()
     }
 
     private fun Int.toPlaybackRepeatMode(): PlaybackRepeatMode = when (this) {
@@ -1134,7 +1359,7 @@ class PlaybackController @Inject constructor(
         )
         player.seekTo(index, 0L)
         player.prepare()
-        if (wasPlaying) playPrimary() else player.pause()
+        if (wasPlaying) playActive() else player.pause()
     }
 
     /**
@@ -1464,6 +1689,7 @@ class PlaybackController @Inject constructor(
         const val PREFETCH_AHEAD_COUNT = 3
         const val GUEST_DJ_TRIGGER_REMAINING = 3
         const val GUEST_DJ_INJECT_COUNT = 5
+        const val CAST_MIME = "audio/mpeg"
         const val SLEEP_TIMER_TICK_MS = 1_000L
         const val SLEEP_TIMER_FADE_MS = 3_000L
         const val SLEEP_TIMER_FADE_STEP_MS = 100L

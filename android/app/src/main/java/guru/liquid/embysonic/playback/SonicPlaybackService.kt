@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -60,17 +61,18 @@ class SonicPlaybackService : MediaLibraryService() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val player = AvrcpDurationPlayer(
-            player = playback.player,
-            fallbackDurationMs = { playback.currentMetadataDurationMs() },
-            positionMs = { playback.currentSessionPositionMs() },
-            bufferedPositionMs = { playback.currentSessionBufferedPositionMs() },
-            onSeekToMs = playback::seekTo,
-        )
+        val player = sessionPlayerFor(playback.activePlayerSnapshot())
         sessionPlayer = player
         mediaSession = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setSessionActivity(sessionActivity)
             .build()
+        serviceScope.launch {
+            playback.activePlayer.collect { active ->
+                val next = sessionPlayerFor(active)
+                sessionPlayer = next
+                mediaSession?.setPlayer(next)
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
@@ -122,12 +124,22 @@ class SonicPlaybackService : MediaLibraryService() {
             futureValue {
                 val id = mediaItems.getOrNull(startIndex.coerceAtLeast(0))?.mediaId ?: mediaItems.firstOrNull()?.mediaId
                 if (id != null && playAutoItem(id)) {
-                    MediaSession.MediaItemsWithStartPosition(currentPlayerItems(), playback.player.currentMediaItemIndex, C.TIME_UNSET)
+                    val active = playback.activePlayerSnapshot()
+                    MediaSession.MediaItemsWithStartPosition(currentPlayerItems(), active.currentMediaItemIndex, C.TIME_UNSET)
                 } else {
                     MediaSession.MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs)
                 }
             }
     }
+
+    private fun sessionPlayerFor(player: Player): AvrcpDurationPlayer =
+        AvrcpDurationPlayer(
+            player = player,
+            fallbackDurationMs = { playback.currentMetadataDurationMs() },
+            positionMs = { playback.currentSessionPositionMs() },
+            bufferedPositionMs = { playback.currentSessionBufferedPositionMs() },
+            onSeekToMs = playback::seekTo,
+        )
 
     private suspend fun childrenFor(parentId: String): List<MediaItem> =
         when (parentId) {
@@ -337,7 +349,9 @@ class SonicPlaybackService : MediaLibraryService() {
             .build()
 
     private fun currentPlayerItems(): List<MediaItem> =
-        (0 until playback.player.mediaItemCount).map { playback.player.getMediaItemAt(it) }
+        playback.activePlayerSnapshot().let { player ->
+            (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
+        }
 
     private fun <T> futureValue(block: suspend () -> T): ListenableFuture<T> {
         val future = SettableFuture.create<T>()

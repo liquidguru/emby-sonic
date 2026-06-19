@@ -1,11 +1,10 @@
 # Codex task — Casting (Chromecast / Google Cast)
 
-> **NEXT: Phase 1 — active-player switching (in-app control of the cast).**
-> Phase 0 is done and verified (speaker + SHIELD, with album art). Start at the
-> "Phase 1" section below. The user-visible goal: the in-app mini-player,
-> notification, and lock screen control the cast as one session (today's cast is
-> a separate, app-uncontrollable session). Music only; verify on the real Pixel 8
-> Pro **and** a real cast target on the LAN.
+> **NEXT: Phase 2 — Emby progress reporting + volume polish.** Phase 0 and
+> Phase 1 are done. Phase 1 was built and verified on Kaj's Pixel 8 Pro with the
+> NVIDIA SHIELD selected as the real Cast target: the queue hands off to the
+> `CastPlayer`, in-app/session controls target the cast, and Stop Casting resumes
+> locally at the last known cast position.
 
 liquidWave (emby-sonic Android) should cast music to Chromecast / Google TV /
 cast-enabled speakers. Read `AGENTS.md` and `docs/spec.md` first. Decisions are
@@ -32,7 +31,7 @@ offline prefetch, and server-side seeks directly. Casting requires:
 2. A **cast-safe stream URL**: the receiver fetches Emby itself, so it cannot use
    the app's `X-Emby-Token` header. Use a self-contained URL — LAN `http` base,
    token as the `api_key` query param, transcoded to mp3 (the Default Media
-   Receiver can't reliably decode FLAC). See `CastManager.castStreamUrl()`.
+   Receiver can't reliably decode FLAC). See `PlaybackController.castStreamUrl()`.
 
 ## Phase 0 — DONE (this is already on master)
 Plumbing + a working one-track spike that proves the URL/auth/format:
@@ -49,26 +48,36 @@ Plumbing + a working one-track spike that proves the URL/auth/format:
 Phase 0 does NOT do: queue handoff, transport routing to the cast device,
 progress reporting from cast, disconnect handover, or feature gating.
 
-## Phase 1 — Active-player switching (the big one)
-> **User-visible priority:** in Phase 0 the cast is a *separate* session the app
-> doesn't own, so the in-app mini-player/notification don't control it and there's
-> no in-app stop (control is via the system cast tile only). Swapping the
-> MediaSession to the CastPlayer (below) is what restores in-app control + a stop
-> button while casting.
+## Phase 1 — DONE (2026-06-19, Pixel 8 Pro + SHIELD verified)
+Active-player switching shipped:
+- `CastManager` now creates a Media3 `CastPlayer` from the shared `CastContext`
+  and uses both the Cast session listener and `SessionAvailabilityListener` to
+  tell `PlaybackController` when remote playback is available.
+- `PlaybackController` now has an active `Player` indirection. Local ExoPlayer is
+  the default; the active player flips to `CastPlayer` on a music Cast session.
+  Play/pause, next/previous, seek, queue index jumps, repeat, Guest DJ appends,
+  and `publishState()` all route through the active player.
+- `SonicPlaybackService` swaps `MediaLibrarySession.player` to the active player
+  so the mini-player, media notification, lock screen, Android Auto, and widget
+  control the same cast-backed session.
+- The Phase 0 one-track `RemoteMediaClient.load(...)` spike is gone. Cast uses
+  full-queue `MediaItem`s built from the configured LAN Cast server base,
+  `api_key` query auth, forced mp3 transcoding, and rebased authenticated artwork.
+- Queue handoff preserves current index and position in both directions. On Stop
+  Casting/disconnect, local ExoPlayer resumes at the last live CastPlayer
+  position instead of restarting the current song.
+- Local-only processing is gated while casting: equalizer is suppressed, crossfade
+  polling stops, and offline prefetch is cancelled. Guest DJ/mixes still operate
+  on the queue. Audiobook casting remains deliberately out of scope.
 
-- Add a `CastPlayer` (media3-cast) backed by the shared `CastContext`.
-- Introduce an `activePlayer: Player` concept in `PlaybackController` (local
-  ExoPlayer by default; CastPlayer when a cast session is connected). Route all
-  transport and `publishState()` reads through it.
-- Use `SessionAvailabilityListener` (or the existing `SessionManagerListener`) to
-  flip the active player on connect/disconnect.
-- Swap `MediaLibrarySession.player` (in `SonicPlaybackService`) to the active
-  player so the notification, lock screen, Android Auto and the home-screen
-  widget all follow the cast.
-- Hand off the **queue + current index + position** local→cast on connect and
-  cast→local on disconnect (resume locally where casting left off).
-- Replace the Phase 0 single-track `CastManager.castCurrentTrack` shortcut with
-  the real handoff once switching works.
+Verification notes:
+- User-driven first run on SHIELD: in-app cast control worked as intended.
+- A later Stop Casting test initially resumed locally at the start of the current
+  song; fixed by snapshotting the last active cast index/position during
+  `publishState()` and preferring that snapshot during remote->local handoff.
+- Final ADB/logcat verification on Pixel 8 Pro + SHIELD: `Bamboleo` handed off
+  local->remote around 9.9s, Stop Casting handed back remote->local at 63.7s, and
+  Now Playing resumed locally around 1:09 rather than 0:00.
 
 ## Phase 0 spike results (2026-06-19, on-device)
 - **Audio-only speaker: WORKS.** Casting a music track plays on the speaker,
@@ -90,21 +99,21 @@ progress reporting from cast, disconnect handover, or feature gating.
 - **Artwork:** `CastManager.castImageUrl()` appends `api_key` and rebases onto
   the cast base. Working.
 
-## Phase 2 — Queue, metadata, reporting on cast
-- Build cast `MediaQueueItem`s / `MediaInfo` for the whole queue using
-  `castStreamUrl()` + metadata (title/artist/album/artwork, mime `audio/mpeg`).
-- Drive Emby progress reporting (`reportPlaybackStarted/Progress/Stopped`) from
-  the cast position; keep `PlaySessionId` handling consistent.
-- Route volume to the cast device (Cast volume, not local stream volume).
+## Phase 2 — Reporting and volume polish
+- Confirm Emby progress reporting (`reportPlaybackStarted/Progress/Stopped`) from
+  the active cast position; keep `PlaySessionId` handling consistent and verify
+  Emby "now playing" while remote playback is active.
+- Route volume to the cast device where appropriate (Cast volume, not local
+  stream volume).
+- Regression-test skip previous/next, seek, repeat modes, and Guest DJ appends
+  across a longer cast queue.
 
-## Phase 3 — Feature gating + UI
-- While casting: disable/grey the equalizer, crossfade, and offline prefetch
-  (and stop the local crossfade/prefetch loops). Guest DJ + mixes operate on the
-  queue and should keep working.
+## Phase 3 — UI polish
+- While casting: visibly disable/grey equalizer, crossfade, and offline prefetch
+  settings/entry points. Runtime suppression is already in place from Phase 1.
 - Add the Cast button to the mini-player (`ui/main/MiniPlayerBar.kt`).
 - Show a "Casting to <device>" indicator on Now Playing.
-- Confirm the notification/widget reflect cast state (they should once the
-  session player is swapped in Phase 1).
+- Confirm notification/widget polish after the Phase 1 session-player swap.
 
 ## Phase 4 — Verify
 On a real cast target on the LAN: start a music queue, cast, then play/pause,
