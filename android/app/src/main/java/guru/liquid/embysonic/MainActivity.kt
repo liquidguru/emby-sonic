@@ -10,7 +10,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.ui.nav.AppNavHost
@@ -34,7 +37,10 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
         val startLoggedIn = settings.snapshot().isLoggedIn
         setContent {
-            EmbySonicTheme {
+            val themeChoice by settings.themeChoice.collectAsStateWithLifecycle(
+                initialValue = remember { settings.snapshot().themeChoice },
+            )
+            EmbySonicTheme(themeChoice = themeChoice) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppNavHost(startLoggedIn = startLoggedIn)
                 }

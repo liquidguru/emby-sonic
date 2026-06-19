@@ -21,6 +21,7 @@ data class AppSettings(
     val eqBandLevels: List<Int> = emptyList(),
     val generatedMixTracks: Int = 25,
     val audiobookSpeed: Float = 1f,
+    val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,
 ) {
     val isLoggedIn: Boolean
         get() = !serverUrl.isNullOrBlank() && !accessToken.isNullOrBlank()

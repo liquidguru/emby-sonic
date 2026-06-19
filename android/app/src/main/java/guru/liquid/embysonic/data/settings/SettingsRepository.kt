@@ -50,6 +50,7 @@ class SettingsRepository @Inject constructor(
         val EQ_BAND_LEVELS = stringPreferencesKey("eq_band_levels")
         val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
         val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
+        val THEME_CHOICE = stringPreferencesKey("theme_choice")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -88,6 +89,10 @@ class SettingsRepository @Inject constructor(
 
     val audiobookSpeed: Flow<Float> =
         context.dataStore.data.map { (it[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed() }
+
+    /** Selected app colour theme; drives the Compose color scheme app-wide. */
+    val themeChoice: Flow<ThemeChoice> =
+        context.dataStore.data.map { ThemeChoice.fromKey(it[Keys.THEME_CHOICE]) }
 
     suspend fun setLibraryListView(value: Boolean) {
         context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
@@ -150,6 +155,11 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    suspend fun setThemeChoice(choice: ThemeChoice) {
+        context.dataStore.edit { it[Keys.THEME_CHOICE] = choice.name }
+        refreshCache()
+    }
+
     @Volatile
     private var cached: AppSettings? = null
 
@@ -177,6 +187,7 @@ class SettingsRepository @Inject constructor(
                 .orEmpty(),
             generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
             audiobookSpeed = (this[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed(),
+            themeChoice = ThemeChoice.fromKey(this[Keys.THEME_CHOICE]),
         )
     }
 

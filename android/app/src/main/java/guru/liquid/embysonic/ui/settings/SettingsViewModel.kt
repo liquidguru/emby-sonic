@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.SonicStatus
 import guru.liquid.embysonic.data.settings.SettingsRepository
+import guru.liquid.embysonic.data.settings.ThemeChoice
 import guru.liquid.embysonic.domain.AuthRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,7 @@ data class SettingsUiState(
     val crossfadeEnabled: Boolean = false,
     val crossfadeSeconds: Int = 6,
     val generatedMixTracks: Int = 25,
+    val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,
 )
 
 @HiltViewModel
@@ -52,6 +54,7 @@ class SettingsViewModel @Inject constructor(
                 crossfadeEnabled = snap.crossfadeEnabled,
                 crossfadeSeconds = snap.crossfadeDurationMs / 1000,
                 generatedMixTracks = snap.generatedMixTracks,
+                themeChoice = snap.themeChoice,
             )
         }
         refreshAnalysisStatus()
@@ -70,6 +73,11 @@ class SettingsViewModel @Inject constructor(
     fun setGeneratedMixTracks(count: Int) {
         _state.update { it.copy(generatedMixTracks = count) }
         viewModelScope.launch { settings.setGeneratedMixTracks(count) }
+    }
+
+    fun setThemeChoice(choice: ThemeChoice) {
+        _state.update { it.copy(themeChoice = choice) }
+        viewModelScope.launch { settings.setThemeChoice(choice) }
     }
 
     fun onCoordinatorUrlChange(value: String) =
