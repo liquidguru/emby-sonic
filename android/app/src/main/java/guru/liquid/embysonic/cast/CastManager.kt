@@ -1,56 +1,76 @@
 package guru.liquid.embysonic.cast
 
 import android.content.Context
-import android.net.Uri
 import android.util.Log
-import com.google.android.gms.cast.MediaInfo
-import com.google.android.gms.cast.MediaLoadRequestData
-import com.google.android.gms.cast.MediaMetadata
+import androidx.annotation.OptIn
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.SessionAvailabilityListener
+import androidx.media3.common.util.UnstableApi
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
-import com.google.android.gms.common.images.WebImage
-import dagger.hilt.android.qualifiers.ApplicationContext
-import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * PHASE 0 SPIKE — proves the riskiest cast unknowns (cast-safe Emby stream URL,
- * query-param auth, and a Default-Media-Receiver-playable format) before the
- * Phase 1 active-player refactor.
- *
- * When a Cast session connects, it pauses local playback and loads the *current*
- * track onto the cast device via [com.google.android.gms.cast.framework.media.RemoteMediaClient].
- * It does NOT yet do queue handoff, transport routing, progress reporting, or
- * disconnect handover — those are Phase 1+. See docs/codex-cast.md.
- */
+@OptIn(UnstableApi::class)
 @Singleton
 class CastManager @Inject constructor(
-    @ApplicationContext private val appContext: Context,
-    private val settings: SettingsRepository,
     private val playback: PlaybackController,
 ) {
     private var castContext: CastContext? = null
+    private var castPlayer: CastPlayer? = null
 
     private val sessionListener = object : SessionManagerListener<CastSession> {
-        override fun onSessionStarted(session: CastSession, sessionId: String) = castCurrentTrack(session)
-        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) = castCurrentTrack(session)
-        override fun onSessionEnded(session: CastSession, error: Int) = Unit
+        override fun onSessionStarted(session: CastSession, sessionId: String) {
+            Log.i(TAG, "Cast session started id=$sessionId")
+            playback.onCastSessionAvailable()
+        }
+
+        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+            Log.i(TAG, "Cast session resumed suspended=$wasSuspended")
+            playback.onCastSessionAvailable()
+        }
+
+        override fun onSessionEnded(session: CastSession, error: Int) {
+            Log.i(TAG, "Cast session ended error=$error")
+            playback.onCastSessionUnavailable()
+        }
+
         override fun onSessionStarting(session: CastSession) = Unit
-        override fun onSessionStartFailed(session: CastSession, error: Int) = Unit
+        override fun onSessionStartFailed(session: CastSession, error: Int) {
+            Log.w(TAG, "Cast session start failed error=$error")
+        }
+
         override fun onSessionEnding(session: CastSession) = Unit
         override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
-        override fun onSessionResumeFailed(session: CastSession, error: Int) = Unit
-        override fun onSessionSuspended(session: CastSession, reason: Int) = Unit
+        override fun onSessionResumeFailed(session: CastSession, error: Int) {
+            Log.w(TAG, "Cast session resume failed error=$error")
+        }
+
+        override fun onSessionSuspended(session: CastSession, reason: Int) {
+            Log.i(TAG, "Cast session suspended reason=$reason")
+            playback.onCastSessionUnavailable()
+        }
+    }
+
+    private val availabilityListener = object : SessionAvailabilityListener {
+        override fun onCastSessionAvailable() {
+            Log.i(TAG, "CastPlayer reports session available")
+            playback.onCastSessionAvailable()
+        }
+
+        override fun onCastSessionUnavailable() {
+            Log.i(TAG, "CastPlayer reports session unavailable")
+            playback.onCastSessionUnavailable()
+        }
     }
 
     /** Safe to call when Play Services is missing — it simply no-ops. */
     fun initialize(context: Context) {
+        if (castPlayer != null) return
         if (!playServicesAvailable(context)) {
             Log.i(TAG, "Google Play Services unavailable; Cast disabled")
             return
@@ -60,99 +80,11 @@ class CastManager @Inject constructor(
             .getOrNull() ?: return
         castContext = ctx
         ctx.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
-    }
-
-    private fun castCurrentTrack(session: CastSession) {
-        val track = playback.state.value.currentTrack ?: run {
-            Log.i(TAG, "Cast session started with nothing playing")
-            return
+        castPlayer = CastPlayer(ctx).also { player ->
+            player.setSessionAvailabilityListener(availabilityListener)
+            playback.attachCastPlayer(player)
+            if (player.isCastSessionAvailable) playback.onCastSessionAvailable()
         }
-        val client = session.remoteMediaClient ?: return
-        val url = castStreamUrl(track.id) ?: return
-        val positionMs = playback.state.value.positionMs
-
-        playback.pause()
-
-        val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MUSIC_TRACK).apply {
-            putString(MediaMetadata.KEY_TITLE, track.title)
-            track.artist?.let { putString(MediaMetadata.KEY_ARTIST, it) }
-            track.album?.let { putString(MediaMetadata.KEY_ALBUM_TITLE, it) }
-            // The receiver fetches artwork itself, so the URL needs the token as a
-            // query param (the in-app loader uses an auth header the receiver can't send).
-            castImageUrl(track.imageUrl)?.let { addImage(WebImage(Uri.parse(it))) }
-        }
-        val info = MediaInfo.Builder(url)
-            .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-            .setContentType(CAST_MIME)
-            .setContentUrl(url)
-            .setMetadata(metadata)
-            .build()
-        val request = MediaLoadRequestData.Builder()
-            .setMediaInfo(info)
-            .setAutoplay(true)
-            .setCurrentTime(positionMs.coerceAtLeast(0))
-            .build()
-        Log.d(TAG, "Casting ${track.id} -> $url")
-        client.load(request).setResultCallback { result ->
-            val s = result.status
-            if (!s.isSuccess) Log.w(TAG, "Cast load failed: code=${s.statusCode} msg=${s.statusMessage}")
-        }
-    }
-
-    /**
-     * Build a self-contained Emby stream URL the cast receiver can fetch on its
-     * own: LAN http base, token as the `api_key` query param (the receiver can't
-     * send our X-Emby-Token header), forced to mp3 so the Default Media Receiver
-     * can decode it (it can't reliably do FLAC).
-     *
-     * Uses the configured [castServerUrl][guru.liquid.embysonic.data.settings.AppSettings.castServerUrl]
-     * (direct LAN Emby) when set, falling back to the app's serverUrl. Cast
-     * receivers on the LAN accept cleartext http and fetch the stream themselves,
-     * whereas a reverse-proxied/remote serverUrl may be unreachable or cert-invalid
-     * for them.
-     */
-    private fun castStreamUrl(itemId: String): String? {
-        val snap = settings.snapshot()
-        val base = castBase() ?: return null
-        val token = snap.accessToken ?: return null
-        val userId = snap.userId ?: return null
-        return Uri.parse("$base/Audio/${Uri.encode(itemId)}/universal")
-            .buildUpon()
-            .appendQueryParameter("UserId", userId)
-            .appendQueryParameter("DeviceId", snap.deviceId)
-            .appendQueryParameter("MaxStreamingBitrate", "140000000")
-            .appendQueryParameter("Container", "mp3")
-            .appendQueryParameter("AudioCodec", "mp3")
-            .appendQueryParameter("TranscodingContainer", "mp3")
-            .appendQueryParameter("TranscodingProtocol", "http")
-            .appendQueryParameter("api_key", token)
-            .appendQueryParameter("PlaySessionId", UUID.randomUUID().toString())
-            .build()
-            .toString()
-    }
-
-    /** Append the Emby token so the cast receiver can fetch artwork without our auth header. */
-    private fun castImageUrl(imageUrl: String?): String? {
-        val url = imageUrl ?: return null
-        val snap = settings.snapshot()
-        // Rebase artwork onto the cast (LAN) endpoint too (same reason as the stream).
-        val base = castBase()
-        val rebased = if (base != null) {
-            snap.serverUrl?.trimEnd('/')?.let { url.replace(it, base) } ?: url
-        } else {
-            url
-        }
-        val token = snap.accessToken ?: return rebased
-        if (rebased.contains("api_key=")) return rebased
-        val separator = if (rebased.contains('?')) '&' else '?'
-        return "$rebased${separator}api_key=$token"
-    }
-
-    /** The base URL cast receivers should fetch from: the LAN cast URL if set, else serverUrl. */
-    private fun castBase(): String? {
-        val snap = settings.snapshot()
-        return snap.castServerUrl?.takeIf { it.isNotBlank() }?.trimEnd('/')
-            ?: snap.serverUrl?.trimEnd('/')
     }
 
     private fun playServicesAvailable(context: Context): Boolean =
@@ -161,6 +93,5 @@ class CastManager @Inject constructor(
 
     private companion object {
         const val TAG = "CastManager"
-        const val CAST_MIME = "audio/mpeg"
     }
 }

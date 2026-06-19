@@ -47,6 +47,7 @@ class AudioEffectsController @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var equalizer: Equalizer? = null
     private var sessionId: Int = 0
+    private var suppressedForRemotePlayback: Boolean = false
 
     private val _state = MutableStateFlow(EqualizerState())
     val state: StateFlow<EqualizerState> = _state.asStateFlow()
@@ -75,8 +76,16 @@ class AudioEffectsController @Inject constructor(
     }
 
     fun setEnabled(enabled: Boolean) {
-        equalizer?.let { runCatching { it.enabled = enabled } }
+        equalizer?.let { runCatching { it.enabled = enabled && !suppressedForRemotePlayback } }
         scope.launch { settings.setEqEnabled(enabled) }
+        publish()
+    }
+
+    fun setSuppressedForRemotePlayback(suppressed: Boolean) {
+        if (suppressedForRemotePlayback == suppressed) return
+        suppressedForRemotePlayback = suppressed
+        val savedEnabled = settings.snapshot().eqEnabled
+        equalizer?.let { runCatching { it.enabled = savedEnabled && !suppressed } }
         publish()
     }
 
@@ -120,7 +129,7 @@ class AudioEffectsController @Inject constructor(
 
     private fun publish() {
         val eq = equalizer
-        if (eq == null) {
+        if (eq == null || suppressedForRemotePlayback) {
             _state.value = EqualizerState(available = false)
             return
         }

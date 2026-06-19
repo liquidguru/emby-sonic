@@ -297,7 +297,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -834,14 +834,14 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     audiobook resume works from Android Auto and the car progress bar reports the
     absolute book position after the `AvrcpDurationPlayer` session wrapper began
     exporting stream-offset-corrected position and buffered-position values.
-- **Cast roadmap note (accepted 2026-06-18):** Chromecast/Google Cast output is
-  accepted as a future Android feature, separate from Bluetooth/AVRCP and
-  Android Auto. It should likely use the Media3 Cast extension / `CastPlayer`
-  and switch playback between local ExoPlayer and remote Cast playback. Because
-  Cast devices fetch and decode the stream themselves, implementation must solve
-  cast-safe Emby stream URLs/auth first. Local-only features such as in-app
-  Equalizer, crossfade, and offline prefetch should be treated as unavailable or
-  differently implemented while casting unless explicitly reworked.
+- **Cast roadmap note (accepted 2026-06-18; Phase 0/1 implemented
+  2026-06-19):** Chromecast/Google Cast output is separate from
+  Bluetooth/AVRCP and Android Auto. Phase 1 now uses the Media3 Cast extension /
+  `CastPlayer` and switches playback between local ExoPlayer and remote Cast
+  playback. Because Cast devices fetch and decode the stream themselves, cast
+  URLs use LAN-reachable Emby endpoints with query-param auth. Local-only
+  features such as in-app Equalizer, crossfade, and offline prefetch are treated
+  as unavailable while casting unless explicitly reworked.
 - **Widget roadmap note (accepted 2026-06-18):** an Android home-screen widget is
   accepted as a future liquidWave feature. The first version should be a Now
   Playing widget with artwork, title/artist, play/pause, previous/next, and a tap
@@ -911,6 +911,25 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   API 31+; `DYNAMIC` maps to the `system_accent1`/`system_neutral1` resources so
   the widget tracks the wallpaper too. Verified on the Pixel 8 Pro across all
   six themes, in-app and on the home-screen widget.
+- **M4.16 — Google Cast Phase 1 active-player switching (2026-06-19, built +
+  Pixel 8 Pro / SHIELD verified):** Cast now uses Media3 `CastPlayer`, backed by
+  the shared `CastContext`, as the playback controller's active player during a
+  music Cast session. `PlaybackController` routes transport controls,
+  active-state publishing, queue jumps, repeat, and Guest DJ appends through the
+  active player; `SonicPlaybackService` swaps `MediaLibrarySession.player` to the
+  active player so the in-app player, media notification, lock screen, Android
+  Auto, and widget control the cast as one session. The Phase 0 one-track
+  `RemoteMediaClient.load(...)` shortcut was replaced with full-queue handoff
+  using cast-safe LAN Emby mp3 URLs (`api_key` query auth, artwork rebased to the
+  configured Cast server URL). Queue handoff preserves current index and position
+  local->cast and cast->local; a Stop Casting regression that resumed locally at
+  0:00 was fixed by snapshotting the last live CastPlayer index/position and
+  preferring it during disconnect. Final verification on Pixel 8 Pro + NVIDIA
+  SHIELD logged `Bamboleo` handing off local->remote around 9.9s, Stop Casting
+  handing back at 63.7s, and Now Playing resuming locally around 1:09. While
+  casting, local-only EQ is suppressed, crossfade polling is stopped, and offline
+  prefetch is cancelled; Guest DJ/mixes still operate on the queue. Audiobook
+  casting remains deliberately out of scope.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
