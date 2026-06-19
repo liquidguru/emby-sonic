@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EmbySonic" parent="android:Theme.Material.NoActionBar">
+    <!-- AppCompat-based so MainActivity can be an AppCompatActivity (a
+         FragmentActivity) — required by the Cast MediaRouteButton and its
+         device-picker/controller dialogs. The app's actual look comes from the
+         Compose EmbySonicTheme; this only styles the window and the Cast dialogs. -->
+    <style name="Theme.EmbySonic" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
         <item name="android:statusBarColor">@color/ic_launcher_background</item>
         <item name="android:navigationBarColor">@color/ic_launcher_background</item>
     </style>

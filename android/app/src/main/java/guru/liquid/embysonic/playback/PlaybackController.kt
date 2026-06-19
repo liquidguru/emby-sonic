@@ -458,6 +458,14 @@ class PlaybackController @Inject constructor(
         )
     }
 
+    /** Pause local playback without tearing the session down (e.g. handing off to Cast). */
+    fun pause() {
+        if (!player.isPlaying) return
+        cancelCrossfade()
+        player.pause()
+        publishState()
+    }
+
     fun stopPlayback() {
         cancelCrossfade()
         // Stopping (closing Now Playing / mini-bar) forgets a music track's

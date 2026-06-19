@@ -46,6 +46,7 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -78,4 +79,9 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
     implementation(libs.media3.ui)
+
+    // Casting (Google Cast / Material You receiver). media3-cast is for the
+    // Phase 1 CastPlayer; the framework provides the Cast button + sessions.
+    implementation(libs.media3.cast)
+    implementation(libs.play.services.cast.framework)
 }
