@@ -10,6 +10,7 @@ import android.media.MediaMetadata as PlatformMediaMetadata
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.cast.CastPlayer
@@ -65,6 +66,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
@@ -201,6 +203,11 @@ class PlaybackController @Inject constructor(
     private var guestDjAttemptSignature: String? = null
     private var lastCastIndex: Int = C.INDEX_UNSET
     private var lastCastPositionMs: Long = C.TIME_UNSET
+    private var castVolume = CastVolumeState()
+    private var castVolumeController: ((Float) -> Unit)? = null
+    private var castVolumeJob: Job? = null
+    private var castVolumePendingTarget: Float? = null
+    private var castVolumePendingUntilMs: Long = 0L
 
     // A MediaController connected to our own MediaSessionService. The UI drives
     // the shared ExoPlayer directly, so without this nothing connects to the
@@ -322,6 +329,79 @@ class PlaybackController @Inject constructor(
                 }
             }
         })
+    }
+
+    fun setCastVolumeController(controller: ((Float) -> Unit)?) {
+        castVolumeController = controller
+    }
+
+    fun setCastVolume(volume: Float) {
+        if (!castVolume.available) return
+        val normalized = volume.coerceIn(0f, 1f)
+        castVolume = castVolume.copy(volume = normalized, pending = true)
+        castVolumePendingTarget = normalized
+        castVolumePendingUntilMs = SystemClock.elapsedRealtime() + CAST_VOLUME_PENDING_GRACE_MS
+        publishCastVolumeState()
+        castVolumeJob?.cancel()
+        castVolumeJob = scope.launch {
+            delay(CAST_VOLUME_DEBOUNCE_MS)
+            castVolumeController?.invoke(normalized)
+            delay(CAST_VOLUME_PENDING_GRACE_MS)
+            if (castVolumePendingTarget == normalized) {
+                castVolumePendingTarget = null
+                castVolumePendingUntilMs = 0L
+                castVolume = castVolume.copy(pending = false)
+                publishCastVolumeState()
+            }
+        }
+    }
+
+    fun onCastVolumeChanged(volume: Double?, deviceName: String?) {
+        val normalized = volume?.toFloat()?.coerceIn(0f, 1f) ?: return
+        val pendingTarget = castVolumePendingTarget
+        if (
+            pendingTarget != null &&
+            SystemClock.elapsedRealtime() < castVolumePendingUntilMs &&
+            abs(normalized - pendingTarget) > CAST_VOLUME_RECONCILE_TOLERANCE
+        ) {
+            castVolume = castVolume.copy(
+                deviceName = deviceName ?: castVolume.deviceName,
+                pending = true,
+            )
+            publishCastVolumeState()
+            return
+        }
+        castVolumePendingTarget = null
+        castVolumePendingUntilMs = 0L
+        castVolume = CastVolumeState(
+            available = true,
+            volume = normalized,
+            deviceName = deviceName,
+            pending = false,
+        )
+        publishCastVolumeState()
+    }
+
+    fun onCastVolumeSetFailed() {
+        if (!castVolume.available) return
+        castVolumePendingTarget = null
+        castVolumePendingUntilMs = 0L
+        castVolume = castVolume.copy(pending = false)
+        publishCastVolumeState()
+    }
+
+    fun onCastVolumeUnavailable() {
+        castVolumeJob?.cancel()
+        castVolumeJob = null
+        castVolumePendingTarget = null
+        castVolumePendingUntilMs = 0L
+        if (!castVolume.available) return
+        castVolume = CastVolumeState()
+        publishCastVolumeState()
+    }
+
+    private fun publishCastVolumeState() {
+        _state.value = _state.value.copy(castVolume = castVolume.takeIf { isCasting } ?: CastVolumeState())
     }
 
     fun activePlayerSnapshot(): Player = activePlayerRef
@@ -1045,6 +1125,7 @@ class PlaybackController @Inject constructor(
             guestDjEnabled = guestDjEnabled,
             guestDjAvailable = currentTrack?.guestDjEligible == true && player.repeatMode == Player.REPEAT_MODE_OFF,
             guestDjLoading = guestDjLoading,
+            castVolume = castVolume.takeIf { isCasting } ?: CastVolumeState(),
             crossfadeFromTrack = crossfadeFromTrack,
             crossfadeBlendMs = crossfadeBlendMs,
         )
@@ -1690,6 +1771,9 @@ class PlaybackController @Inject constructor(
         const val GUEST_DJ_TRIGGER_REMAINING = 3
         const val GUEST_DJ_INJECT_COUNT = 5
         const val CAST_MIME = "audio/mpeg"
+        const val CAST_VOLUME_DEBOUNCE_MS = 80L
+        const val CAST_VOLUME_PENDING_GRACE_MS = 1_500L
+        const val CAST_VOLUME_RECONCILE_TOLERANCE = 0.015f
         const val SLEEP_TIMER_TICK_MS = 1_000L
         const val SLEEP_TIMER_FADE_MS = 3_000L
         const val SLEEP_TIMER_FADE_STEP_MS = 100L

@@ -1,10 +1,8 @@
 # Codex task — Casting (Chromecast / Google Cast)
 
-> **NEXT: Phase 2 — Emby progress reporting + volume polish.** Phase 0 and
-> Phase 1 are done. Phase 1 was built and verified on Kaj's Pixel 8 Pro with the
-> NVIDIA SHIELD selected as the real Cast target: the queue hands off to the
-> `CastPlayer`, in-app/session controls target the cast, and Stop Casting resumes
-> locally at the last known cast position.
+> **NEXT: Phase 2 — Emby progress reporting.** Phase 0 and Phase 1 are done.
+> Phase 2.1 Cast volume polish is also done: Now Playing has an app-side Cast
+> volume slider with optimistic updates, verified by Kaj on Pixel 8 Pro + SHIELD.
 
 liquidWave (emby-sonic Android) should cast music to Chromecast / Google TV /
 cast-enabled speakers. Read `AGENTS.md` and `docs/spec.md` first. Decisions are
@@ -103,8 +101,14 @@ Verification notes:
 - Confirm Emby progress reporting (`reportPlaybackStarted/Progress/Stopped`) from
   the active cast position; keep `PlaySessionId` handling consistent and verify
   Emby "now playing" while remote playback is active.
-- Route volume to the cast device where appropriate (Cast volume, not local
-  stream volume).
+- **DONE 2026-06-19:** Route volume to the cast device from Now Playing.
+  `CastManager` listens to `CastSession` device-volume changes and sends app
+  slider updates with `CastSession.setVolume(...)`; `PlaybackController` exposes
+  optimistic `CastVolumeState`, debounces receiver writes, and ignores stale Cast
+  volume echoes during the short pending window. Kaj verified the second build on
+  Pixel 8 Pro + SHIELD: the in-app volume slider works much better than the first
+  pass. Phone volume buttons / the system Cast card still depend on Cast
+  framework overlay timing.
 - Regression-test skip previous/next, seek, repeat modes, and Guest DJ appends
   across a longer cast queue.
 

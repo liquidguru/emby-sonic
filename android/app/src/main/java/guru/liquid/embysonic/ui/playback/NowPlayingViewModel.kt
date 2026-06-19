@@ -58,6 +58,7 @@ class NowPlayingViewModel @Inject constructor(
     fun cancelSleepTimer() = playback.cancelSleepTimer()
     fun setAudiobookSpeed(speed: Float) = playback.setAudiobookSpeed(speed)
     fun setGuestDjEnabled(enabled: Boolean) = playback.setGuestDjEnabled(enabled)
+    fun setCastVolume(volume: Float) = playback.setCastVolume(volume)
 
     /** Generate a sonic radio for the current track (no-op if already loaded for it). */
     fun loadRadioForCurrent(force: Boolean = false) {

@@ -297,7 +297,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -930,6 +930,17 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   casting, local-only EQ is suppressed, crossfade polling is stopped, and offline
   prefetch is cancelled; Guest DJ/mixes still operate on the queue. Audiobook
   casting remains deliberately out of scope.
+- **M4.17 — Cast volume polish (2026-06-19, built + Pixel 8 Pro / SHIELD
+  verified):** Now Playing shows an in-app Cast volume slider while a Cast
+  session is active. `CastManager` listens to `CastSession` device-volume changes
+  and sends app-side updates through `CastSession.setVolume(...)`; playback state
+  exposes a `CastVolumeState` with device label, normalized volume, availability,
+  and pending status. Slider movement updates optimistically, debounces receiver
+  writes, and briefly ignores stale Cast volume echoes so the UI does not snap
+  back while the SHIELD reports old volume. User verification compared the Now
+  Playing slider, phone volume buttons, and system Cast card; the second build
+  "works much better". The system Cast card/phone overlay can still be subject to
+  Cast framework latency, but the in-app slider is now responsive.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
