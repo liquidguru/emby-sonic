@@ -24,6 +24,7 @@ sealed interface AnalysisStatusUiState {
 data class SettingsUiState(
     val serverUrl: String = "",
     val coordinatorUrl: String = "",
+    val castServerUrl: String = "",
     val userName: String = "",
     val savedMessage: String? = null,
     val loggedOut: Boolean = false,
@@ -50,6 +51,7 @@ class SettingsViewModel @Inject constructor(
             it.copy(
                 serverUrl = snap.serverUrl.orEmpty(),
                 coordinatorUrl = snap.coordinatorUrl.orEmpty(),
+                castServerUrl = snap.castServerUrl.orEmpty(),
                 userName = snap.userName.orEmpty(),
                 crossfadeEnabled = snap.crossfadeEnabled,
                 crossfadeSeconds = snap.crossfadeDurationMs / 1000,
@@ -82,6 +84,17 @@ class SettingsViewModel @Inject constructor(
 
     fun onCoordinatorUrlChange(value: String) =
         _state.update { it.copy(coordinatorUrl = value, savedMessage = null) }
+
+    fun onCastServerUrlChange(value: String) =
+        _state.update { it.copy(castServerUrl = value, savedMessage = null) }
+
+    fun saveCastServerUrl() {
+        val url = _state.value.castServerUrl.trim().trimEnd('/')
+        viewModelScope.launch {
+            settings.setCastServerUrl(url)
+            _state.update { it.copy(castServerUrl = url, savedMessage = "Saved") }
+        }
+    }
 
     fun saveCoordinatorUrl() {
         val url = _state.value.coordinatorUrl.trim().trimEnd('/')

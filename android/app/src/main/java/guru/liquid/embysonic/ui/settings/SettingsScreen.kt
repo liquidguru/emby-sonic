@@ -88,6 +88,21 @@ fun SettingsScreen(
                 Text("Save coordinator URL")
             }
 
+            OutlinedTextField(
+                value = state.castServerUrl,
+                onValueChange = viewModel::onCastServerUrlChange,
+                label = { Text("Cast server URL (LAN)") },
+                placeholder = { Text("http://192.168.1.50:8096") },
+                supportingText = {
+                    Text("Direct local Emby URL for casting. Leave blank to use the main server URL.")
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(onClick = viewModel::saveCastServerUrl, modifier = Modifier.fillMaxWidth()) {
+                Text("Save cast server URL")
+            }
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(18.dp),
