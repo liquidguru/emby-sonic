@@ -435,7 +435,7 @@ class PlaybackController @Inject constructor(
         publishState()
     }
 
-    fun onCastSessionUnavailable() {
+    fun onCastSessionUnavailable(resumePlayback: Boolean = true) {
         val remote = castPlayer ?: return
         if (activePlayerRef !== remote) return
         if (queue.isEmpty()) {
@@ -469,7 +469,10 @@ class PlaybackController @Inject constructor(
         )
         player.setMediaItems(localMediaItems(), startIndex, localPlayerPosition(startIndex, handoffPosition))
         player.prepare()
-        if (wasPlaying && queue.isNotEmpty()) playActive() else player.pause()
+        // Only auto-resume on the phone for a clean, user-initiated stop. On a
+        // network drop the receiver keeps playing autonomously, so auto-playing
+        // here would double the audio (phone + receiver). Hand back paused instead.
+        if (resumePlayback && wasPlaying && queue.isNotEmpty()) playActive() else player.pause()
         lastCastIndex = C.INDEX_UNSET
         lastCastPositionMs = C.TIME_UNSET
         schedulePrefetch(startIndex)

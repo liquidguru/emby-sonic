@@ -36,19 +36,27 @@ class CastManager @Inject constructor(
     }
 
     private val sessionListener = object : SessionManagerListener<CastSession> {
+        // Only attach volume here. The local->remote media handoff is driven by
+        // the CastPlayer's onCastSessionAvailable, which fires once Media3's
+        // CastPlayer is actually wired to the receiver — loading media on the
+        // earlier session-started callback lands on a not-ready player ("no media
+        // selected" on the receiver).
         override fun onSessionStarted(session: CastSession, sessionId: String) {
             Log.i(TAG, "Cast session started id=$sessionId")
-            onSessionAvailable(session)
+            attachVolumeSession(session)
         }
 
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
             Log.i(TAG, "Cast session resumed suspended=$wasSuspended")
-            onSessionAvailable(session)
+            attachVolumeSession(session)
         }
 
+        // error == 0 is a clean, user-initiated stop -> resume on the phone.
+        // A non-zero error is an abnormal/network end -> hand back paused so we
+        // don't play on top of a receiver that may still be playing.
         override fun onSessionEnded(session: CastSession, error: Int) {
             Log.i(TAG, "Cast session ended error=$error")
-            onSessionUnavailable()
+            onCastDisconnected(resumePlayback = error == 0)
         }
 
         override fun onSessionStarting(session: CastSession) = Unit
@@ -58,25 +66,34 @@ class CastManager @Inject constructor(
 
         override fun onSessionEnding(session: CastSession) = Unit
         override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
+
+        // A failed resume is a genuine, permanent loss — hand back to local.
         override fun onSessionResumeFailed(session: CastSession, error: Int) {
             Log.w(TAG, "Cast session resume failed error=$error")
+            onCastDisconnected(resumePlayback = false)
         }
 
+        // A suspend is a TRANSIENT drop (network blip): the receiver keeps playing
+        // and the session will resume. Do NOT hand playback back to the phone here
+        // — that would play the same audio on the phone on top of the receiver.
         override fun onSessionSuspended(session: CastSession, reason: Int) {
-            Log.i(TAG, "Cast session suspended reason=$reason")
-            onSessionUnavailable()
+            Log.i(TAG, "Cast session suspended reason=$reason (keeping cast; awaiting resume)")
+            onCastSuspended()
         }
     }
 
     private val availabilityListener = object : SessionAvailabilityListener {
         override fun onCastSessionAvailable() {
             Log.i(TAG, "CastPlayer reports session available")
-            onSessionAvailable(castContext?.sessionManager?.currentCastSession)
+            onCastConnected(castContext?.sessionManager?.currentCastSession)
         }
 
+        // This also fires on a transient suspend, so it must NOT trigger the
+        // remote->local handoff. The authoritative "casting is over" signal is the
+        // SessionManagerListener's onSessionEnded / onSessionResumeFailed.
         override fun onCastSessionUnavailable() {
-            Log.i(TAG, "CastPlayer reports session unavailable")
-            onSessionUnavailable()
+            Log.i(TAG, "CastPlayer reports session unavailable (no handoff; awaiting session end)")
+            detachVolumeSession()
         }
     }
 
@@ -96,18 +113,34 @@ class CastManager @Inject constructor(
         castPlayer = CastPlayer(ctx).also { player ->
             player.setSessionAvailabilityListener(availabilityListener)
             playback.attachCastPlayer(player)
-            if (player.isCastSessionAvailable) onSessionAvailable(ctx.sessionManager.currentCastSession)
+            if (player.isCastSessionAvailable) onCastConnected(ctx.sessionManager.currentCastSession)
         }
     }
 
-    private fun onSessionAvailable(session: CastSession?) {
+    private fun onCastConnected(session: CastSession?) {
         attachVolumeSession(session)
         playback.onCastSessionAvailable()
     }
 
-    private fun onSessionUnavailable() {
+    /**
+     * Genuine end of casting — hand playback back to the local player. [resumePlayback]
+     * is true only for a clean, user-initiated stop; on an abnormal/network end it's
+     * false so the phone doesn't double up audio with a still-playing receiver.
+     */
+    private fun onCastDisconnected(resumePlayback: Boolean) {
         detachVolumeSession()
-        playback.onCastSessionUnavailable()
+        playback.onCastSessionUnavailable(resumePlayback)
+    }
+
+    /**
+     * Transient suspend (network blip). The receiver keeps playing and the session
+     * is expected to resume, so we keep the CastPlayer as the active player and only
+     * hide the in-app volume control until [onCastConnected] fires again. If the
+     * drop turns out to be permanent, onSessionEnded/onSessionResumeFailed will hand
+     * back to local.
+     */
+    private fun onCastSuspended() {
+        detachVolumeSession()
     }
 
     private fun attachVolumeSession(session: CastSession?) {
