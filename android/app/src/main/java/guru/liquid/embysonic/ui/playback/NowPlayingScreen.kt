@@ -81,6 +81,7 @@ import guru.liquid.embysonic.playback.PlaybackRepeatMode
 import guru.liquid.embysonic.playback.SleepTimerMode
 import guru.liquid.embysonic.playback.PlaybackTrack
 import guru.liquid.embysonic.playback.PlaybackUiState
+import guru.liquid.embysonic.ui.cast.CastButton
 import guru.liquid.embysonic.ui.library.Artwork
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -121,6 +122,7 @@ fun NowPlayingScreen(
                     )
                 },
                 actions = {
+                    CastButton()
                     IconButton(
                         onClick = { sleepTimerDialogOpen = true },
                         enabled = state.currentTrack != null,
