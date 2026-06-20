@@ -5,8 +5,9 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
-import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
@@ -57,22 +58,35 @@ object NowPlayingWidget {
         )
     }
 
-    /**
-     * Full widget update — includes the artwork bitmap. Use this only when the
-     * track/state changes, not on every position tick: re-sending the bitmap each
-     * second overwhelms the RemoteViews bitmap handling and the art stops painting.
-     */
-    fun render(context: Context, snapshot: Snapshot, artwork: Bitmap?, palette: WidgetPalette) {
+    /** Full widget update, including the artwork (a FileProvider URI). */
+    fun render(context: Context, snapshot: Snapshot, artUri: Uri?, palette: WidgetPalette) {
         val manager = AppWidgetManager.getInstance(context) ?: return
         val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetProvider::class.java))
+        android.util.Log.i("WidgetArt", "render ids=${ids.size} artUri=$artUri")
         if (ids.isEmpty()) return
-        manager.updateAppWidget(ids, buildViews(context, snapshot, artwork, palette))
+        if (artUri != null) grantArtToHost(context, artUri)
+        manager.updateAppWidget(ids, buildViews(context, snapshot, artUri, palette))
     }
 
     /**
-     * Lightweight per-second update: only the progress bar + times, applied via
-     * [AppWidgetManager.partiallyUpdateAppWidget] so the existing artwork and the
-     * rest of the widget are left untouched (no bitmap re-send).
+     * The widget host (launcher) is a different process, so it needs read access to
+     * the art URI or the RemoteViews fails to apply ("can't load widget"). Grant the
+     * default home/launcher package; the grant persists until reboot/revoke.
+     */
+    private fun grantArtToHost(context: Context, uri: Uri) {
+        runCatching {
+            val home = context.packageManager.resolveActivity(
+                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+                PackageManager.MATCH_DEFAULT_ONLY,
+            )?.activityInfo?.packageName
+            android.util.Log.i("WidgetArt", "grant home=$home uri=$uri")
+            if (home != null) context.grantUriPermission(home, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }.onFailure { android.util.Log.w("WidgetArt", "grant failed", it) }
+    }
+
+    /**
+     * Lightweight per-second update: progress bar + times only, via
+     * [AppWidgetManager.partiallyUpdateAppWidget], leaving the artwork untouched.
      */
     fun renderProgress(context: Context, snapshot: Snapshot, palette: WidgetPalette) {
         val manager = AppWidgetManager.getInstance(context) ?: return
@@ -109,7 +123,7 @@ object NowPlayingWidget {
     fun buildViews(
         context: Context,
         snapshot: Snapshot,
-        artwork: Bitmap?,
+        artUri: Uri?,
         palette: WidgetPalette,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_now_playing)
@@ -149,11 +163,13 @@ object NowPlayingWidget {
             )
         }
 
-        if (artwork != null) {
-            views.setImageViewBitmap(R.id.widget_art, artwork)
+        if (artUri != null) {
+            // A FileProvider URI the launcher loads from disk; replayable across
+            // re-inflation and not subject to the RemoteViews bitmap cache.
+            views.setImageViewUri(R.id.widget_art, artUri)
         } else {
             views.setImageViewResource(R.id.widget_art, R.drawable.ic_widget_placeholder)
-            // Tint only the placeholder glyph — never a real artwork bitmap.
+            // Tint only the placeholder glyph — never real artwork.
             views.setInt(R.id.widget_art, "setColorFilter", palette.accent)
         }
 
