@@ -4,6 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.dto.SimilarAlbumDto
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
@@ -35,6 +37,7 @@ import javax.inject.Inject
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    private val coordinator: CoordinatorApi,
     private val playlists: PlaylistRepository,
     private val settings: SettingsRepository,
     private val playback: PlaybackController,
@@ -64,6 +67,9 @@ class DetailViewModel @Inject constructor(
     private val _state = MutableStateFlow<TabState>(TabState.Loading)
     val state: StateFlow<TabState> = _state.asStateFlow()
 
+    private val _similarState = MutableStateFlow<SimilarCollectionsState>(SimilarCollectionsState.Hidden)
+    val similarState: StateFlow<SimilarCollectionsState> = _similarState.asStateFlow()
+
     init {
         observeGeneratedMixTracks()
         load()
@@ -88,11 +94,95 @@ class DetailViewModel @Inject constructor(
                     repository.childItems(itemId, kind)
                 }
             }.fold(
-                onSuccess = { _state.value = TabState.Data(it) },
-                onFailure = { _state.value = TabState.Error(it.message ?: "Failed to load") },
+                onSuccess = {
+                    _state.value = TabState.Data(it)
+                    loadSimilarCollections(it)
+                },
+                onFailure = {
+                    _state.value = TabState.Error(it.message ?: "Failed to load")
+                    _similarState.value = SimilarCollectionsState.Hidden
+                },
             )
         }
     }
+
+    private fun loadSimilarCollections(items: List<LibraryItem>) {
+        when (kind) {
+            DetailKind.ARTIST_ALBUMS -> loadSimilarArtists()
+            DetailKind.ALBUM_TRACKS -> loadSimilarAlbums(items)
+            DetailKind.GENRE_TRACKS,
+            DetailKind.AUTHOR_BOOKS,
+            DetailKind.BOOK_CHAPTERS,
+            DetailKind.PLAYLIST_TRACKS -> _similarState.value = SimilarCollectionsState.Hidden
+        }
+    }
+
+    private fun loadSimilarArtists() {
+        _similarState.value = SimilarCollectionsState.Loading("Sonically similar artists")
+        viewModelScope.launch {
+            runCatching {
+                val seed = repository.playableItems(itemId, DetailKind.ARTIST_ALBUMS).firstOrNull()
+                    ?: return@runCatching emptyList()
+                coordinator.similarArtists(seed.id, SIMILAR_COLLECTION_LIMIT)
+                    .mapNotNull { result ->
+                        repository.searchArtists(result.artist, limit = SIMILAR_SEARCH_LIMIT)
+                            .firstOrNull { it.title.normalizedTitle() == result.artist.normalizedTitle() }
+                            ?.copy(subtitle = scoreSubtitle(result.score))
+                    }
+            }.fold(
+                onSuccess = { items ->
+                    _similarState.value = if (items.isEmpty()) {
+                        SimilarCollectionsState.Hidden
+                    } else {
+                        SimilarCollectionsState.Data(
+                            title = "Sonically similar artists",
+                            items = items.distinctBy { it.id },
+                            targetKind = DetailKind.ARTIST_ALBUMS,
+                        )
+                    }
+                },
+                onFailure = { _similarState.value = SimilarCollectionsState.Error("Couldn't load similar artists") },
+            )
+        }
+    }
+
+    private fun loadSimilarAlbums(items: List<LibraryItem>) {
+        val seed = items.firstOrNull()
+        if (seed == null) {
+            _similarState.value = SimilarCollectionsState.Hidden
+            return
+        }
+        _similarState.value = SimilarCollectionsState.Loading("Sonically similar albums")
+        viewModelScope.launch {
+            runCatching {
+                coordinator.similarAlbums(seed.id, SIMILAR_COLLECTION_LIMIT)
+                    .mapNotNull { result -> resolveSimilarAlbum(result) }
+            }.fold(
+                onSuccess = { items ->
+                    _similarState.value = if (items.isEmpty()) {
+                        SimilarCollectionsState.Hidden
+                    } else {
+                        SimilarCollectionsState.Data(
+                            title = "Sonically similar albums",
+                            items = items.distinctBy { it.id },
+                            targetKind = DetailKind.ALBUM_TRACKS,
+                        )
+                    }
+                },
+                onFailure = { _similarState.value = SimilarCollectionsState.Error("Couldn't load similar albums") },
+            )
+        }
+    }
+
+    private suspend fun resolveSimilarAlbum(result: SimilarAlbumDto): LibraryItem? =
+        repository.searchAlbums(result.album, limit = SIMILAR_SEARCH_LIMIT)
+            .firstOrNull { candidate ->
+                candidate.title.normalizedTitle() == result.album.normalizedTitle() &&
+                    result.artist?.let { artist ->
+                        candidate.subtitle?.normalizedTitle() == artist.normalizedTitle()
+                    } != false
+            }
+            ?.copy(subtitle = scoreSubtitle(result.score))
 
     // Transient one-shot messages (playlist created / failed) for a snackbar.
     private val _messages = Channel<String>(Channel.BUFFERED)
@@ -212,11 +302,30 @@ class DetailViewModel @Inject constructor(
     }
 }
 
+sealed interface SimilarCollectionsState {
+    data object Hidden : SimilarCollectionsState
+    data class Loading(val title: String) : SimilarCollectionsState
+    data class Data(
+        val title: String,
+        val items: List<LibraryItem>,
+        val targetKind: DetailKind,
+    ) : SimilarCollectionsState
+    data class Error(val message: String) : SimilarCollectionsState
+}
+
 private fun DetailViewModel.defaultPlaylistName(): String =
     if (kind == DetailKind.GENRE_TRACKS) "$title genre mix" else title.ifBlank { "New playlist" }
 
 internal val GenreMixTrackCounts = listOf(25, 50, 75, 100)
 private const val DEFAULT_GENRE_MIX_TRACKS = 25
+private const val SIMILAR_COLLECTION_LIMIT = 8
+private const val SIMILAR_SEARCH_LIMIT = 8
+
+private fun scoreSubtitle(score: Double): String =
+    "${(score * 100).toInt().coerceIn(0, 100)}% sonic match"
+
+private fun String.normalizedTitle(): String =
+    trim().lowercase().removePrefix("the ")
 
 private fun List<LibraryItem>.shuffledMovingFirst(): List<LibraryItem> {
     if (size < 2) return this

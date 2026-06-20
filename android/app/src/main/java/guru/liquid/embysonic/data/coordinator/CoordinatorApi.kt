@@ -9,6 +9,8 @@ import guru.liquid.embysonic.data.coordinator.dto.BuildStateDto
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectDto
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.RegenerateMixRequestDto
+import guru.liquid.embysonic.data.coordinator.dto.SimilarAlbumDto
+import guru.liquid.embysonic.data.coordinator.dto.SimilarArtistDto
 import guru.liquid.embysonic.data.coordinator.dto.SimilarTrackDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDetailDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
@@ -33,6 +35,20 @@ interface CoordinatorApi {
         @Path("id") trackId: String,
         @Query("n") n: Int = 25,
     ): List<SimilarTrackDto>
+
+    /** Artists sonically similar to the artist of a representative [trackId]. */
+    @GET("sonic/artists/{id}/similar")
+    suspend fun similarArtists(
+        @Path("id") trackId: String,
+        @Query("n") n: Int = 10,
+    ): List<SimilarArtistDto>
+
+    /** Albums sonically similar to the album of a representative [trackId]. */
+    @GET("sonic/albums/{id}/similar")
+    suspend fun similarAlbums(
+        @Path("id") trackId: String,
+        @Query("n") n: Int = 10,
+    ): List<SimilarAlbumDto>
 
     /** A radio-style sequence seeded from [trackId]. */
     @GET("sonic/tracks/{id}/radio")

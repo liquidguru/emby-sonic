@@ -1,12 +1,19 @@
 package guru.liquid.embysonic.ui.library
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
@@ -14,10 +21,12 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -32,7 +41,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -55,6 +66,7 @@ fun DetailScreen(
     viewModel: DetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val similarState by viewModel.similarState.collectAsStateWithLifecycle()
     val listView by viewModel.listView.collectAsStateWithLifecycle()
     val genreTracksPerMix by viewModel.genreTracksPerMix.collectAsStateWithLifecycle()
     val kind = viewModel.kind
@@ -147,20 +159,28 @@ fun DetailScreen(
                     val onPlay = { item: LibraryItem ->
                         viewModel.playCollection(item)
                     }
-                    if (listView) {
-                        CollectionList(
-                            items,
-                            placeholderBook = kind.usesBookIcon,
-                            onItemClick = onClick,
-                            onPlayItem = onPlay,
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        SimilarCollectionsRail(
+                            state = similarState,
+                            onOpenItem = { item, targetKind -> onOpenItem(item.id, item.title, targetKind) },
                         )
-                    } else {
-                        CardGrid(
-                            items,
-                            placeholderBook = kind.usesBookIcon,
-                            onItemClick = onClick,
-                            onPlayItem = onPlay,
-                        )
+                        if (listView) {
+                            CollectionList(
+                                items,
+                                placeholderBook = kind.usesBookIcon,
+                                onItemClick = onClick,
+                                modifier = Modifier.weight(1f),
+                                onPlayItem = onPlay,
+                            )
+                        } else {
+                            CardGrid(
+                                items,
+                                placeholderBook = kind.usesBookIcon,
+                                onItemClick = onClick,
+                                modifier = Modifier.weight(1f),
+                                onPlayItem = onPlay,
+                            )
+                        }
                     }
                 } else {
                     if (isGenreMix) {
@@ -178,6 +198,7 @@ fun DetailScreen(
                             TrackList(
                                 items = items,
                                 placeholderBook = kind.usesBookIcon,
+                                modifier = Modifier.weight(1f),
                                 actions = trackActions,
                                 onTrackClick = {
                                     viewModel.playFrom(it)
@@ -185,14 +206,21 @@ fun DetailScreen(
                             )
                         }
                     } else {
-                        TrackList(
-                            items = items,
-                            placeholderBook = kind.usesBookIcon,
-                            actions = trackActions,
-                            onTrackClick = {
-                                viewModel.playFrom(it)
-                            },
-                        )
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            SimilarCollectionsRail(
+                                state = similarState,
+                                onOpenItem = { item, targetKind -> onOpenItem(item.id, item.title, targetKind) },
+                            )
+                            TrackList(
+                                items = items,
+                                placeholderBook = kind.usesBookIcon,
+                                modifier = Modifier.weight(1f),
+                                actions = trackActions,
+                                onTrackClick = {
+                                    viewModel.playFrom(it)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -239,6 +267,95 @@ fun DetailScreen(
                 TextButton(onClick = { removeTarget = null }) { Text("Cancel") }
             },
         )
+    }
+}
+
+@Composable
+private fun SimilarCollectionsRail(
+    state: SimilarCollectionsState,
+    onOpenItem: (LibraryItem, DetailKind) -> Unit,
+) {
+    when (state) {
+        SimilarCollectionsState.Hidden -> Unit
+        is SimilarCollectionsState.Loading -> {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                Text(
+                    state.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 10.dp),
+                )
+            }
+        }
+        is SimilarCollectionsState.Error -> {
+            Text(
+                state.message,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+        is SimilarCollectionsState.Data -> {
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp)) {
+                Text(
+                    state.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    items(state.items, key = { it.id }) { item ->
+                        SimilarCollectionCard(
+                            item = item,
+                            onClick = { onOpenItem(item, state.targetKind) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimilarCollectionCard(item: LibraryItem, onClick: () -> Unit) {
+    Column(modifier = Modifier.width(132.dp)) {
+        Artwork(
+            url = item.imageUrl,
+            contentDescription = item.title,
+            modifier = Modifier
+                .size(132.dp)
+                .clip(RoundedCornerShape(14.dp)),
+        )
+        TextButton(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth().height(68.dp),
+        ) {
+            Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    item.title,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                item.subtitle?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
     }
 }
 
