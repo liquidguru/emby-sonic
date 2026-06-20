@@ -27,8 +27,10 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -180,6 +182,8 @@ fun NowPlayingScreen(
                     onCastVolumeChange = viewModel::setCastVolume,
                     onGuestDjChange = viewModel::setGuestDjEnabled,
                     onQueueItemClick = viewModel::seekToQueueIndex,
+                    onMoveQueueItem = viewModel::moveQueueItem,
+                    onRemoveQueueItem = viewModel::removeQueueItem,
                     selectedTab = selectedTab,
                     onSelectTab = { selectedTab = it },
                     queueFocusRequest = queueFocusRequest,
@@ -237,6 +241,8 @@ private fun PlayerContent(
     onCastVolumeChange: (Float) -> Unit,
     onGuestDjChange: (Boolean) -> Unit,
     onQueueItemClick: (Int) -> Unit,
+    onMoveQueueItem: (fromIndex: Int, toIndex: Int) -> Unit,
+    onRemoveQueueItem: (Int) -> Unit,
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
     queueFocusRequest: Int,
@@ -336,11 +342,17 @@ private fun PlayerContent(
                     item = item,
                     index = index,
                     selected = index == state.currentIndex,
+                    editable = index > state.currentIndex,
+                    canMoveUp = index > state.currentIndex + 1,
+                    canMoveDown = index > state.currentIndex && index < state.queue.lastIndex,
                     onClick = {
                         if (index != state.currentIndex) {
                             onQueueItemClick(index)
                         }
                     },
+                    onMoveUp = { onMoveQueueItem(index, index - 1) },
+                    onMoveDown = { onMoveQueueItem(index, index + 1) },
+                    onRemove = { onRemoveQueueItem(index) },
                 )
             }
             1 -> radioContent(radio, onPlayRadioAll, onPlayRadioTrack, onRefreshRadio)
@@ -876,7 +888,18 @@ private fun PlaybackTabs(selected: Int, onSelect: (Int) -> Unit) {
 }
 
 @Composable
-private fun QueueRow(item: PlaybackTrack, index: Int, selected: Boolean, onClick: () -> Unit) {
+private fun QueueRow(
+    item: PlaybackTrack,
+    index: Int,
+    selected: Boolean,
+    editable: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onClick: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onRemove: () -> Unit,
+) {
     ListItem(
         modifier = Modifier
             .clip(RoundedCornerShape(18.dp))
@@ -897,10 +920,33 @@ private fun QueueRow(item: PlaybackTrack, index: Int, selected: Boolean, onClick
                 )
             }
         },
-        trailingContent = if (!selected) {
+        trailingContent = if (editable) {
             {
-                IconButton(onClick = onClick) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onMoveUp,
+                        enabled = canMoveUp,
+                        modifier = Modifier.size(34.dp),
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move ${item.title} up")
+                    }
+                    IconButton(
+                        onClick = onMoveDown,
+                        enabled = canMoveDown,
+                        modifier = Modifier.size(34.dp),
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move ${item.title} down")
+                    }
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier.size(34.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Remove ${item.title} from queue",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         } else {
