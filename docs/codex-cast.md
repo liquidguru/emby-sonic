@@ -1,17 +1,18 @@
 # Codex task — Casting (Chromecast / Google Cast)
 
-> **NEXT: Phase 2 Emby reporting verification.** Phase 0, Phase 1, Phase 2.1
-> (Cast volume slider with optimistic updates), and Phase 3 UI polish are done.
-> A transient-drop fix landed (commit 36dc41e): a Wi-Fi blip no longer doubles
-> audio because suspend/abnormal end keep the receiver playing solo. A follow-up
-> Phase 3 regression fix tracks `onSessionEnding` as user intent, so Stop Casting
-> paths that end with framework code `2154` still resume locally. Verified on
-> Pixel 8 Pro + SHIELD.
+> **NEXT: Casting music v1 is verified.** Phase 0, Phase 1, Phase 2.1 (Cast
+> volume slider with optimistic updates), Phase 2 Emby reporting verification,
+> and Phase 3 UI polish are done. A transient-drop fix landed (commit 36dc41e):
+> a Wi-Fi blip no longer doubles audio because suspend/abnormal end keep the
+> receiver playing solo. A follow-up Phase 3 regression fix tracks
+> `onSessionEnding` as user intent, so Stop Casting paths that end with framework
+> code `2154` still resume locally. Verified on Pixel 8 Pro + SHIELD.
 >
 > Do next:
-> 1. **Phase 2 verification** — confirm Emby "now playing"/resume points are
->    correct *while casting* (progress reporting from the cast position is wired
->    but still needs explicit Emby-side verification).
+> 1. Move on to the next non-cast Phase 3/M4 candidate: sonic-similar sidebars,
+>    notification/widget polish, mini-player dissolve polish, coordinator-side
+>    adventure dedupe, or offline prefetch buffer polish. Audiobook casting stays
+>    deferred.
 
 liquidWave (emby-sonic Android) should cast music to Chromecast / Google TV /
 cast-enabled speakers. Read `AGENTS.md` and `docs/spec.md` first. Decisions are
@@ -109,7 +110,9 @@ Verification notes:
 ## Phase 2 — Reporting and volume polish
 - Confirm Emby progress reporting (`reportPlaybackStarted/Progress/Stopped`) from
   the active cast position; keep `PlaySessionId` handling consistent and verify
-  Emby "now playing" while remote playback is active.
+  Emby "now playing" while remote playback is active. **DONE 2026-06-20:**
+  Pixel 8 Pro + SHIELD user verification confirmed Emby Now Playing followed the
+  phone/casting state while remote playback was active.
 - **DONE 2026-06-19:** Route volume to the cast device from Now Playing.
   `CastManager` listens to `CastSession` device-volume changes and sends app
   slider updates with `CastSession.setVolume(...)`; `PlaybackController` exposes
