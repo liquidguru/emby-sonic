@@ -297,7 +297,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20; M4.20 Cast reporting verification complete 2026-06-20; M4.21 sonic-similar detail rails complete 2026-06-20; M4.22 album-art polish complete 2026-06-20; M5.1 mini-player dissolve polish complete 2026-06-20; M5.2 Home startup polish complete 2026-06-20; M5.4 widget art reliability complete 2026-06-20; M5.5 coordinator adventure dedupe complete 2026-06-20; M5.6 compact widget layout complete 2026-06-20; M5.7 offline prefetch status + paused-widget resume fix complete 2026-06-20; M5.8 Home playlist long-press delete complete 2026-06-20; M5.9 library drill-down latency polish complete 2026-06-20; M5.10 Now Playing Similar tab complete 2026-06-20.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20; M4.20 Cast reporting verification complete 2026-06-20; M4.21 sonic-similar detail rails complete 2026-06-20; M4.22 album-art polish complete 2026-06-20; M5.1 mini-player dissolve polish complete 2026-06-20; M5.2 Home startup polish complete 2026-06-20; M5.4 widget art reliability complete 2026-06-20; M5.5 coordinator adventure dedupe complete 2026-06-20; M5.6 compact widget layout complete 2026-06-20; M5.7 offline prefetch status + paused-widget resume fix complete 2026-06-20; M5.8 Home playlist long-press delete complete 2026-06-20; M5.9 library drill-down latency polish complete 2026-06-20; M5.10 Now Playing Similar tab complete 2026-06-20; M5.11 queue edit controls complete 2026-06-20.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -1096,6 +1096,16 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   manual refresh. User verification confirmed the tab works well enough for the
   current alpha; similarity quality/tuning remains something to revisit with
   beta-tester feedback.
+- **M5.11 — Now Playing queue edit controls (2026-06-20, built + Pixel 8 Pro
+  verified):** the Queue tab now supports a compact first-pass edit flow for
+  upcoming tracks: move up, move down, and remove. The currently playing item and
+  already-played items are protected; row tap still jumps playback to a future
+  item. `PlaybackController` remaps per-item Emby `PlaySessionId`s and stream
+  offsets when future items move/remove, updates the active Media3 queue, clears
+  Guest DJ's append attempt signature, and reschedules offline prefetch from the
+  current anchor. User verification confirmed upcoming reorder/remove works and
+  playback keeps going. A fuller drag-handle/swipe UI can replace the compact
+  buttons later if desired.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 

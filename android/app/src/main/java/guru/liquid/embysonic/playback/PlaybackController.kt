@@ -809,6 +809,50 @@ class PlaybackController @Inject constructor(
         publishState()
     }
 
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        val currentIndex = activePlayerRef.currentMediaItemIndex.coerceAtLeast(0)
+        if (fromIndex !in queue.indices || toIndex !in queue.indices) return
+        if (fromIndex <= currentIndex || toIndex <= currentIndex || fromIndex == toIndex) return
+        cancelCrossfade()
+        val indexed = queue.mapIndexed { index, track -> index to track }.toMutableList()
+        val moved = indexed.removeAt(fromIndex)
+        indexed.add(toIndex, moved)
+        queue = indexed.map { it.second }
+        remapPlaybackMetadata(indexed.map { it.first })
+        activePlayerRef.moveMediaItem(fromIndex, toIndex)
+        queueShuffled = true
+        guestDjAttemptSignature = null
+        schedulePrefetch(currentIndex)
+        publishState()
+    }
+
+    fun removeQueueItem(index: Int) {
+        val currentIndex = activePlayerRef.currentMediaItemIndex.coerceAtLeast(0)
+        if (index !in queue.indices || index <= currentIndex) return
+        cancelCrossfade()
+        val indexed = queue.mapIndexed { oldIndex, track -> oldIndex to track }.toMutableList()
+        indexed.removeAt(index)
+        queue = indexed.map { it.second }
+        remapPlaybackMetadata(indexed.map { it.first })
+        activePlayerRef.removeMediaItem(index)
+        guestDjAttemptSignature = null
+        schedulePrefetch(currentIndex)
+        publishState()
+    }
+
+    private fun remapPlaybackMetadata(oldIndicesByNewIndex: List<Int>) {
+        val oldSessions = playSessionIdsByIndex.toMap()
+        val oldOffsets = streamOffsetsByIndex.toMap()
+        playSessionIdsByIndex = oldIndicesByNewIndex
+            .mapIndexedNotNull { newIndex, oldIndex -> oldSessions[oldIndex]?.let { newIndex to it } }
+            .toMap()
+            .toMutableMap()
+        streamOffsetsByIndex = oldIndicesByNewIndex
+            .mapIndexedNotNull { newIndex, oldIndex -> oldOffsets[oldIndex]?.let { newIndex to it } }
+            .toMap()
+            .toMutableMap()
+    }
+
     fun currentMetadataDurationMs(): Long? {
         val index = activePlayerRef.currentMediaItemIndex.coerceAtLeast(0)
         return queue.getOrNull(index)?.durationMs?.takeIf { it > 0L }
