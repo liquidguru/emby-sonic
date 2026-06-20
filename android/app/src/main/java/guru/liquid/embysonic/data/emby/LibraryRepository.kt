@@ -103,6 +103,7 @@ private const val RESUME_END_PADDING_MS = 5_000L
  * returns these comfortably on a LAN; LazyGrid/Column virtualise the rendering.
  */
 private const val BROWSE_LIMIT = 10000
+private const val ALBUM_ART_SCAN_PAGE_SIZE = 1000
 
 /** How many recently played tracks to scan when grouping recent plays to albums. */
 private const val RECENT_PLAYS_SCAN = 100
@@ -190,9 +191,15 @@ class LibraryRepository @Inject constructor(
         return covers
     }
 
-    suspend fun albums(libraryId: String): List<LibraryItem> =
-        embyApi.getItems(userId(), parentId = libraryId, includeItemTypes = "MusicAlbum", limit = BROWSE_LIMIT)
-            .items.map { it.toCollectionItem() }
+    suspend fun albums(libraryId: String): List<LibraryItem> {
+        val albums = embyApi.getItems(
+            userId = userId(),
+            parentId = libraryId,
+            includeItemTypes = "MusicAlbum",
+            limit = BROWSE_LIMIT,
+        ).items.map { it.toCollectionItem() }
+        return hydrateMusicAlbumArt(albums, parentId = libraryId)
+    }
 
     suspend fun genres(libraryId: String): List<LibraryItem> =
         embyApi.getGenres(
@@ -201,8 +208,8 @@ class LibraryRepository @Inject constructor(
             limit = BROWSE_LIMIT,
         ).items.mapNotNull { it.toGenreItem(libraryId) }
 
-    suspend fun recentlyAddedAlbums(libraryId: String, limit: Int): List<LibraryItem> =
-        embyApi.getItems(
+    suspend fun recentlyAddedAlbums(libraryId: String, limit: Int): List<LibraryItem> {
+        val albums = embyApi.getItems(
             userId = userId(),
             parentId = libraryId,
             includeItemTypes = "MusicAlbum",
@@ -210,6 +217,8 @@ class LibraryRepository @Inject constructor(
             sortOrder = "Descending",
             limit = limit,
         ).items.map { it.toCollectionItem() }
+        return hydrateMusicAlbumArt(albums, parentId = libraryId)
+    }
 
     /**
      * Recently played music, grouped back to albums (most-recent first). Emby's
@@ -427,12 +436,14 @@ class LibraryRepository @Inject constructor(
      */
     suspend fun childItems(parentId: String, kind: DetailKind): List<LibraryItem> =
         when (kind) {
-            DetailKind.ARTIST_ALBUMS ->
-                embyApi.getItems(
+            DetailKind.ARTIST_ALBUMS -> {
+                val albums = embyApi.getItems(
                     userId = userId(),
                     includeItemTypes = "MusicAlbum",
                     albumArtistIds = parentId,
                 ).items.map { it.toCollectionItem() }
+                hydrateMusicAlbumArt(albums, albumArtistId = parentId)
+            }
 
             // Books carry no album cover; resolve from a child chapter.
             DetailKind.AUTHOR_BOOKS -> books(albumArtistId = parentId)
@@ -498,6 +509,56 @@ class LibraryRepository @Inject constructor(
         },
         imageUrl = imageTags["Primary"]?.let { imageUrls.primary(id.orEmpty(), it) },
     )
+
+    /**
+     * Music albums often lack their own Primary image even though their tracks
+     * have embedded art. Fill those blanks from a representative child track.
+     */
+    private suspend fun hydrateMusicAlbumArt(
+        albums: List<LibraryItem>,
+        parentId: String? = null,
+        albumArtistId: String? = null,
+    ): List<LibraryItem> {
+        val missing = albums.filter { it.imageUrl == null }.map { it.id }.toSet()
+        if (missing.isEmpty()) return albums
+        val covers = musicAlbumCovers(parentId, albumArtistId, missing)
+        if (covers.isEmpty()) return albums
+        return albums.map { album ->
+            if (album.imageUrl == null) album.copy(imageUrl = covers[album.id]) else album
+        }
+    }
+
+    private suspend fun musicAlbumCovers(
+        parentId: String?,
+        albumArtistId: String?,
+        wantedAlbumIds: Set<String>,
+    ): Map<String, String> {
+        val covers = HashMap<String, String>()
+        var startIndex = 0
+        do {
+            val page = embyApi.getItems(
+                userId = userId(),
+                includeItemTypes = "Audio",
+                parentId = parentId,
+                albumArtistIds = albumArtistId,
+                sortBy = "Album,ParentIndexNumber,IndexNumber",
+                startIndex = startIndex,
+                limit = ALBUM_ART_SCAN_PAGE_SIZE,
+            )
+            for (track in page.items) {
+                val albumId = track.albumId ?: continue
+                if (albumId !in wantedAlbumIds || covers.containsKey(albumId)) continue
+                track.artUrl()?.let { covers[albumId] = it }
+                if (covers.size == wantedAlbumIds.size) break
+            }
+            startIndex += page.items.size
+        } while (
+            covers.size < wantedAlbumIds.size &&
+                page.items.isNotEmpty() &&
+                startIndex < page.totalRecordCount
+        )
+        return covers
+    }
 
     private fun EmbyItemDto.toGenreItem(libraryId: String): LibraryItem? {
         val genreId = id?.takeIf { it.isNotBlank() } ?: return null

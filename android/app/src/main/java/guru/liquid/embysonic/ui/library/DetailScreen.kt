@@ -1,5 +1,6 @@
 package guru.liquid.embysonic.ui.library
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -324,7 +325,12 @@ private fun SimilarCollectionsRail(
 
 @Composable
 private fun SimilarCollectionCard(item: LibraryItem, onClick: () -> Unit) {
-    Column(modifier = Modifier.width(132.dp)) {
+    Column(
+        modifier = Modifier
+            .width(132.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+    ) {
         Artwork(
             url = item.imageUrl,
             contentDescription = item.title,
@@ -332,28 +338,29 @@ private fun SimilarCollectionCard(item: LibraryItem, onClick: () -> Unit) {
                 .size(132.dp)
                 .clip(RoundedCornerShape(14.dp)),
         )
-        TextButton(
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth().height(68.dp),
+        Column(
+            horizontalAlignment = Alignment.Start,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(68.dp)
+                .padding(horizontal = 4.dp, vertical = 8.dp),
         ) {
-            Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                item.title,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            item.subtitle?.let {
                 Text(
-                    item.title,
-                    style = MaterialTheme.typography.labelLarge,
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                item.subtitle?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
             }
         }
     }
