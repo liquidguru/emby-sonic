@@ -24,6 +24,7 @@ class CastManager @Inject constructor(
     private var castContext: CastContext? = null
     private var castPlayer: CastPlayer? = null
     private var volumeSession: CastSession? = null
+    private var userEndingSession = false
 
     private val castListener = object : Cast.Listener() {
         override fun onVolumeChanged() {
@@ -51,12 +52,16 @@ class CastManager @Inject constructor(
             attachVolumeSession(session)
         }
 
-        // error == 0 is a clean, user-initiated stop -> resume on the phone.
-        // A non-zero error is an abnormal/network end -> hand back paused so we
-        // don't play on top of a receiver that may still be playing.
+        // error == 0 is a clean, user-initiated stop from some Cast surfaces.
+        // Other surfaces can report a non-zero framework code after first firing
+        // onSessionEnding; treat that callback as the user intent. Abnormal
+        // network loss should end without onSessionEnding, so it hands back paused
+        // and never doubles audio with a still-playing receiver.
         override fun onSessionEnded(session: CastSession, error: Int) {
-            Log.i(TAG, "Cast session ended error=$error")
-            onCastDisconnected(resumePlayback = error == 0)
+            val resumePlayback = error == 0 || userEndingSession
+            Log.i(TAG, "Cast session ended error=$error userEnding=$userEndingSession resumePlayback=$resumePlayback")
+            userEndingSession = false
+            onCastDisconnected(resumePlayback = resumePlayback)
         }
 
         override fun onSessionStarting(session: CastSession) = Unit
@@ -64,12 +69,16 @@ class CastManager @Inject constructor(
             Log.w(TAG, "Cast session start failed error=$error")
         }
 
-        override fun onSessionEnding(session: CastSession) = Unit
+        override fun onSessionEnding(session: CastSession) {
+            Log.i(TAG, "Cast session ending by user")
+            userEndingSession = true
+        }
         override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
 
         // A failed resume is a genuine, permanent loss — hand back to local.
         override fun onSessionResumeFailed(session: CastSession, error: Int) {
             Log.w(TAG, "Cast session resume failed error=$error")
+            userEndingSession = false
             onCastDisconnected(resumePlayback = false)
         }
 
@@ -78,6 +87,7 @@ class CastManager @Inject constructor(
         // — that would play the same audio on the phone on top of the receiver.
         override fun onSessionSuspended(session: CastSession, reason: Int) {
             Log.i(TAG, "Cast session suspended reason=$reason (keeping cast; awaiting resume)")
+            userEndingSession = false
             onCastSuspended()
         }
     }

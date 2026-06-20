@@ -297,7 +297,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -948,13 +948,33 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   a genuine end: `onSessionSuspended` (and the `CastPlayer`'s
   `onCastSessionUnavailable`, which also fires on suspend) no longer trigger a
   remote->local handoff — the authoritative end signals are `onSessionEnded` /
-  `onSessionResumeFailed`. The phone only auto-resumes on a clean, user-initiated
-  stop (`onSessionEnded` error == 0); abnormal ends/resume-failures hand back
-  paused. Also fixed a regression where the media handoff fired on
+  `onSessionResumeFailed`. The phone auto-resumes only when Cast reports a clean
+  stop (`error == 0`) or when the session first fires `onSessionEnding`, which
+  covers user-initiated Stop Casting paths that can still end with a non-zero
+  framework code such as `2154`; abnormal ends/resume-failures hand back paused.
+  Also fixed a regression where the media handoff fired on
   `onSessionStarted` before the `CastPlayer` was ready ("no media selected"); it
   now loads on `onCastSessionAvailable`. Verified on the Pixel 8 Pro + SHIELD: a
   Wi-Fi toggle leaves the SHIELD playing solo with the phone silent, and a clean
   Stop Casting still resumes locally where it left off.
+- **M4.19 — Cast UI polish + long-queue regression (2026-06-20, built + Pixel
+  8 Pro / SHIELD verified):** The mini-player now includes the same Cast route
+  button as Now Playing. `PlaybackUiState` exposes explicit `isCasting` state so
+  Settings and Equalizer can visibly disable local-only features while casting:
+  crossfade controls grey out, the Equalizer entry/screen disables controls, and
+  Settings shows an offline-prefetch card explaining that Cast receivers fetch
+  directly from Emby. Now Playing shows a "Casting to <device>" indicator plus a
+  short hint that equalizer, crossfade, and offline prefetch are unavailable
+  while casting; the volume slider remains focused on Cast volume. User
+  verification on the Pixel 8 Pro + SHIELD confirmed the mini-player Cast button,
+  Now Playing indicator, Settings disabled states, and Equalizer gating. The same
+  run regression-tested a 30-track Cast queue after Guest DJ appended five tracks:
+  next/previous, seek, repeat modes, and Guest DJ append worked. Stop Casting
+  initially failed to resume locally because the SHIELD route ended with
+  `error=2154`; `CastManager` now tracks `onSessionEnding` as user intent and
+  resumes on that path. ADB logs from the fixed build show local->remote at queue
+  index 24 around 10.1s and remote->local at the same index around 52.3s with
+  `userEnding=true resumePlayback=true`.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
