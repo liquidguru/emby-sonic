@@ -3,6 +3,7 @@ package guru.liquid.embysonic.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import guru.liquid.embysonic.BuildConfig
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.SonicStatus
 import guru.liquid.embysonic.data.settings.SettingsRepository
@@ -27,6 +28,7 @@ data class SettingsUiState(
     val coordinatorUrl: String = "",
     val castServerUrl: String = "",
     val userName: String = "",
+    val appVersion: String = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
     val savedMessage: String? = null,
     val loggedOut: Boolean = false,
     val analysisStatus: AnalysisStatusUiState = AnalysisStatusUiState.Loading,
