@@ -1,8 +1,20 @@
 # Codex task — Casting (Chromecast / Google Cast)
 
-> **NEXT: Phase 2 — Emby progress reporting.** Phase 0 and Phase 1 are done.
-> Phase 2.1 Cast volume polish is also done: Now Playing has an app-side Cast
-> volume slider with optimistic updates, verified by Kaj on Pixel 8 Pro + SHIELD.
+> **NEXT: Phase 3 UI polish + Phase 2 verification.** Phase 0, Phase 1, and
+> Phase 2.1 (Cast volume slider with optimistic updates) are done. A transient-
+> drop fix also landed (commit 36dc41e): a Wi-Fi blip no longer doubles audio —
+> suspend/abnormal end keep the receiver playing solo, and the phone only auto-
+> resumes on a clean user-initiated Stop Casting. Verified on Pixel 8 Pro + SHIELD.
+>
+> Do next:
+> 1. **Phase 3 UI polish** — Cast button in the mini-player (`ui/main/MiniPlayerBar.kt`);
+>    visibly grey/disable the equalizer, crossfade, and offline-prefetch entry
+>    points while casting (runtime suppression already exists from Phase 1); add a
+>    "Casting to <device>" indicator on Now Playing.
+> 2. **Phase 2 verification** — confirm Emby "now playing"/resume points are
+>    correct *while casting* (progress reporting from the cast position is wired
+>    but unverified), and regression-test skip/seek/repeat/Guest DJ across a
+>    longer cast queue.
 
 liquidWave (emby-sonic Android) should cast music to Chromecast / Google TV /
 cast-enabled speakers. Read `AGENTS.md` and `docs/spec.md` first. Decisions are
