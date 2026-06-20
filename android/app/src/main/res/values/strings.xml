@@ -6,4 +6,7 @@
     <string name="widget_previous">Previous track</string>
     <string name="widget_play_pause">Play or pause</string>
     <string name="widget_next">Next track</string>
+    <string name="widget_cast">Cast</string>
+    <string name="widget_time_zero">0:00</string>
+    <string name="widget_time_dash">--:--</string>
 </resources>

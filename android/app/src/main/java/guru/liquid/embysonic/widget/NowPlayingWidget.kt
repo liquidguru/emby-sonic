@@ -32,6 +32,12 @@ object NowPlayingWidget {
         val isPlaying: Boolean,
         val hasPrevious: Boolean,
         val hasNext: Boolean,
+        // Position/duration in whole seconds so a 500ms tick only re-renders the
+        // widget about once per second instead of twice.
+        val positionSec: Long,
+        val durationSec: Long,
+        val isCasting: Boolean,
+        val castDeviceName: String?,
     )
 
     fun snapshotFrom(state: PlaybackUiState): Snapshot {
@@ -44,15 +50,60 @@ object NowPlayingWidget {
             isPlaying = state.isPlaying,
             hasPrevious = state.hasPrevious,
             hasNext = state.hasNext,
+            positionSec = (state.positionMs / 1000L).coerceAtLeast(0),
+            durationSec = (state.durationMs / 1000L).coerceAtLeast(0),
+            isCasting = state.isCasting,
+            castDeviceName = state.castVolume.deviceName,
         )
     }
 
-    /** Push [snapshot] (and the already-loaded [artwork], if any) to every widget instance. */
+    /**
+     * Full widget update — includes the artwork bitmap. Use this only when the
+     * track/state changes, not on every position tick: re-sending the bitmap each
+     * second overwhelms the RemoteViews bitmap handling and the art stops painting.
+     */
     fun render(context: Context, snapshot: Snapshot, artwork: Bitmap?, palette: WidgetPalette) {
         val manager = AppWidgetManager.getInstance(context) ?: return
         val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetProvider::class.java))
         if (ids.isEmpty()) return
         manager.updateAppWidget(ids, buildViews(context, snapshot, artwork, palette))
+    }
+
+    /**
+     * Lightweight per-second update: only the progress bar + times, applied via
+     * [AppWidgetManager.partiallyUpdateAppWidget] so the existing artwork and the
+     * rest of the widget are left untouched (no bitmap re-send).
+     */
+    fun renderProgress(context: Context, snapshot: Snapshot, palette: WidgetPalette) {
+        val manager = AppWidgetManager.getInstance(context) ?: return
+        val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetProvider::class.java))
+        if (ids.isEmpty()) return
+        val views = RemoteViews(context.packageName, R.layout.widget_now_playing)
+        applyProgress(views, snapshot, palette)
+        manager.partiallyUpdateAppWidget(ids, views)
+    }
+
+    private fun applyProgress(views: RemoteViews, snapshot: Snapshot, palette: WidgetPalette) {
+        val duration = snapshot.durationSec
+        val position = if (duration > 0) snapshot.positionSec.coerceAtMost(duration) else snapshot.positionSec
+        val progress = if (duration > 0) ((position * 1000L) / duration).toInt() else 0
+        views.setProgressBar(R.id.widget_progress, 1000, progress, false)
+        views.setTextViewText(R.id.widget_position, formatTime(position))
+        views.setTextViewText(R.id.widget_duration, if (duration > 0) formatTime(duration) else "--:--")
+        views.setTextColor(R.id.widget_position, palette.textSecondary)
+        views.setTextColor(R.id.widget_duration, palette.textSecondary)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            views.setColorStateList(
+                R.id.widget_progress,
+                "setProgressTintList",
+                ColorStateList.valueOf(palette.accent),
+            )
+            views.setColorStateList(
+                R.id.widget_progress,
+                "setProgressBackgroundTintList",
+                ColorStateList.valueOf(palette.textSecondary),
+            )
+        }
     }
 
     fun buildViews(
@@ -64,7 +115,18 @@ object NowPlayingWidget {
         val views = RemoteViews(context.packageName, R.layout.widget_now_playing)
 
         views.setTextViewText(R.id.widget_title, snapshot.title)
-        views.setTextViewText(R.id.widget_artist, snapshot.artist)
+        views.setTextViewText(
+            R.id.widget_artist,
+            if (snapshot.isCasting) {
+                snapshot.castDeviceName?.let { "Casting to $it" } ?: "Casting"
+            } else {
+                snapshot.artist
+            },
+        )
+
+        // Progress bar + elapsed/total times (also used by the lightweight
+        // partial updates each second).
+        applyProgress(views, snapshot, palette)
 
         // Recolour to match the in-app theme. setColorFilter works on all API
         // levels; background tinting (rounded shapes) needs API 31+.
@@ -73,6 +135,7 @@ object NowPlayingWidget {
         views.setInt(R.id.widget_previous, "setColorFilter", palette.textPrimary)
         views.setInt(R.id.widget_next, "setColorFilter", palette.textPrimary)
         views.setInt(R.id.widget_play_pause, "setColorFilter", palette.accent)
+        views.setInt(R.id.widget_cast, "setColorFilter", if (snapshot.isCasting) palette.accent else palette.textSecondary)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             views.setColorStateList(
                 R.id.widget_root,
@@ -99,8 +162,11 @@ object NowPlayingWidget {
             if (snapshot.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
         )
 
-        // Tapping anywhere on the body opens the app (Now Playing).
+        // Tapping the body (or the cast icon) opens the app. A receiver picker
+        // can't be shown from a widget — the real MediaRouteButton lives on Now
+        // Playing — so the cast icon just opens the app there.
         views.setOnClickPendingIntent(R.id.widget_root, openAppIntent(context))
+        views.setOnClickPendingIntent(R.id.widget_cast, openAppIntent(context))
 
         // Transport controls are only meaningful when something is loaded.
         val controlsVisible = if (snapshot.hasContent) View.VISIBLE else View.GONE
@@ -134,6 +200,13 @@ object NowPlayingWidget {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    }
+
+    private fun formatTime(totalSeconds: Long): String {
+        val s = totalSeconds.coerceAtLeast(0)
+        val minutes = s / 60
+        val seconds = s % 60
+        return "%d:%02d".format(minutes, seconds)
     }
 
     private fun command(context: Context, action: String): PendingIntent {

@@ -4,7 +4,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
 import android.media.AudioManager
 import android.media.MediaMetadata as PlatformMediaMetadata
 import android.net.Uri
@@ -29,7 +28,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import coil.imageLoader
+import coil.request.ErrorResult
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.google.common.util.concurrent.ListenableFuture
@@ -47,6 +48,7 @@ import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
 import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
+import guru.liquid.embysonic.data.settings.ThemeChoice
 import guru.liquid.embysonic.widget.NowPlayingWidget
 import guru.liquid.embysonic.widget.WidgetTheme
 import kotlinx.coroutines.CoroutineScope
@@ -502,6 +504,7 @@ class PlaybackController @Inject constructor(
     // mere play/pause toggle.
     private var lastWidgetArtUrl: String? = null
     private var lastWidgetBitmap: Bitmap? = null
+    private var lastWidgetHeavyKey: Pair<NowPlayingWidget.Snapshot, ThemeChoice>? = null
 
     private fun startWidgetUpdates() {
         scope.launch {
@@ -514,12 +517,17 @@ class PlaybackController @Inject constructor(
                         lastWidgetArtUrl = snapshot.imageUrl
                         lastWidgetBitmap = snapshot.imageUrl?.let { loadWidgetArt(it) }
                     }
-                    NowPlayingWidget.render(
-                        context,
-                        snapshot,
-                        lastWidgetBitmap,
-                        WidgetTheme.paletteFor(context, theme),
-                    )
+                    val palette = WidgetTheme.paletteFor(context, theme)
+                    // Only do a full update (which re-sends the artwork bitmap) when a
+                    // non-progress field changes; otherwise apply a lightweight
+                    // progress-only partial update so the bitmap isn't re-sent every tick.
+                    val heavyKey = snapshot.copy(positionSec = 0) to theme
+                    if (heavyKey != lastWidgetHeavyKey) {
+                        lastWidgetHeavyKey = heavyKey
+                        NowPlayingWidget.render(context, snapshot, lastWidgetBitmap, palette)
+                    } else {
+                        NowPlayingWidget.renderProgress(context, snapshot, palette)
+                    }
                 }
         }
     }
@@ -532,15 +540,39 @@ class PlaybackController @Inject constructor(
         NowPlayingWidget.render(context, snapshot, art, palette)
     }
 
-    private suspend fun loadWidgetArt(url: String): Bitmap? = runCatching {
-        val request = ImageRequest.Builder(context)
-            .data(url)
-            .allowHardware(false) // RemoteViews require a software bitmap.
-            .size(256)
-            .build()
-        val result = context.imageLoader.execute(request) as? SuccessResult
-        (result?.drawable as? BitmapDrawable)?.bitmap
-    }.getOrNull()
+    private suspend fun loadWidgetArt(url: String): Bitmap? {
+        val authed = widgetArtUrl(url)
+        return runCatching {
+            val request = ImageRequest.Builder(context)
+                .data(authed)
+                .allowHardware(false) // RemoteViews require a software bitmap.
+                .size(256) // Small bitmap for a RemoteViews ImageView (~88dp).
+                .build()
+            when (val result = context.imageLoader.execute(request)) {
+                is SuccessResult -> {
+                    // Convert whatever drawable Coil returns (not always a plain
+                    // BitmapDrawable) into a software bitmap for the RemoteViews.
+                    result.drawable.toBitmap().copy(Bitmap.Config.ARGB_8888, false)
+                }
+                is ErrorResult -> {
+                    Log.w(TAG, "Widget art failed: $authed", result.throwable)
+                    null
+                }
+            }
+        }.onFailure { Log.w(TAG, "Widget art error: $authed", it) }.getOrNull()
+    }
+
+    /**
+     * The widget loads art via Coil's default image loader, which has no Emby
+     * auth interceptor — so append the token as `api_key` to be safe if the
+     * server requires auth for images.
+     */
+    private fun widgetArtUrl(url: String): String {
+        if (url.contains("api_key=")) return url
+        val token = settings.snapshot().accessToken?.takeIf { it.isNotBlank() } ?: return url
+        val separator = if (url.contains('?')) '&' else '?'
+        return "$url${separator}api_key=$token"
+    }
 
     fun playQueue(items: List<LibraryItem>, startItem: LibraryItem, source: PlaybackSource? = null) {
         setQueue(items = items, startItem = startItem, shuffled = false, playWhenReady = true, source = source)

@@ -6,12 +6,12 @@
     android:background="@drawable/widget_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="8dp">
+    android:padding="12dp">
 
     <ImageView
         android:id="@+id/widget_art"
-        android:layout_width="52dp"
-        android:layout_height="52dp"
+        android:layout_width="88dp"
+        android:layout_height="88dp"
         android:background="@drawable/widget_art_background"
         android:contentDescription="@string/widget_art_description"
         android:scaleType="centerCrop"
@@ -20,20 +20,38 @@
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
+        android:layout_marginStart="12dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/widget_title"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:fontFamily="sans-serif-medium"
-            android:maxLines="1"
-            android:text="@string/app_name"
-            android:textColor="#E3E7F0"
-            android:textSize="14sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:text="@string/app_name"
+                android:textColor="#E3E7F0"
+                android:textSize="15sp" />
+
+            <ImageButton
+                android:id="@+id/widget_cast"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/widget_cast"
+                android:padding="4dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_cast" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/widget_artist"
@@ -44,32 +62,79 @@
             android:text="@string/widget_idle_subtitle"
             android:textColor="#9AA3B8"
             android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/widget_position"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="34dp"
+                android:text="@string/widget_time_zero"
+                android:textColor="#9AA3B8"
+                android:textSize="11sp" />
+
+            <ProgressBar
+                android:id="@+id/widget_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:max="1000" />
+
+            <TextView
+                android:id="@+id/widget_duration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="34dp"
+                android:gravity="end"
+                android:text="@string/widget_time_dash"
+                android:textColor="#9AA3B8"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/widget_previous"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/widget_previous"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_previous" />
+
+            <ImageButton
+                android:id="@+id/widget_play_pause"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/widget_play_pause"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_play" />
+
+            <ImageButton
+                android:id="@+id/widget_next"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/widget_next"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_widget_next" />
+        </LinearLayout>
     </LinearLayout>
-
-    <ImageButton
-        android:id="@+id/widget_previous"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/widget_previous"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_widget_previous" />
-
-    <ImageButton
-        android:id="@+id/widget_play_pause"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/widget_play_pause"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_widget_play" />
-
-    <ImageButton
-        android:id="@+id/widget_next"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/widget_next"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_widget_next" />
 </LinearLayout>
