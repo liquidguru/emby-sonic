@@ -34,6 +34,19 @@ data class CastVolumeState(
     val pending: Boolean = false,
 )
 
+enum class OfflinePrefetchStatus {
+    IDLE,
+    WARMING,
+    READY,
+    UNAVAILABLE,
+}
+
+data class OfflinePrefetchState(
+    val status: OfflinePrefetchStatus = OfflinePrefetchStatus.IDLE,
+    val readyCount: Int = 0,
+    val targetCount: Int = 0,
+)
+
 /**
  * Describes where a playback queue came from, so it can be recorded in the
  * Recent plays history. [key] is a stable identity for de-duping repeated plays
@@ -84,6 +97,7 @@ data class PlaybackUiState(
     val guestDjLoading: Boolean = false,
     val isCasting: Boolean = false,
     val castVolume: CastVolumeState = CastVolumeState(),
+    val offlinePrefetch: OfflinePrefetchState = OfflinePrefetchState(),
     // During an active music crossfade, the outgoing track and the blend length,
     // so Now Playing can cross-dissolve the artwork in step with the audio.
     val crossfadeFromTrack: PlaybackTrack? = null,

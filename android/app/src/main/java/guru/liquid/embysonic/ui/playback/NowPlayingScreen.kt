@@ -81,6 +81,8 @@ import coil.compose.AsyncImage
 import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.playback.CastVolumeState
+import guru.liquid.embysonic.playback.OfflinePrefetchState
+import guru.liquid.embysonic.playback.OfflinePrefetchStatus
 import guru.liquid.embysonic.playback.PlaybackRepeatMode
 import guru.liquid.embysonic.playback.SleepTimerMode
 import guru.liquid.embysonic.playback.PlaybackTrack
@@ -351,7 +353,12 @@ private fun PlaybackStatusChips(
 ) {
     val showSleep = state.sleepTimerMode != SleepTimerMode.OFF
     val showSpeed = state.currentTrack?.contentKind == ContentKind.AUDIOBOOK
-    if (!showSleep && !showSpeed) return
+    val showPrefetch = state.currentTrack?.contentKind == ContentKind.MUSIC &&
+        !state.isCasting &&
+        state.offlinePrefetch.targetCount > 0 &&
+        state.offlinePrefetch.status != OfflinePrefetchStatus.IDLE &&
+        state.offlinePrefetch.status != OfflinePrefetchStatus.UNAVAILABLE
+    if (!showSleep && !showSpeed && !showPrefetch) return
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
@@ -374,8 +381,26 @@ private fun PlaybackStatusChips(
                 onClick = onOpenSpeedDialog,
             )
         }
+        if (showPrefetch) {
+            StatusChip(
+                text = offlinePrefetchText(state.offlinePrefetch),
+                icon = { Icon(Icons.Default.Waves, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            )
+        }
     }
 }
+
+private fun offlinePrefetchText(prefetch: OfflinePrefetchState): String =
+    when (prefetch.status) {
+        OfflinePrefetchStatus.WARMING -> "Prefetching ${prefetch.readyCount}/${prefetch.targetCount}"
+        OfflinePrefetchStatus.READY -> if (prefetch.readyCount >= prefetch.targetCount) {
+            "Offline buffer ready"
+        } else {
+            "Offline buffer ${prefetch.readyCount}/${prefetch.targetCount}"
+        }
+        OfflinePrefetchStatus.IDLE,
+        OfflinePrefetchStatus.UNAVAILABLE -> ""
+    }
 
 @Composable
 private fun CastingIndicator(deviceName: String?) {
@@ -465,7 +490,7 @@ private fun CastVolumeControl(
 @Composable
 private fun StatusChip(
     text: String,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
     icon: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -473,7 +498,7 @@ private fun StatusChip(
             .padding(horizontal = 4.dp)
             .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.76f))
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

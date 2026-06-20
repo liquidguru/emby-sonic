@@ -197,6 +197,7 @@ class PlaybackController @Inject constructor(
     private var lastStartedItemId: String? = null
     private var prefetchJob: Job? = null
     private var prefetchSignature: String? = null
+    private var offlinePrefetch = OfflinePrefetchState()
     private var sleepTimerJob: Job? = null
     private var sleepTimerMode: SleepTimerMode = SleepTimerMode.OFF
     private var sleepTimerEndsAtMs: Long = 0L
@@ -428,6 +429,7 @@ class PlaybackController @Inject constructor(
         cancelCrossfade()
         prefetchJob?.cancel()
         prefetchSignature = null
+        setOfflinePrefetchState(OfflinePrefetchState(OfflinePrefetchStatus.UNAVAILABLE))
         audioEffects.setSuppressedForRemotePlayback(true)
         player.pause()
         remote.repeatMode = player.repeatMode
@@ -727,6 +729,7 @@ class PlaybackController @Inject constructor(
         streamOffsetsByIndex.clear()
         prefetchJob?.cancel()
         prefetchSignature = null
+        offlinePrefetch = OfflinePrefetchState()
         clearGuestDjState()
         clearSleepTimer()
         lastStartedItemId = null
@@ -1121,7 +1124,7 @@ class PlaybackController @Inject constructor(
 
     private fun ensurePlaybackService() {
         val intent = Intent(context, SonicPlaybackService::class.java)
-        context.startService(intent)
+        ContextCompat.startForegroundService(context, intent)
         connectNotificationController()
     }
 
@@ -1176,6 +1179,7 @@ class PlaybackController @Inject constructor(
             guestDjLoading = guestDjLoading,
             isCasting = isCasting,
             castVolume = castVolume.takeIf { isCasting } ?: CastVolumeState(),
+            offlinePrefetch = offlinePrefetch,
             crossfadeFromTrack = crossfadeFromTrack,
             crossfadeBlendMs = crossfadeBlendMs,
         )
@@ -1342,6 +1346,7 @@ class PlaybackController @Inject constructor(
         if (isCasting) {
             prefetchJob?.cancel()
             prefetchSignature = null
+            setOfflinePrefetchState(OfflinePrefetchState(OfflinePrefetchStatus.UNAVAILABLE))
             return
         }
         val queueSnapshot = queue
@@ -1349,6 +1354,26 @@ class PlaybackController @Inject constructor(
             .drop(anchorIndex + 1)
             .take(PREFETCH_AHEAD_COUNT)
             .filterNot { it.isLongForm }
+        if (upcoming.isEmpty()) {
+            prefetchJob?.cancel()
+            prefetchSignature = null
+            setOfflinePrefetchState(OfflinePrefetchState())
+            return
+        }
+        val readyIds = upcoming
+            .filter { prefetchCache.isCached(it.id) }
+            .mapTo(mutableSetOf()) { it.id }
+        setOfflinePrefetchState(
+            OfflinePrefetchState(
+                status = if (readyIds.size == upcoming.size) {
+                    OfflinePrefetchStatus.READY
+                } else {
+                    OfflinePrefetchStatus.WARMING
+                },
+                readyCount = readyIds.size,
+                targetCount = upcoming.size,
+            ),
+        )
         val signature = buildString {
             append(anchorIndex)
             append(':')
@@ -1375,6 +1400,22 @@ class PlaybackController @Inject constructor(
                     streamUrl = streamUrl(track.id, 0L, UUID.randomUUID().toString()),
                     headers = headers,
                 ) ?: return@forEach
+                readyIds += track.id
+                scope.launch {
+                    if (prefetchSignature == signature) {
+                        setOfflinePrefetchState(
+                            OfflinePrefetchState(
+                                status = if (readyIds.size == upcoming.size) {
+                                    OfflinePrefetchStatus.READY
+                                } else {
+                                    OfflinePrefetchStatus.WARMING
+                                },
+                                readyCount = readyIds.size,
+                                targetCount = upcoming.size,
+                            ),
+                        )
+                    }
+                }
                 scope.launch {
                     if (queue.getOrNull(index)?.id == track.id && player.currentMediaItemIndex < index) {
                         Log.d(TAG, "Using prefetched file for ${track.id}: $uri")
@@ -1382,6 +1423,26 @@ class PlaybackController @Inject constructor(
                     }
                 }
             }
+            scope.launch {
+                if (prefetchSignature == signature && readyIds.isNotEmpty()) {
+                    setOfflinePrefetchState(
+                        OfflinePrefetchState(
+                            status = OfflinePrefetchStatus.READY,
+                            readyCount = readyIds.size,
+                            targetCount = upcoming.size,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun setOfflinePrefetchState(next: OfflinePrefetchState) {
+        if (offlinePrefetch == next) return
+        offlinePrefetch = next
+        val current = _state.value
+        if (current.offlinePrefetch != next) {
+            _state.value = current.copy(offlinePrefetch = next)
         }
     }
 
