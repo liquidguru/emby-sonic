@@ -8,6 +8,7 @@ import guru.liquid.embysonic.data.coordinator.dto.SonicStatus
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.data.settings.ThemeChoice
 import guru.liquid.embysonic.domain.AuthRepository
+import guru.liquid.embysonic.playback.PlaybackController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,8 @@ data class SettingsUiState(
     val crossfadeSeconds: Int = 6,
     val generatedMixTracks: Int = 25,
     val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,
+    val isCasting: Boolean = false,
+    val castDeviceName: String? = null,
 )
 
 @HiltViewModel
@@ -40,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val coordinatorApi: CoordinatorApi,
     private val settings: SettingsRepository,
     private val authRepository: AuthRepository,
+    private val playback: PlaybackController,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -58,6 +62,16 @@ class SettingsViewModel @Inject constructor(
                 generatedMixTracks = snap.generatedMixTracks,
                 themeChoice = snap.themeChoice,
             )
+        }
+        viewModelScope.launch {
+            playback.state.collect { playbackState ->
+                _state.update {
+                    it.copy(
+                        isCasting = playbackState.isCasting,
+                        castDeviceName = playbackState.castVolume.deviceName,
+                    )
+                }
+            }
         }
         refreshAnalysisStatus()
     }

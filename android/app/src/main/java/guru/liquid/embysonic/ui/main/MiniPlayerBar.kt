@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import guru.liquid.embysonic.ui.cast.CastButton
 import guru.liquid.embysonic.ui.library.Artwork
 import guru.liquid.embysonic.ui.playback.NowPlayingViewModel
 
@@ -115,6 +116,7 @@ internal fun MiniPlayerBar(
                         )
                     }
                 }
+                CastButton(modifier = Modifier.size(40.dp))
                 IconButton(
                     onClick = viewModel::skipPrevious,
                     enabled = state.hasPrevious,

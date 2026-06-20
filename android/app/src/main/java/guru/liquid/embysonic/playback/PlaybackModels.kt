@@ -82,6 +82,7 @@ data class PlaybackUiState(
     val guestDjEnabled: Boolean = false,
     val guestDjAvailable: Boolean = false,
     val guestDjLoading: Boolean = false,
+    val isCasting: Boolean = false,
     val castVolume: CastVolumeState = CastVolumeState(),
     // During an active music crossfade, the outgoing track and the blend length,
     // so Now Playing can cross-dissolve the artwork in step with the audio.
