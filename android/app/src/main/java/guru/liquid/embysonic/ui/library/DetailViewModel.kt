@@ -106,9 +106,25 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    private fun hydrateArtistAlbumArt(items: List<LibraryItem>) {
+        val ids = items.map { it.id }
+        viewModelScope.launch {
+            runCatching { repository.hydrateArtistAlbumArt(itemId, items) }
+                .onSuccess { hydrated ->
+                    val current = _state.value as? TabState.Data ?: return@onSuccess
+                    if (current.items.map { it.id } == ids) {
+                        _state.value = TabState.Data(hydrated)
+                    }
+                }
+        }
+    }
+
     private fun loadSimilarCollections(items: List<LibraryItem>) {
         when (kind) {
-            DetailKind.ARTIST_ALBUMS -> loadSimilarArtists()
+            DetailKind.ARTIST_ALBUMS -> {
+                hydrateArtistAlbumArt(items)
+                loadSimilarArtists()
+            }
             DetailKind.ALBUM_TRACKS -> loadSimilarAlbums(items)
             DetailKind.GENRE_TRACKS,
             DetailKind.AUTHOR_BOOKS,

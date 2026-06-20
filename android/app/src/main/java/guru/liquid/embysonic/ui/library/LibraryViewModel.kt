@@ -26,15 +26,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 sealed interface TabState {
+    data object Idle : TabState
     data object Loading : TabState
     data class Data(val items: List<LibraryItem>) : TabState
     data class Error(val message: String) : TabState
 }
 
 data class LibraryUiState(
-    val artists: TabState = TabState.Loading,
-    val albums: TabState = TabState.Loading,
-    val genres: TabState = TabState.Loading,
+    val artists: TabState = TabState.Idle,
+    val albums: TabState = TabState.Idle,
+    val genres: TabState = TabState.Idle,
 )
 
 @HiltViewModel
@@ -75,9 +76,21 @@ class LibraryViewModel @Inject constructor(
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
 
     init {
-        loadArtists()
-        loadAlbums()
-        if (kind == LibraryKind.MUSIC) loadGenres()
+        loadTab(0)
+    }
+
+    fun loadTab(index: Int) {
+        val current = when (index) {
+            0 -> _state.value.artists
+            1 -> _state.value.albums
+            else -> _state.value.genres
+        }
+        if (current is TabState.Loading || current is TabState.Data) return
+        when (index) {
+            0 -> loadArtists()
+            1 -> loadAlbums()
+            else -> if (kind == LibraryKind.MUSIC) loadGenres()
+        }
     }
 
     fun loadArtists() = load(
