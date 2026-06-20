@@ -1,6 +1,8 @@
 package guru.liquid.embysonic.ui.home
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +62,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,6 +96,8 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
     var customizeHome by remember { mutableStateOf(false) }
+    var deletePlaylistTargetId by rememberSaveable { mutableStateOf<String?>(null) }
+    val deletePlaylistTarget = state.playlists.firstOrNull { it.id == deletePlaylistTargetId }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -155,6 +160,7 @@ fun HomeScreen(
                 onOpenAdventure = onOpenAdventure,
                 onPlayStation = viewModel::playStation,
                 onPlayPlaylist = viewModel::playPlaylist,
+                onDeletePlaylist = { deletePlaylistTargetId = it.id },
                 onPlaySonicMix = viewModel::playSonicMix,
                 onPlayAlbum = viewModel::playAlbum,
                 onPlayArtist = viewModel::playArtist,
@@ -176,6 +182,26 @@ fun HomeScreen(
             onDismiss = { customizeHome = false },
         )
     }
+    if (deletePlaylistTarget != null) {
+        AlertDialog(
+            onDismissRequest = { deletePlaylistTargetId = null },
+            title = { Text("Delete playlist") },
+            text = { Text("Delete \"${deletePlaylistTarget.title}\" from Emby? This cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deletePlaylist(deletePlaylistTarget)
+                        deletePlaylistTargetId = null
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletePlaylistTargetId = null }) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -186,6 +212,7 @@ private fun HomeContent(
     onOpenAdventure: () -> Unit,
     onPlayStation: (HomeStation, Int?) -> Unit,
     onPlayPlaylist: (LibraryItem) -> Unit,
+    onDeletePlaylist: (LibraryItem) -> Unit,
     onPlaySonicMix: (LibraryItem) -> Unit,
     onPlayAlbum: (LibraryItem) -> Unit,
     onPlayArtist: (LibraryItem) -> Unit,
@@ -246,6 +273,7 @@ private fun HomeContent(
                         items = state.playlists,
                         onClick = { onOpenItem(it.id, it.title, DetailKind.PLAYLIST_TRACKS) },
                         onPlay = onPlayPlaylist,
+                        onLongPress = onDeletePlaylist,
                     )
                     HomeSectionKind.SONIC_MIXES -> HomeSectionData(
                         items = state.sonicMixes,
@@ -271,6 +299,7 @@ private fun HomeContent(
                             compactCards = compactCards,
                             onClick = sectionData.onClick,
                             onPlay = sectionData.onPlay,
+                            onLongPress = sectionData.onLongPress,
                         )
                     }
                 }
@@ -471,6 +500,7 @@ private fun HomeSection(
     compactCards: Boolean,
     onClick: (LibraryItem) -> Unit,
     onPlay: (LibraryItem) -> Unit,
+    onLongPress: ((LibraryItem) -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -488,18 +518,21 @@ private fun HomeSection(
                     compact = compactCards,
                     onClick = { onClick(item) },
                     onPlay = { onPlay(item) },
+                    onLongPress = onLongPress?.let { { it(item) } },
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HomeTile(
     item: LibraryItem,
     compact: Boolean,
     onClick: () -> Unit,
     onPlay: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
 ) {
     val width = if (compact) 116.dp else 148.dp
     val playSize = if (compact) 34.dp else 40.dp
@@ -507,7 +540,12 @@ private fun HomeTile(
     Card(
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.width(width).clickable(onClick = onClick),
+        modifier = Modifier
+            .width(width)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongPress,
+            ),
     ) {
         Box {
             Artwork(
@@ -610,4 +648,5 @@ private data class HomeSectionData(
     val items: List<LibraryItem>,
     val onClick: (LibraryItem) -> Unit,
     val onPlay: (LibraryItem) -> Unit,
+    val onLongPress: ((LibraryItem) -> Unit)? = null,
 )
