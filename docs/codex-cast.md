@@ -10,8 +10,8 @@
 >
 > Do next:
 > 1. Move on to the next non-cast polish candidate: notification/widget polish,
->    mini-player dissolve polish, coordinator-side adventure dedupe, or offline
->    prefetch buffer polish. Audiobook casting stays deferred.
+>    coordinator-side adventure dedupe, or offline prefetch buffer polish.
+>    Audiobook casting stays deferred.
 
 liquidWave (emby-sonic Android) should cast music to Chromecast / Google TV /
 cast-enabled speakers. Read `AGENTS.md` and `docs/spec.md` first. Decisions are
