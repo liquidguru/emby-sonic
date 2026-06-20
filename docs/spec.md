@@ -1124,6 +1124,18 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   with clearer pending-track language for stable idle counts. User verification
   confirmed the new order, diagnostics content, analysis wording, and Equalizer
   entry point.
+- **M5.14 — Security hardening, no-regret batch (2026-06-20, built):** from a
+  security review of the app. (1) Login now defaults a bare server host to
+  **https** (`AuthRepository.normalizeUrl`) so credentials aren't sent in
+  cleartext by accident; a local server without TLS still works if the user types
+  an explicit `http://` URL, and the login screen says so. (2) `allowBackup` is
+  now **false** so the Emby session token (in the settings DataStore) is not swept
+  into cloud/adb backups; cost is a re-login after a device migration. Deferred
+  (needs its own tested pass): encrypt the token at rest (Keystore; has a device
+  edge-case crash tail), scoped cleartext via network-security-config (can't
+  CIDR-allow private IPs, would break http-LAN self-hosters — rely on the https
+  default instead), R8/release-signing for distribution, and the server-side
+  `WORKER_SECRET` split. See review notes.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 

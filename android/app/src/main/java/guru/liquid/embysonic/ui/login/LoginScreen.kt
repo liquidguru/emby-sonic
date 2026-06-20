@@ -52,7 +52,10 @@ fun LoginScreen(
             value = state.serverUrl,
             onValueChange = viewModel::onServerUrlChange,
             label = { Text("Server URL") },
-            placeholder = { Text("192.168.1.9:8096") },
+            placeholder = { Text("https://emby.example.com") },
+            supportingText = {
+                Text("Defaults to HTTPS. Local server without HTTPS? Enter http:// explicitly, e.g. http://192.168.1.9:8096")
+            },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             modifier = Modifier.fillMaxWidth(),
