@@ -6,12 +6,15 @@
     android:background="@drawable/widget_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="12dp">
+    android:paddingStart="10dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="6dp">
 
     <FrameLayout
         android:id="@+id/widget_art_frame"
-        android:layout_width="88dp"
-        android:layout_height="88dp"
+        android:layout_width="68dp"
+        android:layout_height="68dp"
         android:background="@drawable/widget_art_background">
 
         <ImageView
@@ -27,7 +30,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:contentDescription="@string/widget_art_description"
-            android:padding="24dp"
+            android:padding="18dp"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_widget_placeholder" />
     </FrameLayout>
@@ -35,38 +38,21 @@
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="10dp"
         android:layout_weight="1"
+        android:gravity="center_vertical"
         android:orientation="vertical">
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/widget_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/widget_title"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:fontFamily="sans-serif-medium"
-                android:maxLines="1"
-                android:text="@string/app_name"
-                android:textColor="#E3E7F0"
-                android:textSize="15sp" />
-
-            <ImageButton
-                android:id="@+id/widget_cast"
-                android:layout_width="34dp"
-                android:layout_height="34dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/widget_cast"
-                android:padding="4dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_widget_cast" />
-        </LinearLayout>
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:text="@string/app_name"
+            android:textColor="#E3E7F0"
+            android:textSize="15sp" />
 
         <TextView
             android:id="@+id/widget_artist"
@@ -81,7 +67,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="2dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -92,7 +78,7 @@
                 android:minWidth="34dp"
                 android:text="@string/widget_time_zero"
                 android:textColor="#9AA3B8"
-                android:textSize="11sp" />
+                android:textSize="10sp" />
 
             <ProgressBar
                 android:id="@+id/widget_progress"
@@ -112,20 +98,37 @@
                 android:gravity="end"
                 android:text="@string/widget_time_dash"
                 android:textColor="#9AA3B8"
-                android:textSize="11sp" />
+                android:textSize="10sp" />
         </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="126dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="6dp">
+
+        <ImageButton
+            android:id="@+id/widget_cast"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_gravity="top|end"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/widget_cast"
+            android:padding="5dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_widget_cast" />
 
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_gravity="bottom|end"
             android:gravity="center"
             android:orientation="horizontal">
 
             <ImageButton
                 android:id="@+id/widget_previous"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/widget_previous"
                 android:scaleType="fitCenter"
@@ -133,10 +136,10 @@
 
             <ImageButton
                 android:id="@+id/widget_play_pause"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:layout_marginStart="8dp"
-                android:layout_marginEnd="8dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/widget_play_pause"
                 android:scaleType="fitCenter"
@@ -144,12 +147,12 @@
 
             <ImageButton
                 android:id="@+id/widget_next"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/widget_next"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_widget_next" />
         </LinearLayout>
-    </LinearLayout>
+    </FrameLayout>
 </LinearLayout>
