@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -41,6 +42,8 @@ fun EqualizerScreen(
     viewModel: EqualizerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
+    val isCasting = playbackState.isCasting
 
     Scaffold(
         topBar = {
@@ -53,7 +56,7 @@ fun EqualizerScreen(
                 },
                 actions = {
                     if (state.available) {
-                        TextButton(onClick = viewModel::reset, enabled = state.enabled) {
+                        TextButton(onClick = viewModel::reset, enabled = state.enabled && !isCasting) {
                             Text("Flat")
                         }
                     }
@@ -83,13 +86,35 @@ fun EqualizerScreen(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            if (isCasting) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.CastConnected,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        playbackState.castVolume.deviceName?.let { "Unavailable while casting to $it." }
+                            ?: "Unavailable while casting.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 10.dp),
+                    )
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Equalizer", style = MaterialTheme.typography.titleLarge)
-                Switch(checked = state.enabled, onCheckedChange = viewModel::setEnabled)
+                Switch(
+                    checked = state.enabled,
+                    onCheckedChange = viewModel::setEnabled,
+                    enabled = !isCasting,
+                )
             }
 
             if (state.presets.isNotEmpty()) {
@@ -103,7 +128,7 @@ fun EqualizerScreen(
                             selected = false,
                             onClick = { viewModel.usePreset(index) },
                             label = { Text(name) },
-                            enabled = state.enabled,
+                            enabled = state.enabled && !isCasting,
                         )
                     }
                 }
@@ -115,7 +140,7 @@ fun EqualizerScreen(
                     band = band,
                     minMb = state.minLevelMb,
                     maxMb = state.maxLevelMb,
-                    enabled = state.enabled,
+                    enabled = state.enabled && !isCasting,
                     onLevelChange = { viewModel.setBandLevel(band.index, it) },
                     onLevelChangeFinished = viewModel::persistBandLevels,
                 )

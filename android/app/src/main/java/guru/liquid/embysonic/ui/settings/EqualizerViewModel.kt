@@ -4,14 +4,18 @@ import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.playback.AudioEffectsController
 import guru.liquid.embysonic.playback.EqualizerState
+import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.PlaybackUiState
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
 @HiltViewModel
 class EqualizerViewModel @Inject constructor(
     private val audioEffects: AudioEffectsController,
+    playback: PlaybackController,
 ) : ViewModel() {
     val state: StateFlow<EqualizerState> = audioEffects.state
+    val playbackState: StateFlow<PlaybackUiState> = playback.state
 
     fun setEnabled(enabled: Boolean) = audioEffects.setEnabled(enabled)
     fun setBandLevel(index: Int, levelMb: Int) = audioEffects.setBandLevel(index, levelMb)

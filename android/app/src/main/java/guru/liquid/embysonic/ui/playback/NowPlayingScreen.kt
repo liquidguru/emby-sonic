@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -292,6 +293,10 @@ private fun PlayerContent(
                 onCancelSleepTimer = onCancelSleepTimer,
                 onOpenSpeedDialog = onOpenSpeedDialog,
             )
+            if (state.isCasting) {
+                Spacer(Modifier.height(12.dp))
+                CastingIndicator(deviceName = state.castVolume.deviceName)
+            }
             if (state.castVolume.available) {
                 Spacer(Modifier.height(12.dp))
                 CastVolumeControl(
@@ -373,6 +378,38 @@ private fun PlaybackStatusChips(
 }
 
 @Composable
+private fun CastingIndicator(deviceName: String?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.CastConnected,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp),
+        )
+        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+            Text(
+                deviceName?.let { "Casting to $it" } ?: "Casting",
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "Equalizer, crossfade, and offline prefetch are unavailable while casting.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
 private fun CastVolumeControl(
     volume: CastVolumeState,
     onVolumeChange: (Float) -> Unit,
@@ -398,7 +435,7 @@ private fun CastVolumeControl(
                     modifier = Modifier.size(20.dp),
                 )
                 Text(
-                    volume.deviceName?.let { "Casting to $it" } ?: "Cast volume",
+                    "Cast volume",
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

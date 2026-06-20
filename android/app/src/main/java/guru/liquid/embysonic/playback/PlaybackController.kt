@@ -401,7 +401,10 @@ class PlaybackController @Inject constructor(
     }
 
     private fun publishCastVolumeState() {
-        _state.value = _state.value.copy(castVolume = castVolume.takeIf { isCasting } ?: CastVolumeState())
+        _state.value = _state.value.copy(
+            isCasting = isCasting,
+            castVolume = castVolume.takeIf { isCasting } ?: CastVolumeState(),
+        )
     }
 
     fun activePlayerSnapshot(): Player = activePlayerRef
@@ -1128,6 +1131,7 @@ class PlaybackController @Inject constructor(
             guestDjEnabled = guestDjEnabled,
             guestDjAvailable = currentTrack?.guestDjEligible == true && player.repeatMode == Player.REPEAT_MODE_OFF,
             guestDjLoading = guestDjLoading,
+            isCasting = isCasting,
             castVolume = castVolume.takeIf { isCasting } ?: CastVolumeState(),
             crossfadeFromTrack = crossfadeFromTrack,
             crossfadeBlendMs = crossfadeBlendMs,

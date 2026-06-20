@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -73,6 +75,9 @@ fun SettingsScreen(
         ) {
             Text("Signed in as ${state.userName}", style = MaterialTheme.typography.titleMedium)
             Text("Emby server: ${state.serverUrl}", style = MaterialTheme.typography.bodyMedium)
+            if (state.isCasting) {
+                CastUnavailableHint(deviceName = state.castDeviceName)
+            }
 
             OutlinedTextField(
                 value = state.coordinatorUrl,
@@ -103,7 +108,7 @@ fun SettingsScreen(
                 Text("Save cast server URL")
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f)) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -197,7 +202,11 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Crossfade", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Blend one song into the next. Music only — never audiobooks.",
+                                if (state.isCasting) {
+                                    "Unavailable while casting. The receiver streams each track directly."
+                                } else {
+                                    "Blend one song into the next. Music only - never audiobooks."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -205,6 +214,7 @@ fun SettingsScreen(
                         Switch(
                             checked = state.crossfadeEnabled,
                             onCheckedChange = viewModel::setCrossfadeEnabled,
+                            enabled = !state.isCasting,
                         )
                     }
                     if (state.crossfadeEnabled) {
@@ -218,6 +228,7 @@ fun SettingsScreen(
                                     selected = state.crossfadeSeconds == seconds,
                                     onClick = { viewModel.setCrossfadeSeconds(seconds) },
                                     label = { Text("${seconds}s") },
+                                    enabled = !state.isCasting,
                                 )
                             }
                         }
@@ -248,12 +259,68 @@ fun SettingsScreen(
                 }
             }
 
-            OutlinedButton(onClick = onOpenEqualizer, modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Offline prefetch", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (state.isCasting) {
+                            "Unavailable while casting. Cast receivers fetch directly from Emby."
+                        } else {
+                            "Automatic next-track buffering for local playback."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            OutlinedButton(
+                onClick = onOpenEqualizer,
+                enabled = !state.isCasting,
+                modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f),
+            ) {
                 Text("Equalizer")
+            }
+            if (state.isCasting) {
+                Text(
+                    "Equalizer is unavailable while casting.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             OutlinedButton(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
                 Text("Sign out")
+            }
+        }
+    }
+}
+
+@Composable
+private fun CastUnavailableHint(deviceName: String?) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.CastConnected,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Text(
+                    deviceName?.let { "Casting to $it" } ?: "Casting",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "Local-only audio features are unavailable while casting.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
