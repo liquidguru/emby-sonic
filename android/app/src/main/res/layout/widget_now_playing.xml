@@ -8,14 +8,29 @@
     android:orientation="horizontal"
     android:padding="12dp">
 
-    <ImageView
-        android:id="@+id/widget_art"
+    <FrameLayout
+        android:id="@+id/widget_art_frame"
         android:layout_width="88dp"
         android:layout_height="88dp"
-        android:background="@drawable/widget_art_background"
-        android:contentDescription="@string/widget_art_description"
-        android:scaleType="centerCrop"
-        android:src="@drawable/ic_widget_placeholder" />
+        android:background="@drawable/widget_art_background">
+
+        <ImageView
+            android:id="@+id/widget_art"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/widget_art_description"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/widget_art_placeholder"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/widget_art_description"
+            android:padding="24dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_widget_placeholder" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"

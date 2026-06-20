@@ -62,7 +62,6 @@ object NowPlayingWidget {
     fun render(context: Context, snapshot: Snapshot, artUri: Uri?, palette: WidgetPalette) {
         val manager = AppWidgetManager.getInstance(context) ?: return
         val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetProvider::class.java))
-        android.util.Log.i("WidgetArt", "render ids=${ids.size} artUri=$artUri")
         if (ids.isEmpty()) return
         if (artUri != null) grantArtToHost(context, artUri)
         manager.updateAppWidget(ids, buildViews(context, snapshot, artUri, palette))
@@ -79,22 +78,8 @@ object NowPlayingWidget {
                 Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
                 PackageManager.MATCH_DEFAULT_ONLY,
             )?.activityInfo?.packageName
-            android.util.Log.i("WidgetArt", "grant home=$home uri=$uri")
             if (home != null) context.grantUriPermission(home, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }.onFailure { android.util.Log.w("WidgetArt", "grant failed", it) }
-    }
-
-    /**
-     * Lightweight per-second update: progress bar + times only, via
-     * [AppWidgetManager.partiallyUpdateAppWidget], leaving the artwork untouched.
-     */
-    fun renderProgress(context: Context, snapshot: Snapshot, palette: WidgetPalette) {
-        val manager = AppWidgetManager.getInstance(context) ?: return
-        val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetProvider::class.java))
-        if (ids.isEmpty()) return
-        val views = RemoteViews(context.packageName, R.layout.widget_now_playing)
-        applyProgress(views, snapshot, palette)
-        manager.partiallyUpdateAppWidget(ids, views)
+        }
     }
 
     private fun applyProgress(views: RemoteViews, snapshot: Snapshot, palette: WidgetPalette) {
@@ -138,8 +123,7 @@ object NowPlayingWidget {
             },
         )
 
-        // Progress bar + elapsed/total times (also used by the lightweight
-        // partial updates each second).
+        // Progress bar + elapsed/total times.
         applyProgress(views, snapshot, palette)
 
         // Recolour to match the in-app theme. setColorFilter works on all API
@@ -157,7 +141,7 @@ object NowPlayingWidget {
                 ColorStateList.valueOf(palette.surface),
             )
             views.setColorStateList(
-                R.id.widget_art,
+                R.id.widget_art_frame,
                 "setBackgroundTintList",
                 ColorStateList.valueOf(palette.artBackground),
             )
@@ -166,11 +150,15 @@ object NowPlayingWidget {
         if (artUri != null) {
             // A FileProvider URI the launcher loads from disk; replayable across
             // re-inflation and not subject to the RemoteViews bitmap cache.
+            views.setViewVisibility(R.id.widget_art, View.VISIBLE)
+            views.setViewVisibility(R.id.widget_art_placeholder, View.GONE)
             views.setImageViewUri(R.id.widget_art, artUri)
         } else {
-            views.setImageViewResource(R.id.widget_art, R.drawable.ic_widget_placeholder)
+            views.setViewVisibility(R.id.widget_art, View.GONE)
+            views.setViewVisibility(R.id.widget_art_placeholder, View.VISIBLE)
+            views.setImageViewResource(R.id.widget_art_placeholder, R.drawable.ic_widget_placeholder)
             // Tint only the placeholder glyph — never real artwork.
-            views.setInt(R.id.widget_art, "setColorFilter", palette.accent)
+            views.setInt(R.id.widget_art_placeholder, "setColorFilter", palette.accent)
         }
 
         views.setImageViewResource(
