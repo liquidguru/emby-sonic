@@ -2,6 +2,7 @@ package guru.liquid.embysonic.ui.main
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -27,10 +28,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.pointer.pointerInput
 import guru.liquid.embysonic.ui.playback.crossfadeOutgoingAlpha
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,6 +46,7 @@ import guru.liquid.embysonic.playback.PlaybackTrack
 import guru.liquid.embysonic.ui.cast.CastButton
 import guru.liquid.embysonic.ui.library.Artwork
 import guru.liquid.embysonic.ui.playback.NowPlayingViewModel
+import kotlin.math.abs
 
 @Composable
 internal fun MiniPlayerBar(
@@ -54,11 +60,41 @@ internal fun MiniPlayerBar(
     } else {
         0f
     }
+    var dragX by remember(track.id) { mutableFloatStateOf(0f) }
+    var dragY by remember(track.id) { mutableFloatStateOf(0f) }
+    val dismissThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
+    val dragDistance = maxOf(abs(dragX), dragY)
+    val dragAlpha = (1f - dragDistance / (dismissThresholdPx * 1.4f)).coerceIn(0.45f, 1f)
 
     Surface(
         tonalElevation = 3.dp,
         color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                translationX = dragX
+                translationY = dragY
+                alpha = dragAlpha
+            }
+            .pointerInput(track.id, dismissThresholdPx) {
+                detectDragGestures(
+                    onDragCancel = {
+                        dragX = 0f
+                        dragY = 0f
+                    },
+                    onDragEnd = {
+                        if (abs(dragX) > dismissThresholdPx || dragY > dismissThresholdPx) {
+                            viewModel.stopPlayback()
+                        }
+                        dragX = 0f
+                        dragY = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        dragX += dragAmount.x
+                        dragY = (dragY + dragAmount.y).coerceAtLeast(0f)
+                    },
+                )
+            },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             MiniSeekBar(
