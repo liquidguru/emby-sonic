@@ -28,6 +28,9 @@ class OfflinePrefetchCache @Inject constructor(
         return Uri.fromFile(file)
     }
 
+    fun isCached(trackId: String): Boolean =
+        cacheFile(trackId).let { it.exists() && it.length() > 0 }
+
     suspend fun prefetch(trackId: String, streamUrl: String, headers: Map<String, String>): Uri? =
         withContext(Dispatchers.IO) {
             cacheDir.mkdirs()
