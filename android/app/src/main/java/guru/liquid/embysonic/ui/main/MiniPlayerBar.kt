@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import guru.liquid.embysonic.playback.PlaybackTrack
 import guru.liquid.embysonic.ui.cast.CastButton
 import guru.liquid.embysonic.ui.library.Artwork
 import guru.liquid.embysonic.ui.playback.NowPlayingViewModel
@@ -74,13 +75,8 @@ internal fun MiniPlayerBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Cross-dissolve the cover during a crossfade, matching Now Playing.
-                Box {
-                    Artwork(
-                        url = track.imageUrl,
-                        contentDescription = track.title,
-                        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
-                    )
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    MiniTrackIdentity(track = track, modifier = Modifier.fillMaxWidth())
                     val fromTrack = state.crossfadeFromTrack
                     if (fromTrack != null && fromTrack.id != track.id) {
                         val outgoingAlpha = crossfadeOutgoingAlpha(
@@ -89,30 +85,11 @@ internal fun MiniPlayerBar(
                             blendMs = state.crossfadeBlendMs,
                             elapsedMs = state.positionMs,
                         )
-                        Artwork(
-                            url = fromTrack.imageUrl,
-                            contentDescription = fromTrack.title,
+                        MiniTrackIdentity(
+                            track = fromTrack,
                             modifier = Modifier
-                                .size(52.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .fillMaxWidth()
                                 .graphicsLayer { alpha = outgoingAlpha },
-                        )
-                    }
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        track.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    track.artist?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -144,6 +121,41 @@ internal fun MiniPlayerBar(
                 IconButton(onClick = viewModel::stopPlayback, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Default.Close, contentDescription = "Stop playback")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniTrackIdentity(
+    track: PlaybackTrack,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Artwork(
+            url = track.imageUrl,
+            contentDescription = track.title,
+            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp)),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                track.title,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            track.artist?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
