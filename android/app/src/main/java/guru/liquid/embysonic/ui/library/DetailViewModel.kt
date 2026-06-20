@@ -182,7 +182,13 @@ class DetailViewModel @Inject constructor(
                         candidate.subtitle?.normalizedTitle() == artist.normalizedTitle()
                     } != false
             }
-            ?.copy(subtitle = scoreSubtitle(result.score))
+            ?.let { album ->
+                val art = album.imageUrl
+                    ?: repository.childItems(album.id, DetailKind.ALBUM_TRACKS)
+                        .firstOrNull { it.imageUrl != null }
+                        ?.imageUrl
+                album.copy(subtitle = scoreSubtitle(result.score), imageUrl = art)
+            }
 
     // Transient one-shot messages (playlist created / failed) for a snackbar.
     private val _messages = Channel<String>(Channel.BUFFERED)
