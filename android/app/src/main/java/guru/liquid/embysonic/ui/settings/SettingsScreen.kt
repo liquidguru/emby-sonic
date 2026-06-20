@@ -4,16 +4,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,41 +74,98 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Signed in as ${state.userName}", style = MaterialTheme.typography.titleMedium)
-            Text("Emby server: ${state.serverUrl}", style = MaterialTheme.typography.bodyMedium)
             if (state.isCasting) {
                 CastUnavailableHint(deviceName = state.castDeviceName)
             }
 
-            OutlinedTextField(
-                value = state.coordinatorUrl,
-                onValueChange = viewModel::onCoordinatorUrlChange,
-                label = { Text("Coordinator URL") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            state.savedMessage?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-            }
-            Button(onClick = viewModel::saveCoordinatorUrl, modifier = Modifier.fillMaxWidth()) {
-                Text("Save coordinator URL")
+            Card(modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Equalizer", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (state.isCasting) {
+                            "Unavailable while casting. The receiver handles its own output."
+                        } else {
+                            "Tune the local playback EQ and presets."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        onClick = onOpenEqualizer,
+                        enabled = !state.isCasting,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Open equalizer")
+                    }
+                }
             }
 
-            OutlinedTextField(
-                value = state.castServerUrl,
-                onValueChange = viewModel::onCastServerUrlChange,
-                label = { Text("Cast server URL (LAN)") },
-                placeholder = { Text("http://192.168.1.50:8096") },
-                supportingText = {
-                    Text("Direct local Emby URL for casting. Leave blank to use the main server URL.")
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Button(onClick = viewModel::saveCastServerUrl, modifier = Modifier.fillMaxWidth()) {
-                Text("Save cast server URL")
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Crossfade", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                if (state.isCasting) {
+                                    "Unavailable while casting. The receiver streams each track directly."
+                                } else {
+                                    "Blend one song into the next. Music only - never audiobooks."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = state.crossfadeEnabled,
+                            onCheckedChange = viewModel::setCrossfadeEnabled,
+                            enabled = !state.isCasting,
+                        )
+                    }
+                    if (state.crossfadeEnabled) {
+                        Text("Overlap length", style = MaterialTheme.typography.bodyMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(3, 6, 9, 12).forEach { seconds ->
+                                FilterChip(
+                                    selected = state.crossfadeSeconds == seconds,
+                                    onClick = { viewModel.setCrossfadeSeconds(seconds) },
+                                    label = { Text("${seconds}s") },
+                                    enabled = !state.isCasting,
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             Card(modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Offline prefetch", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (state.isCasting) {
+                            "Unavailable while casting. Cast receivers fetch directly from Emby."
+                        } else {
+                            "Keeps upcoming tracks buffered on this phone so local playback can ride through short Wi-Fi drops. Cast playback does its own streaming on the receiver."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -136,12 +193,94 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    Text("Generated mixes", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Default track count for Sonic mixes and genre mixes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(25, 50, 75, 100).forEach { count ->
+                            FilterChip(
+                                selected = state.generatedMixTracks == count,
+                                onClick = { viewModel.setGeneratedMixTracks(count) },
+                                label = { Text(count.toString()) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Connection", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = state.coordinatorUrl,
+                        onValueChange = viewModel::onCoordinatorUrlChange,
+                        label = { Text("Coordinator URL") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(onClick = viewModel::saveCoordinatorUrl, modifier = Modifier.fillMaxWidth()) {
+                        Text("Save coordinator URL")
+                    }
+                    OutlinedTextField(
+                        value = state.castServerUrl,
+                        onValueChange = viewModel::onCastServerUrlChange,
+                        label = { Text("Cast server URL (LAN)") },
+                        placeholder = { Text("http://192.168.1.50:8096") },
+                        supportingText = {
+                            Text("Direct local Emby URL for casting. Leave blank to use the main server URL.")
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(onClick = viewModel::saveCastServerUrl, modifier = Modifier.fillMaxWidth()) {
+                        Text("Save cast server URL")
+                    }
+                    state.savedMessage?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("About & diagnostics", style = MaterialTheme.typography.titleMedium)
+                    DiagnosticRow(label = "App version", value = state.appVersion)
+                    DiagnosticRow(label = "Emby server", value = state.serverUrl)
+                    DiagnosticRow(label = "Coordinator", value = state.coordinatorUrl)
+                    DiagnosticRow(
+                        label = "Cast server",
+                        value = state.castServerUrl.ifBlank { "Using Emby server" },
+                    )
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Analysis status", style = MaterialTheme.typography.titleMedium)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Analysis status", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Coordinator library scan and embedding progress.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         IconButton(onClick = viewModel::refreshAnalysisStatus) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh analysis status")
                         }
@@ -180,55 +319,15 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                             Text(
-                                "${st.pending} pending - ${if (st.scanRunning) "scan running" else "idle"}",
+                                "${st.pending} pending - ${if (st.scanRunning) "scan running" else "scan idle"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
-                    }
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Crossfade", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                if (state.isCasting) {
-                                    "Unavailable while casting. The receiver streams each track directly."
-                                } else {
-                                    "Blend one song into the next. Music only - never audiobooks."
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = state.crossfadeEnabled,
-                            onCheckedChange = viewModel::setCrossfadeEnabled,
-                            enabled = !state.isCasting,
-                        )
-                    }
-                    if (state.crossfadeEnabled) {
-                        Text(
-                            "Overlap length",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(3, 6, 9, 12).forEach { seconds ->
-                                FilterChip(
-                                    selected = state.crossfadeSeconds == seconds,
-                                    onClick = { viewModel.setCrossfadeSeconds(seconds) },
-                                    label = { Text("${seconds}s") },
-                                    enabled = !state.isCasting,
+                            if (st.pending > 0 && !st.scanRunning) {
+                                Text(
+                                    "If this number stays stable after a scan, those tracks are usually unsupported, unreadable, or waiting for a future rescan.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -236,66 +335,22 @@ fun SettingsScreen(
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text("Generated mixes", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Default track count for Sonic mixes and genre mixes.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(25, 50, 75, 100).forEach { count ->
-                            FilterChip(
-                                selected = state.generatedMixTracks == count,
-                                onClick = { viewModel.setGeneratedMixTracks(count) },
-                                label = { Text(count.toString()) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f)) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Offline prefetch", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        if (state.isCasting) {
-                            "Unavailable while casting. Cast receivers fetch directly from Emby."
-                        } else {
-                            "Automatic next-track buffering for local playback."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            OutlinedButton(
-                onClick = onOpenEqualizer,
-                enabled = !state.isCasting,
-                modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f),
-            ) {
-                Text("Equalizer")
-            }
-            if (state.isCasting) {
-                Text(
-                    "Equalizer is unavailable while casting.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
             OutlinedButton(onClick = viewModel::logout, modifier = Modifier.fillMaxWidth()) {
                 Text("Sign out")
             }
         }
+    }
+}
+
+@Composable
+private fun DiagnosticRow(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(value.ifBlank { "Not set" }, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
