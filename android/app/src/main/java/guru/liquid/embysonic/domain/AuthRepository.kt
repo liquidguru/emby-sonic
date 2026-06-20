@@ -55,14 +55,19 @@ class AuthRepository @Inject constructor(
         return "${url.scheme}://${url.host}:$DEFAULT_COORDINATOR_PORT"
     }
 
-    /** Adds a scheme if missing and strips a trailing slash. Returns null if unparseable. */
+    /**
+     * Adds a scheme if missing and strips a trailing slash. Returns null if
+     * unparseable. Defaults to **https** for a bare host so credentials aren't sent
+     * in cleartext by accident; a local server without TLS still works if the user
+     * types an explicit `http://` URL.
+     */
     private fun normalizeUrl(raw: String): String? {
         val trimmed = raw.trim().trimEnd('/')
         if (trimmed.isEmpty()) return null
         val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
             trimmed
         } else {
-            "http://$trimmed"
+            "https://$trimmed"
         }
         return if (withScheme.toHttpUrlOrNull() != null) withScheme else null
     }

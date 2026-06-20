@@ -8,3 +8,6 @@ venv/
 /models/
 *.egg-info/
 dist/
+
+# Codex remote session attachments (not part of the project)
+.codex-remote-attachments/
