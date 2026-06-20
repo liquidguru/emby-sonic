@@ -98,6 +98,7 @@ fun NowPlayingScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val radio by viewModel.radio.collectAsStateWithLifecycle()
+    val similar by viewModel.similar.collectAsStateWithLifecycle()
     val progress = remember { SliderTrackProgress }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var queueFocusRequest by remember { mutableIntStateOf(0) }
@@ -108,6 +109,7 @@ fun NowPlayingScreen(
     // track changes while it's open).
     LaunchedEffect(selectedTab, state.currentTrack?.id) {
         if (selectedTab == 1) viewModel.loadRadioForCurrent()
+        if (selectedTab == 2) viewModel.loadSimilarForCurrent()
     }
 
     Scaffold(
@@ -185,6 +187,10 @@ fun NowPlayingScreen(
                     onPlayRadioAll = viewModel::playRadioAll,
                     onPlayRadioTrack = viewModel::playRadioTrack,
                     onRefreshRadio = { viewModel.loadRadioForCurrent(force = true) },
+                    similar = similar,
+                    onPlaySimilarAll = viewModel::playSimilarAll,
+                    onPlaySimilarTrack = viewModel::playSimilarTrack,
+                    onRefreshSimilar = { viewModel.loadSimilarForCurrent(force = true) },
                 )
             } ?: EmptyPlayer(onCollapse)
         }
@@ -238,6 +244,10 @@ private fun PlayerContent(
     onPlayRadioAll: () -> Unit,
     onPlayRadioTrack: (LibraryItem) -> Unit,
     onRefreshRadio: () -> Unit,
+    similar: SimilarState,
+    onPlaySimilarAll: () -> Unit,
+    onPlaySimilarTrack: (LibraryItem) -> Unit,
+    onRefreshSimilar: () -> Unit,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(queueFocusRequest) {
@@ -334,13 +344,7 @@ private fun PlayerContent(
                 )
             }
             1 -> radioContent(radio, onPlayRadioAll, onPlayRadioTrack, onRefreshRadio)
-            else -> item {
-                Text(
-                    "Similar tracks arrive soon",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(24.dp),
-                )
-            }
+            else -> similarContent(similar, onPlaySimilarAll, onPlaySimilarTrack, onRefreshSimilar)
         }
     }
 }
@@ -562,6 +566,63 @@ private fun LazyListScope.radioContent(
                     }
                 }
                 items(radio.tracks, key = { it.id }) { item ->
+                    RadioRow(item = item, onClick = { onPlayTrack(item) })
+                }
+            }
+        }
+    }
+}
+
+private fun LazyListScope.similarContent(
+    similar: SimilarState,
+    onPlayAll: () -> Unit,
+    onPlayTrack: (LibraryItem) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    when (similar) {
+        SimilarState.Idle, SimilarState.Loading -> item {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        is SimilarState.Error -> item {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(similar.message, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onRefresh, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Try again")
+                }
+            }
+        }
+        is SimilarState.Data -> {
+            if (similar.tracks.isEmpty()) {
+                item {
+                    Text(
+                        "No similar tracks for this song yet",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+            } else {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onPlayAll) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Text("Play similar", modifier = Modifier.padding(start = 6.dp))
+                        }
+                        TextButton(onClick = onRefresh) { Text("Refresh") }
+                    }
+                }
+                items(similar.tracks, key = { it.id }) { item ->
                     RadioRow(item = item, onClick = { onPlayTrack(item) })
                 }
             }

@@ -25,6 +25,14 @@ sealed interface RadioState {
     data class Error(val message: String) : RadioState
 }
 
+/** Nearest sonic neighbours for the Now Playing "Similar" tab. */
+sealed interface SimilarState {
+    data object Idle : SimilarState
+    data object Loading : SimilarState
+    data class Data(val tracks: List<LibraryItem>) : SimilarState
+    data class Error(val message: String) : SimilarState
+}
+
 @HiltViewModel
 class NowPlayingViewModel @Inject constructor(
     private val playback: PlaybackController,
@@ -36,14 +44,19 @@ class NowPlayingViewModel @Inject constructor(
     private val _radio = MutableStateFlow<RadioState>(RadioState.Idle)
     val radio: StateFlow<RadioState> = _radio.asStateFlow()
 
+    private val _similar = MutableStateFlow<SimilarState>(SimilarState.Idle)
+    val similar: StateFlow<SimilarState> = _similar.asStateFlow()
+
     // The track the current radio was generated from, so we don't reload on every
     // recomposition but can refresh when the seed changes (or on explicit request).
     private var radioSeedId: String? = null
+    private var similarSeedId: String? = null
 
     // The in-flight radio build. The seed can change while a request is pending
     // (track auto-advances, or the user hits "New radio"); cancel the previous so
     // a slow earlier response can't land after — and overwrite — a newer one.
     private var radioJob: Job? = null
+    private var similarJob: Job? = null
 
     fun togglePlayPause() = playback.togglePlayPause()
     fun seekTo(positionMs: Long) = playback.seekTo(positionMs)
@@ -80,6 +93,24 @@ class NowPlayingViewModel @Inject constructor(
         }
     }
 
+    /** Load nearest sonic neighbours for the current track. */
+    fun loadSimilarForCurrent(force: Boolean = false) {
+        val seed = playback.state.value.currentTrack ?: return
+        if (!force && seed.id == similarSeedId && _similar.value is SimilarState.Data) return
+        similarSeedId = seed.id
+        _similar.value = SimilarState.Loading
+        similarJob?.cancel()
+        similarJob = viewModelScope.launch {
+            runCatching {
+                val tracks = coordinator.similarTracks(seed.id).map { it.track.toLibraryItem() }
+                tracks.withArtwork()
+            }.fold(
+                onSuccess = { _similar.value = SimilarState.Data(it) },
+                onFailure = { _similar.value = SimilarState.Error(it.message ?: "Couldn't load similar tracks") },
+            )
+        }
+    }
+
     /** Play the whole radio queue from the top. */
     fun playRadioAll() {
         val tracks = (_radio.value as? RadioState.Data)?.tracks ?: return
@@ -93,9 +124,30 @@ class NowPlayingViewModel @Inject constructor(
         playback.playQueue(tracks, item, radioSource(tracks))
     }
 
+    fun playSimilarAll() {
+        val tracks = (_similar.value as? SimilarState.Data)?.tracks ?: return
+        val first = tracks.firstOrNull() ?: return
+        playback.playQueue(tracks, first, similarSource(tracks))
+    }
+
+    fun playSimilarTrack(item: LibraryItem) {
+        val tracks = (_similar.value as? SimilarState.Data)?.tracks ?: return
+        playback.playQueue(tracks, item, similarSource(tracks))
+    }
+
     /** Recent-plays source for a Track Radio, keyed by its seed track. */
     private fun radioSource(tracks: List<LibraryItem>): PlaybackSource {
         val seedTitle = playback.state.value.currentTrack?.title ?: "current track"
         return PlaybackSource("radio:$radioSeedId", "Track Radio", "Based on $seedTitle", tracks.firstOrNull()?.imageUrl)
+    }
+
+    private fun similarSource(tracks: List<LibraryItem>): PlaybackSource {
+        val seedTitle = playback.state.value.currentTrack?.title ?: "current track"
+        return PlaybackSource("similar:$similarSeedId", "Similar Tracks", "Like $seedTitle", tracks.firstOrNull()?.imageUrl)
+    }
+
+    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
+        val art = runCatching { repository.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
+        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
     }
 }
