@@ -11,6 +11,7 @@ import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.resumeStartItem
+import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
@@ -95,6 +96,7 @@ class HomeViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val playback: PlaybackController,
     private val recentPlaysRepo: RecentPlaysRepository,
+    private val playlists: PlaylistRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -284,6 +286,22 @@ class HomeViewModel @Inject constructor(
     }
 
     fun playPlaylist(item: LibraryItem) = playCollection(item, DetailKind.PLAYLIST_TRACKS)
+
+    fun deletePlaylist(item: LibraryItem) {
+        viewModelScope.launch {
+            runCatching { playlists.deletePlaylist(item.id) }.fold(
+                onSuccess = {
+                    _state.update { state ->
+                        state.copy(playlists = state.playlists.filterNot { it.id == item.id })
+                    }
+                    _messages.send("Deleted \"${item.title}\"")
+                },
+                onFailure = {
+                    _messages.send(it.message ?: "Delete failed")
+                },
+            )
+        }
+    }
 
     fun playSonicMix(item: LibraryItem) {
         viewModelScope.launch {
