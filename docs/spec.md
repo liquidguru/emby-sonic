@@ -941,6 +941,20 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   Playing slider, phone volume buttons, and system Cast card; the second build
   "works much better". The system Cast card/phone overlay can still be subject to
   Cast framework latency, but the in-app slider is now responsive.
+- **M4.18 — Cast transient-drop hardening (2026-06-20, built + Pixel 8 Pro /
+  SHIELD verified):** a Wi-Fi blip while casting used to hand playback back to the
+  phone and resume, so the phone played on top of the receiver (which keeps
+  playing autonomously). Now `CastManager` distinguishes a transient suspend from
+  a genuine end: `onSessionSuspended` (and the `CastPlayer`'s
+  `onCastSessionUnavailable`, which also fires on suspend) no longer trigger a
+  remote->local handoff — the authoritative end signals are `onSessionEnded` /
+  `onSessionResumeFailed`. The phone only auto-resumes on a clean, user-initiated
+  stop (`onSessionEnded` error == 0); abnormal ends/resume-failures hand back
+  paused. Also fixed a regression where the media handoff fired on
+  `onSessionStarted` before the `CastPlayer` was ready ("no media selected"); it
+  now loads on `onCastSessionAvailable`. Verified on the Pixel 8 Pro + SHIELD: a
+  Wi-Fi toggle leaves the SHIELD playing solo with the phone silent, and a clean
+  Stop Casting still resumes locally where it left off.
 - **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
   detail.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
