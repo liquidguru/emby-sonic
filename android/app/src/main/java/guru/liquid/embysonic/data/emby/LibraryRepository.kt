@@ -4,6 +4,9 @@ import guru.liquid.embysonic.data.emby.dto.EmbyItemDto
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /** A browsable audio library. Audiobooks are kept distinct from music. */
 enum class LibraryKind { MUSIC, AUDIOBOOKS }
@@ -198,7 +201,7 @@ class LibraryRepository @Inject constructor(
             includeItemTypes = "MusicAlbum",
             limit = BROWSE_LIMIT,
         ).items.map { it.toCollectionItem() }
-        return hydrateMusicAlbumArt(albums, parentId = libraryId)
+        return hydrateMusicAlbumArtFromChildren(albums)
     }
 
     suspend fun genres(libraryId: String): List<LibraryItem> =
@@ -558,6 +561,35 @@ class LibraryRepository @Inject constructor(
                 startIndex < page.totalRecordCount
         )
         return covers
+    }
+
+    /**
+     * For small album rows (Home, similar rails), targeted child lookups are far
+     * cheaper than scanning the whole music library for every missing cover.
+     */
+    private suspend fun hydrateMusicAlbumArtFromChildren(albums: List<LibraryItem>): List<LibraryItem> {
+        val missing = albums.filter { it.imageUrl == null }
+        if (missing.isEmpty()) return albums
+        val covers = coroutineScope {
+            missing.map { album ->
+                async {
+                    val art = embyApi.getItems(
+                        userId = userId(),
+                        includeItemTypes = "Audio",
+                        parentId = album.id,
+                        sortBy = "ParentIndexNumber,IndexNumber",
+                        limit = 1,
+                    ).items.firstOrNull()?.artUrl()
+                    album.id to art
+                }
+            }.awaitAll()
+                .mapNotNull { (id, art) -> art?.let { id to it } }
+                .toMap()
+        }
+        if (covers.isEmpty()) return albums
+        return albums.map { album ->
+            if (album.imageUrl == null) album.copy(imageUrl = covers[album.id]) else album
+        }
     }
 
     private fun EmbyItemDto.toGenreItem(libraryId: String): LibraryItem? {

@@ -20,6 +20,7 @@ import guru.liquid.embysonic.playback.playbackSourceFor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -183,66 +184,67 @@ class HomeViewModel @Inject constructor(
             val audiobookLibrary = libraries.firstOrNull { it.kind == LibraryKind.AUDIOBOOKS }
             musicLibraryId = musicLibrary?.id
 
-            // Emby-backed rows are the fast, primary content — fetch in parallel
-            // and render as soon as they're ready.
-            val resumeJob = async {
-                section { audiobookLibrary?.let { repository.resumeAudiobooks(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
+            _state.update {
+                it.copy(
+                    userName = settings.snapshot().userName,
+                    loading = false,
+                    error = if (libraries.isEmpty() && it.hasNoContent()) "Couldn't reach your server" else null,
+                )
             }
-            val playlistsJob = async { section { repository.playlists(HOME_SECTION_LIMIT) } }
-            val albumsJob = async {
-                section { musicLibrary?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
-            }
-            val artistsJob = async {
-                section { musicLibrary?.let { repository.artists(it.id, HOME_SECTION_LIMIT) }.orEmpty() }
-            }
-            val genresJob = async {
-                section { musicLibrary?.let { repository.genres(it.id) }.orEmpty() }
-            }
+            if (libraries.isEmpty()) return@launch
 
-            val resumeAudiobooks = resumeJob.await()
-            val playlists = playlistsJob.await()
-            val albums = albumsJob.await()
-            val artists = artistsJob.await()
-            val genres = genresJob.await()
-
-            // Recent plays is a live local history (observeRecentPlays), not an
-            // Emby fetch — preserve whatever the collector has already set.
-            val recentPlays = _state.value.recentPlays
-            val allEmpty = resumeAudiobooks.isEmpty() && recentPlays.isEmpty() &&
-                playlists.isEmpty() && albums.isEmpty() && artists.isEmpty()
-            _state.value = HomeUiState(
-                userName = settings.snapshot().userName,
-                loading = false,
-                // Only surface a full-screen error when nothing at all was
-                // reachable (Emby down); a single failed section just leaves
-                // that row empty.
-                error = if (libraries.isEmpty() && allEmpty) "Couldn't reach your server" else null,
-                compactCards = _state.value.compactCards,
-                sectionPreferences = _state.value.sectionPreferences,
-                resumeAudiobooks = resumeAudiobooks,
-                recentPlays = recentPlays,
-                playlists = playlists,
-                // Keep any previously loaded mixes until the coordinator answers.
-                sonicMixes = _state.value.sonicMixes,
-                recentAlbums = albums,
-                artists = artists,
-                genres = genres,
-            )
-
-            // Sonic mixes live on the coordinator (a separate host that may be
-            // down). Load them after the Emby rows so a slow/failed coordinator
-            // never gates or blanks the rest of Home. Each mix tile shows its
-            // representative track's Emby cover.
-            val mixes = section { coordinator.mixes().take(HOME_SECTION_LIMIT) }
-            val mixArt = runCatching {
-                repository.artworkByIds(mixes.mapNotNull { it.coverTrackId })
-            }.getOrDefault(emptyMap())
-            val sonicMixes = mixes.map { mix ->
-                mix.toLibraryItem().copy(imageUrl = mix.coverTrackId?.let { mixArt[it] })
+            coroutineScope {
+                async {
+                    val items = section {
+                        audiobookLibrary?.let { repository.resumeAudiobooks(it.id, HOME_SECTION_LIMIT) }.orEmpty()
+                    }
+                    _state.update { it.copy(resumeAudiobooks = items) }
+                }
+                async {
+                    val items = section { repository.playlists(HOME_SECTION_LIMIT) }
+                    _state.update { it.copy(playlists = items) }
+                }
+                async {
+                    val items = section {
+                        musicLibrary?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }.orEmpty()
+                    }
+                    _state.update { it.copy(recentAlbums = items) }
+                }
+                async {
+                    val items = section {
+                        musicLibrary?.let { repository.artists(it.id, HOME_SECTION_LIMIT) }.orEmpty()
+                    }
+                    _state.update { it.copy(artists = items) }
+                }
+                async {
+                    val items = section {
+                        musicLibrary?.let { repository.genres(it.id) }.orEmpty()
+                    }
+                    _state.update { it.copy(genres = items) }
+                }
+                // Sonic mixes live on the coordinator (a separate host that may
+                // be down), so this never gates Emby-backed rows.
+                async {
+                    val mixes = section { coordinator.mixes().take(HOME_SECTION_LIMIT) }
+                    val mixArt = runCatching {
+                        repository.artworkByIds(mixes.mapNotNull { it.coverTrackId })
+                    }.getOrDefault(emptyMap())
+                    val sonicMixes = mixes.map { mix ->
+                        mix.toLibraryItem().copy(imageUrl = mix.coverTrackId?.let { mixArt[it] })
+                    }
+                    _state.update { it.copy(sonicMixes = sonicMixes) }
+                }
             }
-            _state.update { it.copy(sonicMixes = sonicMixes) }
         }
     }
+
+    private fun HomeUiState.hasNoContent(): Boolean =
+        resumeAudiobooks.isEmpty() &&
+            recentPlays.isEmpty() &&
+            playlists.isEmpty() &&
+            sonicMixes.isEmpty() &&
+            recentAlbums.isEmpty() &&
+            artists.isEmpty()
 
     /** Runs one Home section's fetch, swallowing failure to an empty list. */
     private suspend fun <T> section(block: suspend () -> List<T>): List<T> =
