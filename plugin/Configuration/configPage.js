@@ -49,8 +49,10 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
     function save(view) {
         loading.show();
         var serviceUrl = view.querySelector('.txtServiceUrl').value.trim();
+        var apiKey = view.querySelector('.txtApiKey').value.trim();
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             config.ServiceUrl = serviceUrl;
+            config.ApiKey = apiKey;
             ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                 Dashboard.processPluginConfigurationUpdateResult(result);
                 refreshStatus(view, serviceUrl);
@@ -84,6 +86,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
         var view = this.view;
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             view.querySelector('.txtServiceUrl').value = config.ServiceUrl || '';
+            view.querySelector('.txtApiKey').value = config.ApiKey || '';
             refreshStatus(view, config.ServiceUrl);
             loading.hide();
         });

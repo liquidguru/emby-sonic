@@ -6,8 +6,8 @@
     <RootNamespace>EmbysonicPlugin</RootNamespace>
     <Nullable>enable</Nullable>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <AssemblyVersion>0.3.0.0</AssemblyVersion>
-    <FileVersion>0.3.0.0</FileVersion>
+    <AssemblyVersion>0.4.0.0</AssemblyVersion>
+    <FileVersion>0.4.0.0</FileVersion>
   </PropertyGroup>
 
   <!-- Emby SDK DLLs — copy from your Emby installation into plugin/lib/

@@ -1137,6 +1137,20 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   default instead), R8/release-signing for distribution, and the server-side
   `WORKER_SECRET` split. See review notes.
 
+- **M5.15 — Plugin auto-scan fix (2026-06-20, plugin v0.4.0.0, built):** the
+  `ItemAdded` incremental-scan trigger never actually worked — it POSTed
+  `/sonic/library/scan` with no token and no body, which the coordinator rejects
+  (verified live on coordinator-host: **401 Unauthorized**). So new imports were only
+  analysed via a manual config-page Scan. Fix: the plugin now sends the
+  configured Emby **API key** as `X-Emby-Token` (the coordinator's
+  `verify_emby_token` accepts the API key directly, same secret the workers use)
+  plus a `{"full":false}` body. Added an **API Key** field to the plugin config
+  page. Also made the trigger robust for large/bulk imports: `ItemAdded` events
+  are **debounced** into a single scan (10s window) and a **static HttpClient** is
+  reused instead of one-per-event (was leaking sockets). Plugin stays a thin
+  proxy (no native code). If no API key is set, auto-scan logs a warning and stays
+  off; manual scan still works. Bumped AssemblyVersion 0.3.0.0 → 0.4.0.0.
+
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
 **M3 verification (dev-pc / Pixel_3a_API_36, 2026-06-09):**

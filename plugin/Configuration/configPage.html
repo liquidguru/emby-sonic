@@ -14,6 +14,15 @@
                 </div>
             </div>
 
+            <div class="inputContainer">
+                <input is="emby-input" type="password" class="txtApiKey" label="Emby API Key" autocomplete="off" />
+                <div class="fieldDescription">
+                    Required for <strong>automatic</strong> scanning of newly imported tracks. Paste an Emby
+                    API key (Dashboard &rarr; API Keys) &mdash; the same key the coordinator/workers use.
+                    Without it, new imports are only analysed when you press &ldquo;Trigger Library Scan&rdquo; below.
+                </div>
+            </div>
+
             <div class="sonicStatus" style="margin:1.5em 0; padding:1em; background:#1a1a1a; border-radius:4px;">
                 Checking service status...
             </div>
