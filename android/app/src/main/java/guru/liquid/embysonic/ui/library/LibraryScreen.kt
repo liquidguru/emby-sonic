@@ -73,7 +73,10 @@ fun LibraryScreen(
         viewModel.openNowPlaying.collect { onOpenNowPlaying() }
     }
     // Selection is per-tab (albums vs artists differ); leaving a tab clears it.
-    LaunchedEffect(selectedTab) { viewModel.exitSelection() }
+    LaunchedEffect(selectedTab) {
+        viewModel.exitSelection()
+        viewModel.loadTab(selectedTab)
+    }
 
     Scaffold(
         modifier = Modifier.padding(bottom = contentPadding.calculateBottomPadding()),

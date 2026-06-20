@@ -297,7 +297,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20; M4.20 Cast reporting verification complete 2026-06-20; M4.21 sonic-similar detail rails complete 2026-06-20; M4.22 album-art polish complete 2026-06-20; M5.1 mini-player dissolve polish complete 2026-06-20; M5.2 Home startup polish complete 2026-06-20; M5.4 widget art reliability complete 2026-06-20; M5.5 coordinator adventure dedupe complete 2026-06-20; M5.6 compact widget layout complete 2026-06-20; M5.7 offline prefetch status + paused-widget resume fix complete 2026-06-20; M5.8 Home playlist long-press delete complete 2026-06-20.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20; M4.20 Cast reporting verification complete 2026-06-20; M4.21 sonic-similar detail rails complete 2026-06-20; M4.22 album-art polish complete 2026-06-20; M5.1 mini-player dissolve polish complete 2026-06-20; M5.2 Home startup polish complete 2026-06-20; M5.4 widget art reliability complete 2026-06-20; M5.5 coordinator adventure dedupe complete 2026-06-20; M5.6 compact widget layout complete 2026-06-20; M5.7 offline prefetch status + paused-widget resume fix complete 2026-06-20; M5.8 Home playlist long-press delete complete 2026-06-20; M5.9 library drill-down latency polish complete 2026-06-20.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -1078,6 +1078,16 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   playlist delete path, removes the card from Home immediately, and shows a
   snackbar; cancelling leaves the playlist tappable/openable as before. User
   verification confirmed the dialog, cancel path, delete path, and persistence.
+- **M5.9 — Library drill-down latency polish (2026-06-20, built + Pixel 8 Pro
+  verified):** Music Library now lazy-loads only the visible tab on entry, then
+  loads Albums/Genres when those tabs are selected. This prevents the expensive
+  album-art fallback pass from competing with an immediate Artists -> Artist
+  drill-down after app resume. Artist detail also renders its album list as soon
+  as Emby returns the albums; missing album-art fallback hydration and sonic
+  similar rails update afterward. User verification on the paused/background
+  resume path confirmed Music -> Artists -> Pink opens quickly, while the
+  offline prefetch buffer status continued to respond correctly through a
+  Wi-Fi off/on test.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 

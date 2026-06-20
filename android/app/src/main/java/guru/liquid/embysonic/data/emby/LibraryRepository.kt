@@ -440,12 +440,11 @@ class LibraryRepository @Inject constructor(
     suspend fun childItems(parentId: String, kind: DetailKind): List<LibraryItem> =
         when (kind) {
             DetailKind.ARTIST_ALBUMS -> {
-                val albums = embyApi.getItems(
+                embyApi.getItems(
                     userId = userId(),
                     includeItemTypes = "MusicAlbum",
                     albumArtistIds = parentId,
                 ).items.map { it.toCollectionItem() }
-                hydrateMusicAlbumArt(albums, albumArtistId = parentId)
             }
 
             // Books carry no album cover; resolve from a child chapter.
@@ -530,6 +529,12 @@ class LibraryRepository @Inject constructor(
             if (album.imageUrl == null) album.copy(imageUrl = covers[album.id]) else album
         }
     }
+
+    suspend fun hydrateArtistAlbumArt(
+        artistId: String,
+        albums: List<LibraryItem>,
+    ): List<LibraryItem> =
+        hydrateMusicAlbumArt(albums, albumArtistId = artistId)
 
     private suspend fun musicAlbumCovers(
         parentId: String?,

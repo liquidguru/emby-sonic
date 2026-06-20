@@ -72,6 +72,7 @@ internal val GridSpacing = 16.dp
 internal fun StateContent(state: TabState, content: @Composable (List<LibraryItem>) -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when (state) {
+            is TabState.Idle -> CircularProgressIndicator()
             is TabState.Loading -> CircularProgressIndicator()
             is TabState.Error -> Text(
                 state.message,
