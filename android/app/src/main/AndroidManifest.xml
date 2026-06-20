@@ -12,6 +12,15 @@
         android:name="android.hardware.type.automotive"
         android:required="false" />
 
+    <!-- So we can resolve the home launcher package (Android 11+ package
+         visibility) to grant it read access to the widget artwork file URI. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+    </queries>
+
     <application
         android:name=".EmbySonicApp"
         android:allowBackup="true"
@@ -50,6 +59,16 @@
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="guru.liquid.embysonic.cast.CastOptionsProvider" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.widgetart"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/widget_file_paths" />
+        </provider>
 
         <receiver
             android:name=".widget.NowPlayingWidgetProvider"

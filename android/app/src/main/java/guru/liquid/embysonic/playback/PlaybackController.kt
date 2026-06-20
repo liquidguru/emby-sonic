@@ -28,7 +28,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.graphics.drawable.toBitmap
+import java.io.File
 import coil.imageLoader
 import coil.request.ErrorResult
 import coil.request.ImageRequest
@@ -503,8 +505,9 @@ class PlaybackController @Inject constructor(
     // position tick) and cache the decoded artwork so it isn't reloaded for a
     // mere play/pause toggle.
     private var lastWidgetArtUrl: String? = null
-    private var lastWidgetBitmap: Bitmap? = null
+    private var lastWidgetArtUri: Uri? = null
     private var lastWidgetHeavyKey: Pair<NowPlayingWidget.Snapshot, ThemeChoice>? = null
+    private var widgetProgressTicks = 0
 
     private fun startWidgetUpdates() {
         scope.launch {
@@ -515,17 +518,20 @@ class PlaybackController @Inject constructor(
                 .collect { (snapshot, theme) ->
                     if (snapshot.imageUrl != lastWidgetArtUrl) {
                         lastWidgetArtUrl = snapshot.imageUrl
-                        lastWidgetBitmap = snapshot.imageUrl?.let { loadWidgetArt(it) }
+                        lastWidgetArtUri = snapshot.imageUrl?.let { loadWidgetArt(it) }
                     }
                     val palette = WidgetTheme.paletteFor(context, theme)
-                    // Only do a full update (which re-sends the artwork bitmap) when a
-                    // non-progress field changes; otherwise apply a lightweight
-                    // progress-only partial update so the bitmap isn't re-sent every tick.
+                    // Set the art file URI on a non-progress change; progress ticks use a
+                    // lightweight partial update. The art is a FileProvider URI the launcher
+                    // loads from disk, so unlike a bitmap it survives the host re-inflating
+                    // the widget. A full render every ~30s re-asserts it as a backstop.
                     val heavyKey = snapshot.copy(positionSec = 0) to theme
-                    if (heavyKey != lastWidgetHeavyKey) {
+                    if (heavyKey != lastWidgetHeavyKey || widgetProgressTicks >= WIDGET_HEAL_TICKS) {
                         lastWidgetHeavyKey = heavyKey
-                        NowPlayingWidget.render(context, snapshot, lastWidgetBitmap, palette)
+                        widgetProgressTicks = 0
+                        NowPlayingWidget.render(context, snapshot, lastWidgetArtUri, palette)
                     } else {
+                        widgetProgressTicks++
                         NowPlayingWidget.renderProgress(context, snapshot, palette)
                     }
                 }
@@ -535,31 +541,45 @@ class PlaybackController @Inject constructor(
     /** Repaint the widget immediately from current state (e.g. when one is added). */
     fun refreshWidget() {
         val snapshot = NowPlayingWidget.snapshotFrom(state.value)
-        val art = if (snapshot.imageUrl == lastWidgetArtUrl) lastWidgetBitmap else null
+        val art = if (snapshot.imageUrl == lastWidgetArtUrl) lastWidgetArtUri else null
         val palette = WidgetTheme.paletteFor(context, settings.snapshot().themeChoice)
         NowPlayingWidget.render(context, snapshot, art, palette)
     }
 
-    private suspend fun loadWidgetArt(url: String): Bitmap? {
+    /**
+     * Load the track artwork, cache it as a PNG, and return a FileProvider URI the
+     * launcher can read. A URI (not an in-RemoteViews bitmap) is replayable from
+     * disk, so the art survives the launcher re-inflating the widget and isn't
+     * subject to the RemoteViews bitmap cache that was dropping it.
+     */
+    private suspend fun loadWidgetArt(url: String): Uri? {
         val authed = widgetArtUrl(url)
-        return runCatching {
+        val bitmap = runCatching {
             val request = ImageRequest.Builder(context)
                 .data(authed)
-                .allowHardware(false) // RemoteViews require a software bitmap.
-                .size(256) // Small bitmap for a RemoteViews ImageView (~88dp).
+                .allowHardware(false)
+                .size(512)
                 .build()
             when (val result = context.imageLoader.execute(request)) {
-                is SuccessResult -> {
-                    // Convert whatever drawable Coil returns (not always a plain
-                    // BitmapDrawable) into a software bitmap for the RemoteViews.
-                    result.drawable.toBitmap().copy(Bitmap.Config.ARGB_8888, false)
-                }
+                is SuccessResult -> result.drawable.toBitmap()
                 is ErrorResult -> {
                     Log.w(TAG, "Widget art failed: $authed", result.throwable)
                     null
                 }
             }
-        }.onFailure { Log.w(TAG, "Widget art error: $authed", it) }.getOrNull()
+        }.onFailure { Log.w(TAG, "Widget art error: $authed", it) }.getOrNull() ?: return null
+        return runCatching {
+            val dir = File(context.cacheDir, "widget_art").apply { mkdirs() }
+            // Unique filename each load so the URI always changes — the launcher
+            // caches images by URI and won't re-read a URI it has seen, so a stable
+            // name leaves stale/blank art on screen. Prune older files (but only when
+            // writing a new one, so the last art persists on disk while the app is
+            // closed and the launcher can still reload it).
+            val file = File(dir, "art_${System.currentTimeMillis()}_${url.hashCode().toUInt()}.png")
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            dir.listFiles()?.forEach { if (it.name != file.name) it.delete() }
+            FileProvider.getUriForFile(context, "${context.packageName}.widgetart", file)
+        }.onFailure { Log.w(TAG, "Widget art cache write failed", it) }.getOrNull()
     }
 
     /**
@@ -1810,6 +1830,10 @@ class PlaybackController @Inject constructor(
         const val GUEST_DJ_TRIGGER_REMAINING = 3
         const val GUEST_DJ_INJECT_COUNT = 5
         const val CAST_MIME = "audio/mpeg"
+        // ~30 progress ticks (~30s of playback) between full widget renders, to
+        // re-supply the artwork if the launcher dropped it without re-sending the
+        // bitmap every second (which stops it painting).
+        const val WIDGET_HEAL_TICKS = 30
         const val CAST_VOLUME_DEBOUNCE_MS = 80L
         const val CAST_VOLUME_PENDING_GRACE_MS = 1_500L
         const val CAST_VOLUME_RECONCILE_TOLERANCE = 0.015f
