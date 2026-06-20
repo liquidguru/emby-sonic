@@ -1,0 +1,28 @@
+# Normalise line endings: store text as LF in the repo and treat CRLF
+# working-tree files as equivalent, so editors/code-server saving CRLF
+# (e.g. the NAS checkout) no longer show whole files as modified.
+* text=auto eol=lf
+
+# Windows batch scripts must stay CRLF
+*.bat text eol=crlf
+
+# Binary assets — never normalise
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.gif   binary
+*.ico   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.so    binary
+*.jar   binary
+*.aar   binary
+*.apk   binary
+*.keystore binary
+*.jks   binary
+*.webm  binary
+*.mp3   binary
+*.wav   binary
