@@ -502,12 +502,10 @@ class PlaybackController @Inject constructor(
     // --- Home-screen widget -------------------------------------------------
     // The widget mirrors the same state flow the in-app UI consumes. We only
     // re-render when the widget-relevant fields change (not on every 500ms
-    // position tick) and cache the decoded artwork so it isn't reloaded for a
-    // mere play/pause toggle.
+    // position tick) and cache the decoded artwork URI so it isn't reloaded for
+    // a mere play/pause or progress update.
     private var lastWidgetArtUrl: String? = null
     private var lastWidgetArtUri: Uri? = null
-    private var lastWidgetHeavyKey: Pair<NowPlayingWidget.Snapshot, ThemeChoice>? = null
-    private var widgetProgressTicks = 0
 
     private fun startWidgetUpdates() {
         scope.launch {
@@ -521,19 +519,12 @@ class PlaybackController @Inject constructor(
                         lastWidgetArtUri = snapshot.imageUrl?.let { loadWidgetArt(it) }
                     }
                     val palette = WidgetTheme.paletteFor(context, theme)
-                    // Set the art file URI on a non-progress change; progress ticks use a
-                    // lightweight partial update. The art is a FileProvider URI the launcher
-                    // loads from disk, so unlike a bitmap it survives the host re-inflating
-                    // the widget. A full render every ~30s re-asserts it as a backstop.
-                    val heavyKey = snapshot.copy(positionSec = 0) to theme
-                    if (heavyKey != lastWidgetHeavyKey || widgetProgressTicks >= WIDGET_HEAL_TICKS) {
-                        lastWidgetHeavyKey = heavyKey
-                        widgetProgressTicks = 0
-                        NowPlayingWidget.render(context, snapshot, lastWidgetArtUri, palette)
-                    } else {
-                        widgetProgressTicks++
-                        NowPlayingWidget.renderProgress(context, snapshot, palette)
-                    }
+                    // Always send a complete RemoteViews tree with the artwork
+                    // URI. Pixel Launcher can lose or ignore art after a fresh
+                    // app process when progress-only partial updates become the
+                    // latest host state; the URI payload is cheap enough to
+                    // reassert on every widget tick.
+                    NowPlayingWidget.render(context, snapshot, lastWidgetArtUri, palette)
                 }
         }
     }
@@ -1830,10 +1821,6 @@ class PlaybackController @Inject constructor(
         const val GUEST_DJ_TRIGGER_REMAINING = 3
         const val GUEST_DJ_INJECT_COUNT = 5
         const val CAST_MIME = "audio/mpeg"
-        // ~30 progress ticks (~30s of playback) between full widget renders, to
-        // re-supply the artwork if the launcher dropped it without re-sending the
-        // bitmap every second (which stops it painting).
-        const val WIDGET_HEAL_TICKS = 30
         const val CAST_VOLUME_DEBOUNCE_MS = 80L
         const val CAST_VOLUME_PENDING_GRACE_MS = 1_500L
         const val CAST_VOLUME_RECONCILE_TOLERANCE = 0.015f
