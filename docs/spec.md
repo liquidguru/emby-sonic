@@ -297,7 +297,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20; M4.20 Cast reporting verification complete 2026-06-20; M4.21 sonic-similar detail rails complete 2026-06-20; M4.22 album-art polish complete 2026-06-20; M5.1 mini-player dissolve polish complete 2026-06-20; M5.2 Home startup polish complete 2026-06-20; M5.4 widget art reliability complete 2026-06-20.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20; M4.20 Cast reporting verification complete 2026-06-20; M4.21 sonic-similar detail rails complete 2026-06-20; M4.22 album-art polish complete 2026-06-20; M5.1 mini-player dissolve polish complete 2026-06-20; M5.2 Home startup polish complete 2026-06-20; M5.4 widget art reliability complete 2026-06-20; M5.5 coordinator adventure dedupe implemented 2026-06-20.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -1044,6 +1044,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   the placeholder tint, while the placeholder remains independently tinted.
   User verification confirmed album art appears after the exact force-close ->
   reopen -> play path. The temporary `WidgetArt` diagnostic logs were removed.
+- **M5.5 — Coordinator Sonic Adventure dedupe (2026-06-20, implementation
+  syntax-checked):** `build_adventure` now dedupes the interpolated middle by
+  normalized artist+title identity, not just Emby item id, while still pinning
+  the requested start/end tracks. The coordinator over-walks the A->B embedding
+  path, searches a wider nearest-neighbour pool at each step, and evenly samples
+  the deduped candidates back to the requested middle length so the resulting
+  journey still spans from A toward B. Syntax was checked with
+  `py -3.14 -m compileall analysis api`; live coordinator deployment/restart on
+  coordinator-host still needs to be run from a host with SSH/Task Scheduler access.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
