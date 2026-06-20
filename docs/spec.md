@@ -1018,6 +1018,20 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   row uses targeted first-track cover lookups instead of the full-library album
   art scan. User verification confirmed startup is quick again and rows still
   populate normally.
+- **M5.3 — Now Playing widget redesign (2026-06-20, built + Pixel 8 Pro
+  verified):** the home-screen widget grew from a one-row mini-player into a 4x2
+  card: large album art, title/artist, a progress bar with elapsed/total times,
+  transport controls, and a cast icon (opens the app — a receiver picker can't be
+  shown from a widget). While casting the subtitle shows "Casting to <device>"
+  and the cast icon tints accent. Two fixes made the artwork actually paint
+  (it never had before): (1) the widget loads art via Coil's default loader, which
+  has no Emby auth interceptor, so the art URL now gets `api_key` appended and the
+  result is converted with `drawable.toBitmap()` instead of an unsafe
+  `BitmapDrawable` cast; (2) the full update (which re-sends the bitmap) now runs
+  only when a non-progress field changes — the per-second position tick uses
+  `partiallyUpdateAppWidget`, so the ~1MB bitmap is no longer re-sent every second
+  (which had stopped it painting at all). Verified on the Pixel 8 Pro: art,
+  progress, and times all render; controls and the cast icon work.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
