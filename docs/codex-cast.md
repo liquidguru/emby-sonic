@@ -1,20 +1,17 @@
 # Codex task — Casting (Chromecast / Google Cast)
 
-> **NEXT: Phase 3 UI polish + Phase 2 verification.** Phase 0, Phase 1, and
-> Phase 2.1 (Cast volume slider with optimistic updates) are done. A transient-
-> drop fix also landed (commit 36dc41e): a Wi-Fi blip no longer doubles audio —
-> suspend/abnormal end keep the receiver playing solo, and the phone only auto-
-> resumes on a clean user-initiated Stop Casting. Verified on Pixel 8 Pro + SHIELD.
+> **NEXT: Phase 2 Emby reporting verification.** Phase 0, Phase 1, Phase 2.1
+> (Cast volume slider with optimistic updates), and Phase 3 UI polish are done.
+> A transient-drop fix landed (commit 36dc41e): a Wi-Fi blip no longer doubles
+> audio because suspend/abnormal end keep the receiver playing solo. A follow-up
+> Phase 3 regression fix tracks `onSessionEnding` as user intent, so Stop Casting
+> paths that end with framework code `2154` still resume locally. Verified on
+> Pixel 8 Pro + SHIELD.
 >
 > Do next:
-> 1. **Phase 3 UI polish** — Cast button in the mini-player (`ui/main/MiniPlayerBar.kt`);
->    visibly grey/disable the equalizer, crossfade, and offline-prefetch entry
->    points while casting (runtime suppression already exists from Phase 1); add a
->    "Casting to <device>" indicator on Now Playing.
-> 2. **Phase 2 verification** — confirm Emby "now playing"/resume points are
+> 1. **Phase 2 verification** — confirm Emby "now playing"/resume points are
 >    correct *while casting* (progress reporting from the cast position is wired
->    but unverified), and regression-test skip/seek/repeat/Guest DJ across a
->    longer cast queue.
+>    but still needs explicit Emby-side verification).
 
 liquidWave (emby-sonic Android) should cast music to Chromecast / Google TV /
 cast-enabled speakers. Read `AGENTS.md` and `docs/spec.md` first. Decisions are
@@ -122,13 +119,22 @@ Verification notes:
   pass. Phone volume buttons / the system Cast card still depend on Cast
   framework overlay timing.
 - Regression-test skip previous/next, seek, repeat modes, and Guest DJ appends
-  across a longer cast queue.
+  across a longer cast queue. **DONE 2026-06-20:** Pixel 8 Pro + SHIELD
+  regression tested a 30-track queue after Guest DJ appended five tracks:
+  next/previous, seek, repeat modes, and Guest DJ append worked. Stop Casting
+  initially handed back paused because the SHIELD route ended with framework code
+  `2154`; fixed by treating `onSessionEnding` as user intent while preserving the
+  transient-drop behavior. ADB logs from the fixed build show local->remote at
+  queue index 24 around 10.1s and remote->local at the same index around 52.3s
+  with `userEnding=true resumePlayback=true`.
 
 ## Phase 3 — UI polish
-- While casting: visibly disable/grey equalizer, crossfade, and offline prefetch
-  settings/entry points. Runtime suppression is already in place from Phase 1.
-- Add the Cast button to the mini-player (`ui/main/MiniPlayerBar.kt`).
-- Show a "Casting to <device>" indicator on Now Playing.
+- **DONE 2026-06-20:** While casting, Settings visibly disables/greys crossfade,
+  Equalizer, and offline-prefetch entry points with short unavailable hints.
+- **DONE 2026-06-20:** Added the Cast button to the mini-player
+  (`ui/main/MiniPlayerBar.kt`).
+- **DONE 2026-06-20:** Now Playing shows a "Casting to <device>" indicator and a
+  local-only-feature hint while casting.
 - Confirm notification/widget polish after the Phase 1 session-player swap.
 
 ## Phase 4 — Verify
