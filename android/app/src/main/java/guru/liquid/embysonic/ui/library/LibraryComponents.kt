@@ -93,12 +93,13 @@ internal fun CardGrid(
     selectedIds: Set<String> = emptySet(),
     onPlayItem: ((LibraryItem) -> Unit)? = null,
     onDeleteItem: ((LibraryItem) -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val sortedItems = remember(items) { items.sortedWith(collectionItemComparator) }
     val index = remember(sortedItems) { letterIndex(sortedItems) }
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(2),
@@ -204,12 +205,13 @@ internal fun CollectionList(
     selectedIds: Set<String> = emptySet(),
     onPlayItem: ((LibraryItem) -> Unit)? = null,
     onDeleteItem: ((LibraryItem) -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val sortedItems = remember(items) { items.sortedWith(collectionItemComparator) }
     val index = remember(sortedItems) { letterIndex(sortedItems) }
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp, end = 24.dp),
@@ -386,6 +388,7 @@ internal data class TrackAction(val label: String, val onClick: (LibraryItem) ->
 internal fun TrackList(
     items: List<LibraryItem>,
     placeholderBook: Boolean,
+    modifier: Modifier = Modifier,
     actions: List<TrackAction> = emptyList(),
     onTrackClick: (LibraryItem) -> Unit = {},
 ) {
@@ -396,7 +399,7 @@ internal fun TrackList(
     LazyColumn(
         state = listState,
         contentPadding = PaddingValues(vertical = 8.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
     ) {
         items(items, key = { it.playlistItemId ?: it.id }) { item ->
             ListItem(

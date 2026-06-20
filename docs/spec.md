@@ -297,7 +297,7 @@ dashboard config page, and triggers scans on library changes.
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
 ### Phase 3 — Android App
-*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20; M4.20 Cast reporting verification complete 2026-06-20.*
+*Pure UI consuming stable API. In progress (started 2026-06-08). M3 playback complete 2026-06-09; M3.5 playback controls/queue polish complete 2026-06-09; M3.6 Home landing polish complete 2026-06-09; M3.7 mini player complete 2026-06-09; M3.8 audiobook resume complete 2026-06-10; M3.9 Home customization complete 2026-06-10; M3.10 playback control polish complete 2026-06-10; M4.1 sonic mixes list/player complete 2026-06-10; M4.2 mix saving/options/Home complete 2026-06-10; M4.3 per-mix refresh + playlist delete + audiobook exclusion complete 2026-06-10; M4.4 crossfade implementation and six-second on-device listening verification complete 2026-06-11; M4.16 Google Cast Phase 1 active-player switching complete 2026-06-19; M4.17 Cast volume polish complete 2026-06-19; M4.19 Cast UI polish complete 2026-06-20; M4.20 Cast reporting verification complete 2026-06-20; M4.21 sonic-similar detail rails complete 2026-06-20.*
 
 Kotlin / Jetpack Compose. The Android app is branded **liquidWave**. Browse/stream/auth go to the **Emby API directly**; all
 sonic features go to the **coordinator**. Lives in `android/` inside this repo.
@@ -981,8 +981,21 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   the phone/casting state during remote playback. This closes the remaining
   Phase 2 Cast verification item for music v1; audiobook casting and audiobook
   resume semantics remain deliberately deferred.
-- **M4 — Remaining sonic features:** sonic-similar sidebars on Artist/Album
-  detail.
+- **M4.21 — Sonic-similar detail rails (2026-06-20, built + Pixel 8 Pro
+  verified):** Artist detail pages now show a compact "Sonically similar artists"
+  rail above the album grid, and album track-list pages show "Sonically similar
+  albums" above the tracks. The live coordinator endpoints return names rather
+  than Emby collection ids (`{artist, score}` and `{album, artist, score}`), and
+  the current coordinator implementation expects a representative track id even
+  on `/sonic/artists/{id}/similar` and `/sonic/albums/{id}/similar`; the Android
+  view model therefore seeds artist pages with the artist's first playable track,
+  seeds album pages with the first album track, then resolves returned names back
+  to Emby artist/album items through existing search APIs. Rails drill into the
+  existing detail routes and preserve normal playback controls below. User
+  verification confirmed artist similar cards open artists' albums, album similar
+  cards open album tracks, similar albums appear on album track lists, and album
+  track playback still starts normally.
+- **M4 — Remaining sonic features:** none currently open.
 - **M5 — Waveform + polish:** Real waveform (Option A) considered here, dropped
   in behind the `TrackProgress` interface; remaining UI polish as identified.
 

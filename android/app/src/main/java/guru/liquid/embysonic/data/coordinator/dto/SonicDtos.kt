@@ -20,6 +20,21 @@ data class SimilarTrackDto(
     @SerialName("score") val score: Double = 0.0,
 )
 
+/** One result of `GET /sonic/artists/{id}/similar`. */
+@Serializable
+data class SimilarArtistDto(
+    @SerialName("artist") val artist: String,
+    @SerialName("score") val score: Double = 0.0,
+)
+
+/** One result of `GET /sonic/albums/{id}/similar`. */
+@Serializable
+data class SimilarAlbumDto(
+    @SerialName("album") val album: String,
+    @SerialName("artist") val artist: String? = null,
+    @SerialName("score") val score: Double = 0.0,
+)
+
 @Serializable
 data class QueueInjectRequestDto(
     @SerialName("current_track_id") val currentTrackId: String,
