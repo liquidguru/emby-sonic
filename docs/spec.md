@@ -1162,6 +1162,13 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   liquidHulk → SMB to NAS → scp to the Emby host, since liquidBee has the .NET
   runtime but no SDK).
 
+- **M5.16 — Broken-track maintenance tooling (2026-06-21, built):**
+  `tools/broken_tracks.py` exports tracks stuck in `analysis_status='error'` to
+  CSV (`id,title,artist,album,file_path,error`) and can requeue selected IDs or
+  all errors by flipping them back to `pending`, clearing `claimed_at`, and
+  clearing `error`. This gives stale/missing/fixed library files an explicit
+  retry path without changing worker claim semantics.
+
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
 **M3 verification (liquidHulk / Pixel_3a_API_36, 2026-06-09):**

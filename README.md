@@ -96,6 +96,26 @@ Workers authenticate to the coordinator with `WORKER_SECRET` when it is set, or
 fall back to `EMBY_API_KEY` for older deployments. They auto-detect CUDA. Run
 multiple workers in parallel for faster scanning.
 
+### Broken-track maintenance
+
+Tracks that fail analysis are left with `analysis_status='error'` so workers do
+not retry the same stale/missing file forever. Export them for library cleanup,
+or requeue them after fixing files in Emby:
+
+```bash
+# Export id,title,artist,album,file_path,error for all broken tracks.
+python tools/broken_tracks.py --db data/sonic.db export --output broken_tracks.csv
+
+# Requeue selected tracks from a prior export CSV.
+python tools/broken_tracks.py --db data/sonic.db requeue --csv broken_tracks.csv
+
+# Or requeue every error row.
+python tools/broken_tracks.py --db data/sonic.db requeue --all
+```
+
+Requeue changes `analysis_status` from `error` to `pending`, clears the claim and
+error text, and lets the next running worker retry the track.
+
 ### Automatic analysis (worker as a scheduled task)
 
 For hands-off operation, install the worker as a Windows scheduled task so newly
