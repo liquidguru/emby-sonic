@@ -93,6 +93,29 @@ python worker.py
 
 Workers auto-detect CUDA. Run multiple workers in parallel for faster scanning.
 
+### Automatic analysis (worker as a scheduled task)
+
+For hands-off operation, install the worker as a Windows scheduled task so newly
+added tracks are analysed without running anything manually. The
+[Emby plugin](plugin/) already triggers a library scan on every add; the worker
+then drains the queue on its own.
+
+```powershell
+# On the coordinator / server box — always-on worker (run elevated):
+./deploy/worker-install.ps1 -Mode service
+
+# On a separate GPU desktop you also use — only runs while the machine is idle:
+./deploy/worker-install.ps1 -Mode idle -CoordinatorUrl http://<coordinator-host>:8765
+```
+
+`service` mode runs as SYSTEM, starts at boot, and restarts if it dies. `idle`
+mode runs only when the machine is idle and stops the instant you return, so it
+never fights your foreground work. Both can run together on different machines.
+
+The script auto-detects the repo + `.venv`, writes the run wrapper, and pins
+`USERPROFILE` so `panns_inference` finds its model under SYSTEM. See
+`./deploy/worker-install.ps1 -?` for all options.
+
 ### Docker (optional — for NAS / Linux hosts)
 
 ```bash
