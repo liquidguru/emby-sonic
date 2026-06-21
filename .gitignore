@@ -6,6 +6,8 @@ __pycache__/
 venv/
 /data/
 /models/
+worker.log
+worker_run.generated.ps1
 *.egg-info/
 dist/
 
