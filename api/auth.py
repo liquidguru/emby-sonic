@@ -32,10 +32,11 @@ async def verify_emby_token(token: str = Security(_header)) -> str:
 
 async def verify_worker(token: str = Security(_worker_header)) -> str:
     """
-    Authenticate an analysis worker. Workers present a shared secret (the Emby
-    API key, which they already hold to stream audio) in X-Worker-Token. Simple
-    and sufficient for a trusted LAN; can be split into a dedicated secret later.
+    Authenticate an analysis worker. Workers present WORKER_SECRET in
+    X-Worker-Token. For existing deployments that have not set WORKER_SECRET
+    yet, the Emby API key remains the fallback worker secret.
     """
-    if not settings.emby_api_key or token != settings.emby_api_key:
+    worker_secret = settings.effective_worker_secret
+    if not worker_secret or token != worker_secret:
         raise HTTPException(status_code=401, detail="Invalid worker token")
     return token
