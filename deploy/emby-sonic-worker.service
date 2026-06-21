@@ -1,0 +1,20 @@
+[Unit]
+Description=Emby Sonic analysis worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__REPO_DIR__
+EnvironmentFile=-__REPO_DIR__/.env
+Environment=COORDINATOR_URL=__COORDINATOR_URL__
+Environment=HOME=__HOME_DIR__
+Environment=USERPROFILE=__HOME_DIR__
+ExecStart=__PYTHON_EXE__ worker.py
+Restart=always
+RestartSec=30
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

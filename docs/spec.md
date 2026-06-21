@@ -279,7 +279,10 @@ dashboard config page, and triggers scans on library changes.
       (no torch/librosa/panns — proven the coordinator imports and runs the
       `reduce()` path with the ML stack absent; validated in a clean venv with
       only the minimal deps). `python:3.12-slim` + `libgomp1`; data volume for
-      SQLite/FAISS. Workers still run the full `requirements.txt` on a CPU/GPU box.
+      SQLite/FAISS. Workers can run the full `requirements.txt` on a CPU/GPU box
+      natively, through the Compose `worker` service, or through the Linux
+      `deploy/worker-install.sh` systemd installer; Docker workers persist the
+      CNN14 checkpoint in a named `/root/panns_data` volume.
 
 **Emby plugin gotchas (hard-won, 2026-06-07):**
 - Emby injects config-page HTML via `innerHTML`, so **inline `<script>` never runs**.

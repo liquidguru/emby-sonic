@@ -116,12 +116,14 @@ python tools/broken_tracks.py --db data/sonic.db requeue --all
 Requeue changes `analysis_status` from `error` to `pending`, clears the claim and
 error text, and lets the next running worker retry the track.
 
-### Automatic analysis (worker as a scheduled task)
+### Automatic analysis (worker as a service)
 
-For hands-off operation, install the worker as a Windows scheduled task so newly
-added tracks are analysed without running anything manually. The
+For hands-off operation, install the worker as an OS service so newly added
+tracks are analysed without running anything manually. The
 [Emby plugin](plugin/) already triggers a library scan on every add; the worker
 then drains the queue on its own.
+
+**Windows scheduled task:**
 
 ```powershell
 # On the coordinator / server box — always-on worker (run elevated):
@@ -139,16 +141,58 @@ The script auto-detects the repo + `.venv`, writes the run wrapper, and pins
 `USERPROFILE` so `panns_inference` finds its model under SYSTEM. See
 `./deploy/worker-install.ps1 -?` for all options.
 
-### Docker (optional — for NAS / Linux hosts)
+**Linux systemd service:**
 
 ```bash
-docker build -t emby-sonic .
-docker run -d --name emby-sonic -p 8765:8765 \
+# On the coordinator / server box:
+sudo ./deploy/worker-install.sh
+
+# On a separate GPU/CPU worker box:
+sudo ./deploy/worker-install.sh --coordinator-url http://<coordinator-host>:8765
+```
+
+The Linux installer renders [`deploy/emby-sonic-worker.service`](deploy/emby-sonic-worker.service)
+into `/etc/systemd/system`, runs from the repo venv, restarts on failure, starts
+at boot, and reads `EMBY_URL` / `EMBY_API_KEY` from the repo `.env`.
+
+### Docker (optional — for NAS / Linux hosts)
+
+Coordinator-only NAS deploy:
+
+```bash
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d coordinator
+```
+
+Coordinator plus worker in Compose:
+
+```bash
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d --build
+```
+
+The Compose `worker` service uses the full [`Dockerfile`](Dockerfile), runs
+`python worker.py`, and stores the CNN14 checkpoint in the named
+`emby-sonic-panns` volume mounted at `/root/panns_data`, so the ~327 MB model is
+not redownloaded on every container rebuild/restart. Workers stream audio from
+Emby; no music library bind mount is needed.
+
+Standalone worker container:
+
+```bash
+docker build -t emby-sonic-worker .
+docker run -d --name emby-sonic-worker \
+  -e COORDINATOR_URL=http://<coordinator-host>:8765 \
   -e EMBY_URL=http://<emby-host>:8096 \
   -e EMBY_API_KEY=<key> \
-  -v emby-sonic-data:/app/data \
-  -v emby-sonic-models:/app/models \
-  emby-sonic
+  -v emby-sonic-panns:/root/panns_data \
+  emby-sonic-worker python worker.py
+```
+
+For NVIDIA GPU acceleration, install the NVIDIA Container Toolkit and run the
+worker with GPU access, for example:
+
+```bash
+docker run --gpus all ...
+docker compose run --rm --gpus all worker
 ```
 
 ## API

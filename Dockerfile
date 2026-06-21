@@ -1,20 +1,20 @@
-# Emby Sonic analysis service — optional containerised deployment.
+# Emby Sonic full image — optional containerised worker deployment.
 #
-# This is the convenience path for users running Emby on a NAS / Linux box
-# with Docker. Native install (pip + python main.py) remains the primary path
-# for Windows and other no-Docker hosts.
+# This image contains the audio analysis stack and can run either the
+# coordinator (python main.py) or a worker (python worker.py). The
+# docker-compose.yml uses the smaller Dockerfile.coordinator for the coordinator
+# and this full image for workers.
 #
-# Build:  docker build -t emby-sonic .
-# Run:    docker run -d --name emby-sonic -p 8765:8765 \
+# Build:  docker build -t emby-sonic-worker .
+# Run:    docker run -d --name emby-sonic-worker \
+#           -e COORDINATOR_URL=http://<coordinator-host>:8765 \
 #           -e EMBY_URL=http://<emby-host>:8096 \
 #           -e EMBY_API_KEY=<key> \
-#           -v emby-sonic-data:/app/data \
-#           -v emby-sonic-models:/app/models \
-#           -v /path/to/music:/music:ro \
-#           emby-sonic
+#           -v emby-sonic-panns:/root/panns_data \
+#           emby-sonic-worker python worker.py
 #
-# NOTE: the music library must be mounted at the SAME path the Emby API reports
-# in each track's "Path" field, or the analyser can't find the files.
+# Workers stream audio through Emby's HTTP API, so no music library bind mount is
+# required.
 
 FROM python:3.12-slim
 
