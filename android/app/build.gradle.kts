@@ -40,7 +40,15 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            // Use the release key when the signing secrets are present
+            // (storeFile gets set above only then); otherwise fall back to the
+            // debug signing config so `assembleRelease` still produces an
+            // installable, signed APK for contributors/CI without the keystore —
+            // rather than failing on a half-configured release SigningConfig or
+            // emitting an unsigned APK.
             signingConfig = signingConfigs.getByName("release")
+                .takeIf { it.storeFile != null }
+                ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
