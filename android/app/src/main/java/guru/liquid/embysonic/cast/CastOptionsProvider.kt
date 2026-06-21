@@ -5,9 +5,6 @@ import com.google.android.gms.cast.framework.CastOptions
 import com.google.android.gms.cast.framework.OptionsProvider
 import com.google.android.gms.cast.framework.SessionProvider
 import com.google.android.gms.cast.framework.media.CastMediaOptions
-import com.google.android.gms.cast.framework.media.MediaIntentReceiver
-import com.google.android.gms.cast.framework.media.NotificationOptions
-import guru.liquid.embysonic.MainActivity
 
 /**
  * Required by the Cast framework (referenced from the manifest meta-data). Uses
@@ -17,20 +14,14 @@ import guru.liquid.embysonic.MainActivity
  */
 class CastOptionsProvider : OptionsProvider {
     override fun getCastOptions(context: Context): CastOptions {
-        // Explicit notification + lock-screen controls for the cast session, so the
-        // shade always shows a play/pause + stop-casting card while casting.
-        val notificationOptions = NotificationOptions.Builder()
-            .setActions(
-                listOf(
-                    MediaIntentReceiver.ACTION_TOGGLE_PLAYBACK,
-                    MediaIntentReceiver.ACTION_STOP_CASTING,
-                ),
-                intArrayOf(0, 1),
-            )
-            .setTargetActivityClassName(MainActivity::class.java.name)
-            .build()
+        // The app's Media3 MediaLibrarySession owns the notification + lock-screen
+        // controls while casting (its player is swapped to the CastPlayer, so the
+        // shade already shows the casting track with play/pause + seek). Disable the
+        // Cast framework's own notification AND media session so the shade shows a
+        // single media card instead of two duplicates for the same track.
         val mediaOptions = CastMediaOptions.Builder()
-            .setNotificationOptions(notificationOptions)
+            .setNotificationOptions(null)
+            .setMediaSessionEnabled(false)
             .build()
 
         return CastOptions.Builder()
