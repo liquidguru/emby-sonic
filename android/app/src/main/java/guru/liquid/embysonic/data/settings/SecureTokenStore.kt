@@ -3,9 +3,12 @@ package guru.liquid.embysonic.data.settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.security.ProviderException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -15,15 +18,35 @@ import javax.inject.Singleton
 
 @Singleton
 class SecureTokenStore @Inject constructor() {
-    fun encrypt(plaintext: String): String {
+    /**
+     * Encrypt [plaintext] for at-rest storage. Returns null (never throws) if the
+     * device Keystore is unavailable — e.g. an OEM/StrongBox failure during key
+     * generation — so a failed encrypt degrades to "session not persisted" rather
+     * than crashing the login/migration flow. Mirrors [decrypt]'s null-on-failure.
+     */
+    fun encrypt(plaintext: String): String? = try {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val ciphertext = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
-        return listOf(
+        listOf(
             VERSION,
             cipher.iv.toBase64(),
             ciphertext.toBase64(),
         ).joinToString(":")
+    } catch (e: Exception) {
+        when (e) {
+            // Checked crypto failures, plus unchecked ProviderException
+            // (StrongBox/OEM Keystore quirks from generateKey) and IOException
+            // from KeyStore.load(null). Anything else is genuinely unexpected.
+            is GeneralSecurityException,
+            is IllegalArgumentException,
+            is ProviderException,
+            is IOException -> {
+                Log.w(TAG, "Failed to encrypt session token", e)
+                null
+            }
+            else -> throw e
+        }
     }
 
     fun decrypt(payload: String): String? {
@@ -68,5 +91,6 @@ class SecureTokenStore @Inject constructor() {
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val GCM_TAG_BITS = 128
         const val VERSION = "v1"
+        const val TAG = "SecureTokenStore"
     }
 }

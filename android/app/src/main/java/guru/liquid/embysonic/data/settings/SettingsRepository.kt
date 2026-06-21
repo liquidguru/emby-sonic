@@ -290,7 +290,14 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { prefs ->
             prefs[Keys.SERVER_URL] = serverUrl
             prefs[Keys.COORDINATOR_URL] = coordinatorUrl
-            prefs[Keys.SESSION_TOKEN_CIPHERTEXT] = secureTokenStore.encrypt(accessToken)
+            val encrypted = secureTokenStore.encrypt(accessToken)
+            if (encrypted != null) {
+                prefs[Keys.SESSION_TOKEN_CIPHERTEXT] = encrypted
+            } else {
+                // Keystore unavailable: persist no token rather than crash or
+                // store plaintext. The user re-authenticates next launch.
+                prefs.remove(Keys.SESSION_TOKEN_CIPHERTEXT)
+            }
             prefs.remove(Keys.ACCESS_TOKEN)
             prefs.remove(Keys.LEGACY_ENCRYPTED_ACCESS_TOKEN)
             prefs[Keys.USER_ID] = userId
@@ -326,7 +333,11 @@ class SettingsRepository @Inject constructor(
                         prefs[Keys.SESSION_TOKEN_CIPHERTEXT] = legacyEncrypted
                     }
                     !plaintext.isNullOrBlank() -> {
-                        prefs[Keys.SESSION_TOKEN_CIPHERTEXT] = secureTokenStore.encrypt(plaintext)
+                        // If the Keystore can't encrypt, skip rather than crash
+                        // on startup; the stale plaintext is still cleared below.
+                        secureTokenStore.encrypt(plaintext)?.let {
+                            prefs[Keys.SESSION_TOKEN_CIPHERTEXT] = it
+                        }
                     }
                 }
             }
