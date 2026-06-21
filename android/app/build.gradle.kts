@@ -7,6 +7,9 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+fun releaseSigningValue(name: String): String? =
+    providers.gradleProperty(name).orElse(providers.environmentVariable(name)).orNull
+
 android {
     namespace = "guru.liquid.embysonic"
     compileSdk = 36
@@ -21,9 +24,23 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFilePath = releaseSigningValue("LIQUIDWAVE_RELEASE_STORE_FILE")
+            if (!storeFilePath.isNullOrBlank()) {
+                storeFile = file(storeFilePath)
+                storePassword = releaseSigningValue("LIQUIDWAVE_RELEASE_STORE_PASSWORD")
+                keyAlias = releaseSigningValue("LIQUIDWAVE_RELEASE_KEY_ALIAS")
+                keyPassword = releaseSigningValue("LIQUIDWAVE_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

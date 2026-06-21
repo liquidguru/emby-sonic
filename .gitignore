@@ -12,6 +12,10 @@ worker_run.generated.py
 docker-compose.installer.yml
 *.egg-info/
 dist/
+*.jks
+*.keystore
+*.p12
+android/keystores/
 
 # Codex remote session attachments (not part of the project)
 .codex-remote-attachments/
