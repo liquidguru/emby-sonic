@@ -1150,6 +1150,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   reused instead of one-per-event (was leaking sockets). Plugin stays a thin
   proxy (no native code). If no API key is set, auto-scan logs a warning and stays
   off; manual scan still works. Bumped AssemblyVersion 0.3.0.0 → 0.4.0.0.
+  **0.4.1.0 follow-up (2026-06-21):** deploying revealed the deeper reason
+  auto-scan never worked — Emby's SimpleInjector container can't resolve
+  `ILogger<ServerEntryPoint>` (`ActivationException`), so the entry point **never
+  instantiated and `ItemAdded` was never subscribed**. The original ctor always
+  used `ILogger<T>`, so the hook had been dead since Phase 2. Fixed by depending
+  only on `ILibraryManager` (the registered service) and dropping the
+  `ILogger<T>` dependency. Deployed to liquidBee via NAS relay (build on
+  liquidHulk → SMB to NAS → scp to the Emby host, since liquidBee has the .NET
+  runtime but no SDK).
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
