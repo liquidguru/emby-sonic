@@ -135,7 +135,9 @@ the full `X-Emby-Authorization` client context). The server `EMBY_API_KEY` is al
 accepted directly (short-circuits the call) for admin use and integration testing.
 Mobile clients use real Emby user session tokens. CORS is enabled (`allow_origins=["*"]`)
 so the Emby dashboard config page can fetch the coordinator cross-origin.
-Worker routes validate `X-Worker-Token` against the shared `EMBY_API_KEY`.
+Worker routes validate `X-Worker-Token` against `WORKER_SECRET`; if
+`WORKER_SECRET` is unset, they fall back to `EMBY_API_KEY` for existing
+deployments.
 
 ### Layer 4 — Android App (Kotlin / Jetpack Compose)
 
@@ -1342,7 +1344,6 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 ## Open Questions
 
 - **Incremental scan:** webhook/poll fallback for setups without the plugin (the plugin already fires a scan on `ItemAdded`)?
-- **Worker token:** currently the shared `EMBY_API_KEY` — split into a dedicated `WORKER_SECRET` env var?
 
 ---
 
@@ -1387,6 +1388,13 @@ Replaced with coordinator + workers via HTTP:
 - FAISS is rebuilt from SQLite on every coordinator startup — a crash that loses the
   on-disk FAISS index loses no analysed work.
 - Workers stream audio from Emby's `/Items/{id}/Download` — no file share needed.
+
+### Worker credentials
+
+Resolved 2026-06-21. Worker routes use a dedicated `WORKER_SECRET` presented in
+`X-Worker-Token`, so worker credentials can be rotated independently from the
+Emby API key. Existing deployments remain compatible: if `WORKER_SECRET` is
+unset, worker auth falls back to `EMBY_API_KEY`.
 
 ### Waveform: MVP placeholder (B), designed for on-demand caching (A)
 

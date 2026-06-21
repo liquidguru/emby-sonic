@@ -87,11 +87,14 @@ curl -X POST http://localhost:8765/sonic/library/scan \
 
 # 2. Run a worker (on this machine or any other on the LAN)
 COORDINATOR_URL=http://<coordinator-host>:8765 \
+WORKER_SECRET=<worker-secret> \
 WORKER_ID=my-worker \
 python worker.py
 ```
 
-Workers auto-detect CUDA. Run multiple workers in parallel for faster scanning.
+Workers authenticate to the coordinator with `WORKER_SECRET` when it is set, or
+fall back to `EMBY_API_KEY` for older deployments. They auto-detect CUDA. Run
+multiple workers in parallel for faster scanning.
 
 ### Automatic analysis (worker as a scheduled task)
 
@@ -158,7 +161,8 @@ Set via environment variables or a `.env` file:
 | Variable | Default | Description |
 |---|---|---|
 | `EMBY_URL` | `http://192.168.1.9:8096` | Emby server URL |
-| `EMBY_API_KEY` | *(required)* | Emby API key (also used as worker shared secret) |
+| `EMBY_API_KEY` | *(required)* | Emby API key for coordinator admin calls and worker audio downloads |
+| `WORKER_SECRET` | falls back to `EMBY_API_KEY` | Shared secret required in `X-Worker-Token` for worker routes |
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8765` | Bind port |
 | `NUM_WINDOWS` | `3` | Windows sampled per track (speed/quality knob) |
