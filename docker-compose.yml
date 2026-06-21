@@ -3,8 +3,9 @@
 #   1. Set EMBY_URL + EMBY_API_KEY below (or in a .env file next to this).
 #   2. docker compose up -d
 #   3. Point the Emby plugin's "Python Service URL" at http://<this-host>:8765
-#   4. Run one or more WORKERS on a machine with spare CPU/GPU (they install the
-#      full requirements.txt and stream audio from Emby). See docs/spec.md.
+#   4. Start the worker service below on a machine with spare CPU/GPU, or run
+#      native workers with deploy/worker-install.*. Workers stream audio from
+#      Emby, so no music library bind mount is needed.
 #
 # The coordinator does not embed audio itself — workers do — so this container
 # is small and needs no GPU.
@@ -30,5 +31,34 @@ services:
       # SQLite DB + FAISS index live here — persist them.
       - emby-sonic-data:/app/data
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: emby-sonic-worker
+    container_name: emby-sonic-worker
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+    command: ["python", "worker.py"]
+    environment:
+      # Use the in-compose coordinator by default. For a remote coordinator,
+      # override COORDINATOR_URL in .env or your shell.
+      COORDINATOR_URL: "${COORDINATOR_URL:-http://coordinator:8765}"
+      EMBY_URL: "${EMBY_URL:-http://192.168.1.50:8096}"
+      EMBY_API_KEY: "${EMBY_API_KEY:?set EMBY_API_KEY in your environment or .env}"
+      WORKER_ID: "${WORKER_ID:-docker-worker}"
+      WORKER_BATCH: "${WORKER_BATCH:-16}"
+      # Keep the ~327 MB CNN14 checkpoint out of the container layer so restarts
+      # and rebuilds do not redownload it.
+      PANNS_CHECKPOINT_PATH: /root/panns_data/Cnn14_mAP=0.431.pth
+    volumes:
+      - emby-sonic-panns:/root/panns_data
+    # Optional NVIDIA GPU support:
+    #   docker compose run --rm --gpus all worker
+    # or uncomment the next line with a recent Docker Compose + NVIDIA runtime.
+    # gpus: all
+
 volumes:
   emby-sonic-data:
+  emby-sonic-panns:
