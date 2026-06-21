@@ -13,6 +13,7 @@ Config via environment (same EMBY_URL + EMBY_API_KEY as the service):
     COORDINATOR_URL   default http://localhost:8765
     WORKER_ID         default = hostname
     WORKER_BATCH      default 16
+    WORKER_SECRET     optional worker token; falls back to EMBY_API_KEY
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from analysis.embeddings import embedder
 COORDINATOR = os.environ.get("COORDINATOR_URL", "http://localhost:8765").rstrip("/")
 WORKER_ID = os.environ.get("WORKER_ID", socket.gethostname())
 BATCH = int(os.environ.get("WORKER_BATCH", "16"))
-_HEADERS = {"X-Worker-Token": settings.emby_api_key}
+_HEADERS = {"X-Worker-Token": settings.effective_worker_secret}
 
 
 def _claim(client: httpx.Client) -> list[dict]:

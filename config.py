@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     emby_url: str = "http://192.168.1.50:8096"
     emby_api_key: str = ""
+    worker_secret: str = ""
 
     host: str = "0.0.0.0"
     port: int = 8765
@@ -64,6 +65,10 @@ class Settings(BaseSettings):
         # as_posix() forces forward slashes — backslashes from a Windows Path
         # break the SQLAlchemy URL on the driver side.
         return f"sqlite+aiosqlite:///{(self.data_dir / 'sonic.db').as_posix()}"
+
+    @property
+    def effective_worker_secret(self) -> str:
+        return self.worker_secret or self.emby_api_key
 
     @property
     def faiss_index_path(self) -> Path:
