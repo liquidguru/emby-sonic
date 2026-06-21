@@ -10,10 +10,14 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.SupervisorJob
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,11 +35,14 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 @Singleton
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val secureTokenStore: SecureTokenStore,
 ) {
     private object Keys {
         val SERVER_URL = stringPreferencesKey("server_url")
         val COORDINATOR_URL = stringPreferencesKey("coordinator_url")
         val ACCESS_TOKEN = stringPreferencesKey("access_token")
+        val LEGACY_ENCRYPTED_ACCESS_TOKEN = stringPreferencesKey("access_token_encrypted")
+        val SESSION_TOKEN_CIPHERTEXT = stringPreferencesKey("session_token_ciphertext")
         val USER_ID = stringPreferencesKey("user_id")
         val USER_NAME = stringPreferencesKey("user_name")
         val DEVICE_ID = stringPreferencesKey("device_id")
@@ -56,6 +63,12 @@ class SettingsRepository @Inject constructor(
         val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
         val THEME_CHOICE = stringPreferencesKey("theme_choice")
         val CAST_SERVER_URL = stringPreferencesKey("cast_server_url")
+    }
+
+    private val migrationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        migrationScope.launch { migratePlaintextAccessToken() }
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toAppSettings() }
@@ -229,10 +242,13 @@ class SettingsRepository @Inject constructor(
 
     private fun Preferences.toAppSettings(): AppSettings {
         val deviceId = this[Keys.DEVICE_ID] ?: UUID.randomUUID().toString()
+        val accessToken = (this[Keys.SESSION_TOKEN_CIPHERTEXT] ?: this[Keys.LEGACY_ENCRYPTED_ACCESS_TOKEN])
+            ?.let { secureTokenStore.decrypt(it) }
+            ?: this[Keys.ACCESS_TOKEN]
         return AppSettings(
             serverUrl = this[Keys.SERVER_URL],
             coordinatorUrl = this[Keys.COORDINATOR_URL],
-            accessToken = this[Keys.ACCESS_TOKEN],
+            accessToken = accessToken,
             userId = this[Keys.USER_ID],
             userName = this[Keys.USER_NAME],
             deviceId = deviceId,
@@ -274,7 +290,9 @@ class SettingsRepository @Inject constructor(
         context.dataStore.edit { prefs ->
             prefs[Keys.SERVER_URL] = serverUrl
             prefs[Keys.COORDINATOR_URL] = coordinatorUrl
-            prefs[Keys.ACCESS_TOKEN] = accessToken
+            prefs[Keys.SESSION_TOKEN_CIPHERTEXT] = secureTokenStore.encrypt(accessToken)
+            prefs.remove(Keys.ACCESS_TOKEN)
+            prefs.remove(Keys.LEGACY_ENCRYPTED_ACCESS_TOKEN)
             prefs[Keys.USER_ID] = userId
             prefs[Keys.USER_NAME] = userName
         }
@@ -289,8 +307,31 @@ class SettingsRepository @Inject constructor(
     suspend fun clearSession() {
         context.dataStore.edit { prefs ->
             prefs.remove(Keys.ACCESS_TOKEN)
+            prefs.remove(Keys.LEGACY_ENCRYPTED_ACCESS_TOKEN)
+            prefs.remove(Keys.SESSION_TOKEN_CIPHERTEXT)
             prefs.remove(Keys.USER_ID)
             prefs.remove(Keys.USER_NAME)
+        }
+        refreshCache()
+    }
+
+    private suspend fun migratePlaintextAccessToken() {
+        context.dataStore.edit { prefs ->
+            val plaintext = prefs[Keys.ACCESS_TOKEN]
+            val encrypted = prefs[Keys.SESSION_TOKEN_CIPHERTEXT]
+            val legacyEncrypted = prefs[Keys.LEGACY_ENCRYPTED_ACCESS_TOKEN]
+            if (encrypted.isNullOrBlank()) {
+                when {
+                    !legacyEncrypted.isNullOrBlank() -> {
+                        prefs[Keys.SESSION_TOKEN_CIPHERTEXT] = legacyEncrypted
+                    }
+                    !plaintext.isNullOrBlank() -> {
+                        prefs[Keys.SESSION_TOKEN_CIPHERTEXT] = secureTokenStore.encrypt(plaintext)
+                    }
+                }
+            }
+            prefs.remove(Keys.ACCESS_TOKEN)
+            prefs.remove(Keys.LEGACY_ENCRYPTED_ACCESS_TOKEN)
         }
         refreshCache()
     }
