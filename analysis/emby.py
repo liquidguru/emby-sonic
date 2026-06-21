@@ -50,7 +50,7 @@ def download_track(item_id: str, suffix: str = ".tmp", token: str | None = None)
         with httpx.stream(
             "GET",
             f"{settings.emby_url}/Items/{item_id}/Download",
-            params={"api_key": token or settings.emby_api_key},
+            headers=_auth_headers(token),
             timeout=300.0,
             follow_redirects=True,
         ) as resp:
