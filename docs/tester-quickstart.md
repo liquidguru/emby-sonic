@@ -163,10 +163,17 @@ wait for 100 %. For hands-off operation later, install the worker as a service
 
 ## 5. Install the Android app (liquidWave)
 
-You'll get a **signed APK** from me directly (or build it yourself — see
-[README → Phase 3](../README.md#phase-3--android-app-liquidwave)). To install the
-APK file: copy it to your phone, tap it, and allow "install from unknown sources"
-when prompted.
+Grab `app-debug.apk` from the
+[Releases page](https://github.com/liquidguru/emby-sonic/releases) (or the link I
+send you), or build it yourself — see
+[README → Phase 3](../README.md#phase-3--android-app-liquidwave). To install: copy
+the APK to your phone, tap it, and allow "install from unknown sources" when
+prompted.
+
+> It's a **debug-signed** build (Android's standard debug key) — it installs and runs
+> exactly like any app; debug vs. release makes no difference to playback. A future
+> public release will use a dedicated signing key, at which point you'd uninstall and
+> reinstall once.
 
 On first launch enter:
 
@@ -216,7 +223,8 @@ about your library, listening, or credentials is sent to me or any third party.
   (a plain-HTTP LAN server still works if you type an explicit `http://` URL).
 - **`allowBackup=false`** — your Emby session token is not swept into cloud or `adb`
   backups.
-- Release builds are **R8-minified, obfuscated, and signed**.
+- The beta APK is **debug-signed** for easy sideloading; a hardened release build
+  (dedicated signing key + R8 shrink/obfuscate) is a planned pre-public-launch step.
 
 **Honest beta caveats (transparency):**
 
