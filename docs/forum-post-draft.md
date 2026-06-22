@@ -74,6 +74,20 @@ important to her — so liquidWave handles books (with durable resume) alongside
 
 [SCREENSHOT: Mixes screen] [SCREENSHOT: Sonic Adventure builder]
 
+### You can try it as a plain Emby player first
+
+Worth knowing: the sonic backend is **optional**. The app on its own is a fully
+working **Emby music + audiobook player** — you can install it, skip the coordinator
+entirely, and have a usable player straight away. Browse, full playback (queue,
+shuffle/repeat, crossfade, EQ, mini player, the Now Playing widget, **Cast**),
+audiobook resume + speed, Emby playlists, Recent Plays, search, and the metadata
+Stations all work with nothing but your Emby server.
+
+The sonic features — **Mixes, Track Radio, Similar, Sonic Adventure, Guest DJ** — are
+what the backend adds on top. Without it they just stay empty; the app degrades
+gracefully rather than breaking. So you can get the player running on day one and
+stand up the analysis side at your leisure.
+
 ### Self-hosted and private — by design
 
 This is built privacy-first. **It's your music, your server, your network.**

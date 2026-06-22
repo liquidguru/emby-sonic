@@ -34,6 +34,26 @@ Then you install the **Android app** and point it at your Emby server + coordina
 
 ---
 
+## You can start with just the app
+
+The coordinator (the sonic backend) is **optional** — the Android app is a fully
+working **Emby music + audiobook player on its own**. You can install the APK,
+leave the coordinator URL blank, and have a usable player on day one, then stand up
+the analysis backend later at your own pace (no need to wait out the first scan
+before you can play anything).
+
+**Works with no backend at all (straight Emby):** browse artists / albums / tracks /
+genres and audiobooks; full playback with queue, shuffle/repeat, crossfade, the
+in-app equalizer, mini player, the Now Playing widget, and Google Cast; durable
+audiobook resume + speed control; Emby playlists; Recent Plays; search; and the
+metadata Stations (Library / Random Album / Decade radios).
+
+**Needs the coordinator (the sonic features):** Sonic Mixes, Track Radio, Similar
+tracks / artists / albums, Sonic Adventure, and the Guest DJ. Without the backend
+these simply stay empty — the app degrades gracefully, it doesn't break.
+
+---
+
 ## Pick your setup
 
 liquidWave is **hardware- and OS-agnostic by design.** The coordinator is tiny and
