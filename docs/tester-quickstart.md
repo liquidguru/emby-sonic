@@ -34,6 +34,32 @@ Then you install the **Android app** and point it at your Emby server + coordina
 
 ---
 
+## Pick your setup
+
+liquidWave is **hardware- and OS-agnostic by design.** The coordinator is tiny and
+runs anywhere — Windows, Linux, macOS, or a Docker container on an ARM NAS. The
+heavy lifting (the neural analysis) is a separate **worker** you run wherever you
+have spare horsepower. A GPU makes it faster; **it is not required** — CPU works, it
+just takes longer. Because the two talk over plain HTTP and the worker streams audio
+from Emby, they can be the same machine or three different boxes, on any mix of OSes.
+
+Find yourself below:
+
+| Your setup | Coordinator | Worker |
+|---|---|---|
+| **Synology / QNAP / ARM NAS** runs Emby | Docker on the NAS | Your desktop / gaming PC (its GPU if it has one) |
+| **One Windows box** does everything | Native Python on it | Same box — CPU (run overnight) or its GPU |
+| **Linux server + a separate GPU rig** | On the Linux server | On the GPU box (`--gpus all`) |
+| **No GPU anywhere** | Either | Any box, CPU-only — just slower |
+
+> **You should never have to compile a native dependency.** Cross-platform audio
+> libraries are genuinely fiddly (Essentia has no Windows/ARM wheel, PyTorch needs the
+> right build, the model is ~327 MB) — so the defaults handle it for you: CPU-only
+> PyTorch wheels, Essentia made optional (librosa fills in), the model auto-downloads
+> on first run, and Docker images for the NAS/Linux crowd.
+
+---
+
 ## 1. Get the code + configure
 
 ```bash
