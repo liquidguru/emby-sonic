@@ -38,6 +38,7 @@ import coil.request.SuccessResult
 import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.BuildConfig
+import guru.liquid.embysonic.MainActivity
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
 import guru.liquid.embysonic.data.coordinator.toLibraryItem
@@ -49,6 +50,9 @@ import guru.liquid.embysonic.data.emby.dto.PlaybackReportDto
 import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
 import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
+import guru.liquid.embysonic.data.session.PersistedSession
+import guru.liquid.embysonic.data.session.PersistedTrack
+import guru.liquid.embysonic.data.session.PlaybackSessionStore
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.data.settings.ThemeChoice
 import guru.liquid.embysonic.widget.NowPlayingWidget
@@ -89,6 +93,7 @@ class PlaybackController @Inject constructor(
     private val prefetchCache: OfflinePrefetchCache,
     private val coordinator: CoordinatorApi,
     private val library: LibraryRepository,
+    private val sessionStore: PlaybackSessionStore,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
@@ -190,6 +195,10 @@ class PlaybackController @Inject constructor(
 
     private var queue: List<PlaybackTrack> = emptyList()
     private var queueShuffled: Boolean = false
+    // Restores the last session (queue + position) after process death so the
+    // widget/app can resume. Joined before acting on a cold widget command.
+    private var restoreJob: Job? = null
+    private var lastSessionPersistMs: Long = 0L
     private var streamOffsetsByIndex: MutableMap<Int, Long> = mutableMapOf()
     private var playSessionIdsByIndex: MutableMap<Int, String> = mutableMapOf()
     private var lastProgressReportMs: Long = 0
@@ -298,6 +307,7 @@ class PlaybackController @Inject constructor(
                 while (isActive) {
                     publishState()
                     reportProgressIfDue()
+                    persistSession(throttle = true)
                     maybeFireEndOfTrackSleepTimer()
                     maybeInjectGuestDj()
                     delay(500)
@@ -317,6 +327,10 @@ class PlaybackController @Inject constructor(
         // Bind the equalizer to the players' shared session.
         audioEffects.attach(sharedAudioSessionId)
         startWidgetUpdates()
+        // Restore the last session on cold start so the widget/app can resume
+        // after the process was killed. Paused, no autoplay, no network until the
+        // user actually hits play.
+        restoreJob = scope.launch { runCatching { restoreSession() } }
     }
 
     fun attachCastPlayer(player: CastPlayer) {
@@ -662,6 +676,7 @@ class PlaybackController @Inject constructor(
             activePlayerRef.pause()
         }
         publishState()
+        persistSession()
     }
 
     /** Record this queue in Recent plays, unless it's an audiobook or has no source. */
@@ -683,7 +698,123 @@ class PlaybackController @Inject constructor(
         }
     }
 
+    // --- Session persistence (resume after process death) ---------------------
+
+    private fun PlaybackTrack.toPersisted(): PersistedTrack = PersistedTrack(
+        id = id,
+        title = title,
+        artist = artist,
+        album = album,
+        imageUrl = imageUrl,
+        durationMs = durationMs,
+        playbackPositionMs = playbackPositionMs,
+        contentKind = contentKind.name,
+    )
+
+    private fun PersistedTrack.toPlaybackTrack(): PlaybackTrack = PlaybackTrack(
+        id = id,
+        title = title,
+        artist = artist,
+        album = album,
+        imageUrl = imageUrl,
+        durationMs = durationMs,
+        playbackPositionMs = playbackPositionMs,
+        contentKind = runCatching { ContentKind.valueOf(contentKind) }.getOrDefault(ContentKind.UNKNOWN),
+    )
+
+    /**
+     * Snapshot the current queue + position to disk so the widget/app can resume
+     * after the process is killed. [throttle] coalesces the periodic calls from
+     * the playing loop; discrete events (pause, skip, new queue) pass false.
+     * Never persists while casting — the remote receiver owns playback then.
+     */
+    private fun persistSession(throttle: Boolean = false) {
+        if (isCasting) return
+        val tracks = queue
+        if (tracks.isEmpty()) {
+            scope.launch { runCatching { sessionStore.clear() } }
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (throttle && now - lastSessionPersistMs < SESSION_PERSIST_THROTTLE_MS) return
+        lastSessionPersistMs = now
+        val index = activePlayerRef.currentMediaItemIndex.takeIf { it in tracks.indices } ?: 0
+        val position = currentSessionPositionMs() ?: 0L
+        val session = PersistedSession(
+            tracks = tracks.map { it.toPersisted() },
+            currentIndex = index,
+            positionMs = position,
+            shuffled = queueShuffled,
+        )
+        scope.launch { runCatching { sessionStore.save(session) } }
+    }
+
+    /**
+     * Rebuild the last queue on cold start, paused at the saved position. Does no
+     * network and no autoplay — the media items are set but not prepared, so
+     * nothing streams until the user presses play. Bails if a live queue already
+     * exists (a play beat the restore) or if casting.
+     */
+    private suspend fun restoreSession() {
+        val saved = sessionStore.load() ?: return
+        if (queue.isNotEmpty() || isCasting) return
+        val restored = saved.tracks.map { it.toPlaybackTrack() }
+        if (restored.isEmpty()) return
+        val startIndex = saved.currentIndex.coerceIn(0, restored.lastIndex)
+        // Resume the current track at the saved absolute position; the existing
+        // offset/resume math then drives a local seek (music) or a server-side
+        // StartTimeTicks stream (audiobooks).
+        val tracks = restored.mapIndexed { i, track ->
+            if (i == startIndex) track.copy(playbackPositionMs = saved.positionMs.coerceAtLeast(0L)) else track
+        }
+        queue = tracks
+        queueShuffled = saved.shuffled
+        playSessionIdsByIndex = tracks.indices
+            .associateWith { UUID.randomUUID().toString() }
+            .toMutableMap()
+        streamOffsetsByIndex = tracks
+            .mapIndexedNotNull { index, track ->
+                track.streamStartOffset().takeIf { it > 0 }?.let { index to it }
+            }
+            .toMap()
+            .toMutableMap()
+        val resumePosition = tracks.getOrNull(startIndex)?.playerStartPosition(startIndex) ?: 0
+        refreshHeaders()
+        activePlayerRef.setMediaItems(activeMediaItems(), startIndex, resumePosition)
+        applyPlaybackSpeed(startIndex)
+        activePlayerRef.pause()
+        publishState()
+    }
+
+    /** Join any in-flight cold-start restore so a widget command sees the queue. */
+    private suspend fun awaitRestore() {
+        restoreJob?.join()
+    }
+
+    /** Launch the app when a widget command has nothing to act on (no session). */
+    private fun openApp() {
+        runCatching {
+            context.startActivity(
+                Intent(context, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            )
+        }
+    }
+
     fun togglePlayPause() {
+        if (queue.isEmpty()) {
+            // Cold widget tap after a process kill: wait for the restore, then
+            // resume — or open the app if there's genuinely nothing to resume.
+            scope.launch {
+                awaitRestore()
+                if (queue.isEmpty()) openApp() else doTogglePlayPause()
+            }
+            return
+        }
+        doTogglePlayPause()
+    }
+
+    private fun doTogglePlayPause() {
         val player = activePlayerRef
         cancelCrossfade()
         if (player.isPlaying) {
@@ -701,6 +832,7 @@ class PlaybackController @Inject constructor(
             force = true,
             eventName = if (lastReportedState.isPlaying) "Unpause" else "Pause",
         )
+        persistSession()
     }
 
     /** Pause local playback without tearing the session down (e.g. handing off to Cast). */
@@ -733,6 +865,8 @@ class PlaybackController @Inject constructor(
         clearGuestDjState()
         clearSleepTimer()
         lastStartedItemId = null
+        // Explicit Stop forgets the session: nothing to resume, widget clears.
+        scope.launch { runCatching { sessionStore.clear() } }
         // Release the controller first; a live binding would keep the service
         // alive past stopService and leave a stale notification behind.
         releaseNotificationController()
@@ -771,22 +905,33 @@ class PlaybackController @Inject constructor(
         ) index else -1
         publishState()
         reportProgress(lastReportedState, force = true, eventName = "TimeUpdate")
+        persistSession()
     }
 
     fun skipPrevious() {
+        if (queue.isEmpty()) {
+            scope.launch { awaitRestore(); if (queue.isEmpty()) openApp() else skipPrevious() }
+            return
+        }
         val player = activePlayerRef
         cancelCrossfade()
         clearSleepTimer()
         if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else player.seekTo(0)
         publishState()
+        persistSession()
     }
 
     fun skipNext() {
+        if (queue.isEmpty()) {
+            scope.launch { awaitRestore(); if (queue.isEmpty()) openApp() else skipNext() }
+            return
+        }
         val player = activePlayerRef
         cancelCrossfade()
         clearSleepTimer()
         if (player.hasNextMediaItem()) player.seekToNextMediaItem()
         publishState()
+        persistSession()
     }
 
     fun seekToQueueIndex(index: Int) {
@@ -807,6 +952,7 @@ class PlaybackController @Inject constructor(
         reportStarted(queue[index], 0L, index)
         schedulePrefetch(index)
         publishState()
+        persistSession()
     }
 
     fun moveQueueItem(fromIndex: Int, toIndex: Int) {
@@ -907,6 +1053,7 @@ class PlaybackController @Inject constructor(
         if (wasPlaying) playActive() else player.pause()
         schedulePrefetch(0)
         publishState()
+        persistSession()
     }
 
     fun setSleepTimer(durationMs: Long) {
@@ -1932,6 +2079,7 @@ class PlaybackController @Inject constructor(
         const val SLEEP_TIMER_TICK_MS = 1_000L
         const val SLEEP_TIMER_FADE_MS = 3_000L
         const val SLEEP_TIMER_FADE_STEP_MS = 100L
+        const val SESSION_PERSIST_THROTTLE_MS = 10_000L
         const val TAG = "PlaybackController"
     }
 }
