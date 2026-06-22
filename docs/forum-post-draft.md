@@ -67,8 +67,8 @@ important to her — so liquidWave handles books (with durable resume) alongside
 - **Stations & Guest DJ** — Library / Random Album / Decade radios, plus a Guest DJ
   that injects sonically matched tracks into your queue.
 - **A proper player** — Media3/ExoPlayer, queue, shuffle/repeat, crossfade with an
-  artwork cross-dissolve, an in-app equalizer, a Now Playing home-screen widget, and
-  **Google Cast** to a Chromecast / Android TV / Shield.
+  artwork cross-dissolve, an in-app equalizer, a Now Playing home-screen widget,
+  **Android Auto**, and **Google Cast** to a Chromecast / Android TV / Shield.
 - **Audiobooks** — browse by book/author, durable resume, speed control.
 - **Search** across music, audiobooks, or everything.
 
@@ -92,6 +92,11 @@ stand up the analysis side at your leisure.
 
 This is built privacy-first. **It's your music, your server, your network.**
 
+- **It's completely non-destructive.** Your music and audiobook files are never
+  changed, re-tagged, moved, or deleted — the analysis only ever *reads* (streams)
+  your audio, and stores its results in its own separate database. The only things it
+  ever writes are the normal playback state any Emby app writes (play counts / resume
+  position), and a playlist *only* if you explicitly choose to save a mix.
 - Everything runs on **your own hardware** — there's no account, no cloud service, no
   analytics, and **no telemetry**. Nothing about your library or listening is sent to
   me or anyone else.

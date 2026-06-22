@@ -44,9 +44,9 @@ before you can play anything).
 
 **Works with no backend at all (straight Emby):** browse artists / albums / tracks /
 genres and audiobooks; full playback with queue, shuffle/repeat, crossfade, the
-in-app equalizer, mini player, the Now Playing widget, and Google Cast; durable
-audiobook resume + speed control; Emby playlists; Recent Plays; search; and the
-metadata Stations (Library / Random Album / Decade radios).
+in-app equalizer, mini player, the Now Playing widget, Google Cast, and **Android
+Auto**; durable audiobook resume + speed control; Emby playlists; Recent Plays;
+search; and the metadata Stations (Library / Random Album / Decade radios).
 
 **Needs the coordinator (the sonic features):** Sonic Mixes, Track Radio, Similar
 tracks / artists / albums, Sonic Adventure, and the Guest DJ. Without the backend
@@ -208,6 +208,17 @@ The phone must be on the **same LAN** as Emby and the coordinator.
 
 This is built privacy-first: **it's your music, your server, your network.** Nothing
 about your library, listening, or credentials is sent to me or any third party.
+
+**Completely non-destructive — your library is never modified:**
+
+- Your music and audiobook **files are never changed, re-tagged, moved, renamed, or
+  deleted.** The analysis only ever **reads** (streams) audio from Emby; its results
+  go into the coordinator's **own separate database**, not back into your files or
+  Emby's library metadata.
+- The only things ever written are the **normal playback state any Emby app writes**
+  — play counts and resume position (so playback resumes where you left off) — and an
+  Emby **playlist only when you explicitly tap "save"** on a mix. It never auto-creates
+  or alters existing playlists.
 
 **Fully self-hosted, no cloud:**
 
