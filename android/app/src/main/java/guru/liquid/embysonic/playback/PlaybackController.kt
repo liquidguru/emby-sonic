@@ -1451,6 +1451,15 @@ class PlaybackController @Inject constructor(
             SleepTimerMode.OFF -> 0L
         }
 
+    // Normalized song identity for dedup across duplicate library items: the same
+    // song can exist under several Emby item ids, so id alone isn't enough.
+    private fun contentKey(title: String, artist: String?): String =
+        "${title.trim().lowercase()} ${artist?.trim()?.lowercase().orEmpty()}"
+
+    private fun PlaybackTrack.contentKey(): String = contentKey(title, artist)
+
+    private fun LibraryItem.contentKey(): String = contentKey(title, subtitle)
+
     private fun maybeInjectGuestDj() {
         if (!guestDjEnabled || guestDjLoading) return
         val player = activePlayerRef
@@ -1483,9 +1492,19 @@ class PlaybackController @Inject constructor(
                 ).injected.map { it.toLibraryItem() }.withArtwork()
             }
             result.onSuccess { injected ->
-                val seen = queue.map { it.id }.toMutableSet()
+                // Dedupe by item id AND by a normalized title+artist key. A library
+                // with duplicate files holds the same song under several item ids;
+                // those are all maximally similar to the seed, so one inject batch
+                // can return three "different" tracks that are really one song
+                // (the 36/37/38 repeat). The content key rejects those too.
+                val seenIds = queue.map { it.id }.toMutableSet()
+                val seenContent = queue.mapTo(mutableSetOf()) { it.contentKey() }
                 val additions = injected
-                    .filter { it.contentKind == ContentKind.MUSIC && seen.add(it.id) }
+                    .filter {
+                        it.contentKind == ContentKind.MUSIC &&
+                            seenIds.add(it.id) &&
+                            seenContent.add(it.contentKey())
+                    }
                     .take(GUEST_DJ_INJECT_COUNT)
                 if (guestDjEnabled && additions.isNotEmpty()) {
                     appendGuestDjItems(additions)
