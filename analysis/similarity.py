@@ -13,6 +13,7 @@ Algorithms:
 
 from __future__ import annotations
 
+import random
 import re
 import unicodedata
 
@@ -265,12 +266,11 @@ async def build_artist_mix(
     Artist Mix Builder: for each selected artist, pick the tracks closest to that
     artist's sonic centroid (its most representative songs), pool them across all
     the chosen artists (de-duped by song identity so duplicate library files don't
-    repeat), then order the pool with a greedy nearest-neighbour walk so it flows
-    smoothly rather than jumping between artists.
+    repeat), then shuffle the pool so the artists are interleaved in a fresh random
+    order on every build rather than played in artist-grouped blocks.
     """
     per_artist = max(1, per_artist)
     pooled: list[TrackOut] = []
-    pooled_vecs: dict[str, np.ndarray] = {}
     seen_keys: set[str] = set()
 
     for name in artist_names:
@@ -288,14 +288,13 @@ async def build_artist_mix(
         # Closest to the centroid = most representative of the artist.
         scored.sort(key=lambda tv: float(np.dot(tv[1], centroid)), reverse=True)
         picked = 0
-        for t, v in scored:
+        for t, _ in scored:
             out = TrackOut.model_validate(t)
             key = _track_identity_key(out)
             if key in seen_keys:
                 continue
             seen_keys.add(key)
             pooled.append(out)
-            pooled_vecs[out.id] = v
             picked += 1
             if picked >= per_artist:
                 break
@@ -303,23 +302,11 @@ async def build_artist_mix(
     if not pooled:
         return []
 
-    # Greedy nearest-neighbour ordering within the pool for a smooth flow.
-    remaining = {t.id: t for t in pooled}
-    ordered: list[TrackOut] = []
-    current_id = pooled[0].id
-    while remaining:
-        track = remaining.pop(current_id, None)
-        if track is None:
-            current_id = next(iter(remaining))
-            continue
-        ordered.append(track)
-        if not remaining:
-            break
-        cur_vec = pooled_vecs[track.id]
-        current_id = max(
-            remaining,
-            key=lambda tid: float(np.dot(pooled_vecs[tid], cur_vec)),
-        )
+    # Shuffle the pool so the selected artists are interleaved in a fresh random
+    # order on every build, instead of the most-representative-first, artist-grouped
+    # blocks the old greedy nearest-neighbour walk produced.
+    ordered = list(pooled)
+    random.shuffle(ordered)
 
     if length is not None and length > 0:
         ordered = ordered[:length]
