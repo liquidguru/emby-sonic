@@ -11,6 +11,7 @@ import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
+import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackSource
 import kotlinx.coroutines.Job
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -38,7 +40,7 @@ data class ArtistMixUiState(
 }
 
 /**
- * Artist Mix Builder: pick an artist, the grid repopulates with sonically similar
+ * Artist Mix Creator: pick an artist, the grid repopulates with sonically similar
  * artists (seeded from that pick), repeat to grow a selection, then build a mix
  * sequenced across the chosen artists and play it. "Build then play" flow.
  *
@@ -53,6 +55,7 @@ class ArtistMixViewModel @Inject constructor(
     private val repository: LibraryRepository,
     private val playlists: PlaylistRepository,
     private val playback: PlaybackController,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ArtistMixUiState())
@@ -160,9 +163,18 @@ class ArtistMixViewModel @Inject constructor(
         }
         _state.update { it.copy(building = true) }
         viewModelScope.launch {
+            // Total comes from the shared "tracks per generated mix" setting; split
+            // it evenly across the chosen artists (round up so the pool can fill the
+            // total) and let the server trim the shuffled pool back to the total.
+            val total = settings.generatedMixTracks.first()
+            val perArtist = ((total + artists.size - 1) / artists.size).coerceAtLeast(1)
             runCatching {
                 val raw = coordinator.artistMix(
-                    ArtistMixRequestDto(artists = artists.map { it.title }, perArtist = PER_ARTIST),
+                    ArtistMixRequestDto(
+                        artists = artists.map { it.title },
+                        perArtist = perArtist,
+                        length = total,
+                    ),
                 ).tracks.map { it.toLibraryItem() }
                 val art = runCatching { repository.artworkByIds(raw.map { it.id }) }
                     .getOrDefault(emptyMap())
@@ -180,7 +192,7 @@ class ArtistMixViewModel @Inject constructor(
                         tracks.first(),
                         PlaybackSource(
                             key = "artistmix:" + artists.joinToString("+") { it.id },
-                            title = "Artist Mix",
+                            title = "Artist Mix Creator",
                             subtitle = label,
                             coverUrl = tracks.first().imageUrl,
                         ),
@@ -214,7 +226,6 @@ class ArtistMixViewModel @Inject constructor(
 
     private companion object {
         const val GRID_LIMIT = 24
-        const val PER_ARTIST = 5
         const val ARTIST_INDEX_LIMIT = 5000
     }
 }

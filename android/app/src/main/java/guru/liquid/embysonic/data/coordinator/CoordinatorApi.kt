@@ -63,7 +63,7 @@ interface CoordinatorApi {
     @POST("sonic/adventure")
     suspend fun adventure(@Body body: AdventureRequestDto): AdventurePlaylistDto
 
-    /** A mix sequenced from a set of chosen artists (Artist Mix Builder). */
+    /** A mix sequenced from a set of chosen artists (Artist Mix Creator). */
     @POST("sonic/artists/mix")
     suspend fun artistMix(@Body body: ArtistMixRequestDto): ArtistMixPlaylistDto
 
