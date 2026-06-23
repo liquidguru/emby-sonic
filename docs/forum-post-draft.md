@@ -66,6 +66,9 @@ important to her — so liquidWave handles books (with durable resume) alongside
   any mix, or save it as a real playlist.
 - **Stations & Guest DJ** — Library / Random Album / Decade radios, plus a Guest DJ
   that injects sonically matched tracks into your queue.
+- **Artist Mix Creator** — pick an artist and the grid repopulates with sonically
+  similar artists; keep adding the ones you want, then build a shuffled mix that
+  spans the whole selection.
 - **A proper player** — Media3/ExoPlayer, queue, shuffle/repeat, crossfade with an
   artwork cross-dissolve, an in-app equalizer, a Now Playing home-screen widget,
   **Android Auto**, and **Google Cast** to a Chromecast / Android TV / Shield.
@@ -73,6 +76,7 @@ important to her — so liquidWave handles books (with durable resume) alongside
 - **Search** across music, audiobooks, or everything.
 
 [SCREENSHOT: Mixes screen] [SCREENSHOT: Sonic Adventure builder]
+[SCREENSHOT: Artist Mix Creator grid — a few artists selected, Build button visible]
 
 ### You can try it as a plain Emby player first
 
@@ -83,10 +87,10 @@ shuffle/repeat, crossfade, EQ, mini player, the Now Playing widget, **Cast**),
 audiobook resume + speed, Emby playlists, Recent Plays, search, and the metadata
 Stations all work with nothing but your Emby server.
 
-The sonic features — **Mixes, Track Radio, Similar, Sonic Adventure, Guest DJ** — are
-what the backend adds on top. Without it they just stay empty; the app degrades
-gracefully rather than breaking. So you can get the player running on day one and
-stand up the analysis side at your leisure.
+The sonic features — **Mixes, Track Radio, Similar, Sonic Adventure, Guest DJ, and the
+Artist Mix Creator** — are what the backend adds on top. Without it they just stay
+empty; the app degrades gracefully rather than breaking. So you can get the player
+running on day one and stand up the analysis side at your leisure.
 
 ### Self-hosted and private — by design
 

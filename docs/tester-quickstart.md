@@ -49,8 +49,9 @@ Auto**; durable audiobook resume + speed control; Emby playlists; Recent Plays;
 search; and the metadata Stations (Library / Random Album / Decade radios).
 
 **Needs the coordinator (the sonic features):** Sonic Mixes, Track Radio, Similar
-tracks / artists / albums, Sonic Adventure, and the Guest DJ. Without the backend
-these simply stay empty — the app degrades gracefully, it doesn't break.
+tracks / artists / albums, Sonic Adventure, the Guest DJ, and the Artist Mix Creator.
+Without the backend these simply stay empty — the app degrades gracefully, it doesn't
+break.
 
 ---
 
@@ -274,7 +275,11 @@ Once some of your library is analysed:
 - Open a track → **Track Radio** and **Similar** tab.
 - **Mixes** tab — auto-curated mixes; try "refresh" on one, and "save as playlist".
 - **Sonic Adventure** — pick a start and end track, hear it morph between them.
+- **Artist Mix Creator** — pick an artist, add a few of the similar artists it
+  suggests, then **build** and hear the shuffled cross-artist mix.
 - **Stations** on Home, **Guest DJ** queue injection, **crossfade**, the in-app **EQ**.
+- **Customize Home** (sliders icon, top-right) — reorder or hide any row, **including
+  Stations**, and toggle small cards. Your layout is remembered.
 - **Cast** to a Chromecast/Android TV/SHIELD if you have one.
 
 **Please report:** what you tried, what device/Android version, what you expected vs.
