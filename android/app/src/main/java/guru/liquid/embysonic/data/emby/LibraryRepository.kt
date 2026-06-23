@@ -162,6 +162,16 @@ class LibraryRepository @Inject constructor(
         embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = limit)
             .items.map { it.toCollectionItem() }
 
+    /** Album-artists ordered by what the user actually plays, for seeding the Artist Mix Builder. */
+    suspend fun topArtists(libraryId: String, limit: Int = BROWSE_LIMIT): List<LibraryItem> =
+        embyApi.getAlbumArtists(
+            userId(),
+            parentId = libraryId,
+            sortBy = "PlayCount,DatePlayed,SortName",
+            sortOrder = "Descending",
+            limit = limit,
+        ).items.map { it.toCollectionItem() }
+
     /**
      * Audiobook authors. Like books, most authors have no image of their own, so we
      * resolve each author's cover from one of their chapters (keyed by album-artist id).
