@@ -14,9 +14,6 @@ import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackSource
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +29,7 @@ data class ArtistMixUiState(
     // Artists chosen so far — the "mix" being built (chips).
     val selected: List<LibraryItem> = emptyList(),
     // Artists currently offered in the grid (similars of the last pick, search
-    // results, or the most-played starting set).
+    // results, or the recently-played starting set).
     val grid: List<LibraryItem> = emptyList(),
     val loadingGrid: Boolean = false,
     val building: Boolean = false,
@@ -44,6 +41,11 @@ data class ArtistMixUiState(
  * Artist Mix Builder: pick an artist, the grid repopulates with sonically similar
  * artists (seeded from that pick), repeat to grow a selection, then build a mix
  * sequenced across the chosen artists and play it. "Build then play" flow.
+ *
+ * Performance: the coordinator returns similar artists by NAME. Resolving each
+ * name with an Emby search call was far too slow (~a minute per grid). Instead we
+ * load the full album-artist list ONCE on open and resolve names against an
+ * in-memory index — grid refreshes and the search box are then instant.
  */
 @HiltViewModel
 class ArtistMixViewModel @Inject constructor(
@@ -65,11 +67,24 @@ class ArtistMixViewModel @Inject constructor(
     private var musicLibraryId: String? = null
     private var gridJob: Job? = null
 
+    // The whole album-artist list, loaded once, plus a normalized-name index for
+    // instant resolution of coordinator results.
+    private var allArtists: List<LibraryItem> = emptyList()
+    private var artistIndex: Map<String, LibraryItem> = emptyMap()
+
     init {
+        _state.update { it.copy(loadingGrid = true) }
         viewModelScope.launch {
             musicLibraryId = runCatching { repository.audioLibraries() }
                 .getOrDefault(emptyList())
                 .firstOrNull { it.kind == LibraryKind.MUSIC }?.id
+            val libId = musicLibraryId
+            if (libId != null) {
+                allArtists = runCatching { repository.artists(libId, ARTIST_INDEX_LIMIT) }
+                    .getOrDefault(emptyList())
+                // First occurrence of a normalized name wins (collapses dup tags).
+                artistIndex = allArtists.associateByNormalizedName()
+            }
             loadStartingGrid()
         }
     }
@@ -81,12 +96,12 @@ class ArtistMixViewModel @Inject constructor(
             reseedFromLastOrStart()
             return
         }
-        _state.update { it.copy(loadingGrid = true) }
-        gridJob = viewModelScope.launch {
-            val results = runCatching { repository.searchArtists(query, limit = GRID_LIMIT) }
-                .getOrDefault(emptyList())
-            _state.update { it.copy(grid = results.excludeSelected(), loadingGrid = false) }
-        }
+        // Instant local filter against the loaded artist list.
+        val matches = allArtists
+            .filter { it.title.contains(query, ignoreCase = true) }
+            .excludeSelected()
+            .take(GRID_LIMIT)
+        _state.update { it.copy(grid = matches, loadingGrid = false) }
     }
 
     fun selectArtist(item: LibraryItem) {
@@ -107,7 +122,6 @@ class ArtistMixViewModel @Inject constructor(
 
     /** Repopulate the grid with artists sonically similar to [item]. */
     private fun reseedFrom(item: LibraryItem) {
-        val libId = musicLibraryId
         _state.update { it.copy(loadingGrid = true) }
         gridJob?.cancel()
         gridJob = viewModelScope.launch {
@@ -116,47 +130,26 @@ class ArtistMixViewModel @Inject constructor(
                     .firstOrNull()?.id ?: return@runCatching emptyList<String>()
                 coordinator.similarArtists(seedTrackId, GRID_LIMIT).map { it.artist }
             }.getOrDefault(emptyList())
-            val similar = resolveArtists(names)
-            // If the artist isn't analysed yet (no similars), fall back to a plain
-            // A–Z list so the grid is never empty.
-            val grid = similar.ifEmpty {
-                libId?.let { runCatching { repository.artists(it, GRID_LIMIT) }.getOrDefault(emptyList()) }
-                    ?: emptyList()
-            }
+            val similar = resolveNames(names)
+            // If the artist isn't analysed yet (no similars), fall back to A–Z.
+            val grid = similar.ifEmpty { allArtists.take(GRID_LIMIT) }
             _state.update { it.copy(grid = grid.excludeSelected(), loadingGrid = false) }
         }
     }
 
     private fun loadStartingGrid() {
-        val libId = musicLibraryId ?: return
+        val libId = musicLibraryId
         _state.update { it.copy(loadingGrid = true) }
         gridJob?.cancel()
         gridJob = viewModelScope.launch {
-            val recentNames = runCatching { repository.recentlyPlayedArtistNames(libId, GRID_LIMIT) }
-                .getOrDefault(emptyList())
-            val recent = resolveArtists(recentNames)
+            val recentNames = libId?.let {
+                runCatching { repository.recentlyPlayedArtistNames(it, GRID_LIMIT) }.getOrDefault(emptyList())
+            }.orEmpty()
+            val recent = resolveNames(recentNames)
             // Fall back to a plain A–Z list if nothing's been played yet.
-            val grid = recent.ifEmpty {
-                runCatching { repository.artists(libId, GRID_LIMIT) }.getOrDefault(emptyList())
-            }
+            val grid = recent.ifEmpty { allArtists.take(GRID_LIMIT) }
             _state.update { it.copy(grid = grid.excludeSelected(), loadingGrid = false) }
         }
-    }
-
-    /**
-     * Resolve coordinator artist *names* back to Emby artists (with id + image) in
-     * PARALLEL. Doing these searches sequentially made each grid refresh take ~a
-     * minute; fanning them out collapses it to roughly one search round-trip.
-     */
-    private suspend fun resolveArtists(names: List<String>): List<LibraryItem> = coroutineScope {
-        names.map { name ->
-            async {
-                runCatching {
-                    repository.searchArtists(name, limit = 5)
-                        .firstOrNull { it.title.normalized() == name.normalized() }
-                }.getOrNull()
-            }
-        }.awaitAll().filterNotNull().distinctBy { it.id }
     }
 
     fun build() {
@@ -202,6 +195,16 @@ class ArtistMixViewModel @Inject constructor(
         }
     }
 
+    /** Resolve coordinator artist names against the in-memory index (no network). */
+    private fun resolveNames(names: List<String>): List<LibraryItem> =
+        names.mapNotNull { artistIndex[it.normalized()] }.distinctBy { it.id }
+
+    private fun List<LibraryItem>.associateByNormalizedName(): Map<String, LibraryItem> {
+        val map = LinkedHashMap<String, LibraryItem>()
+        for (item in this) map.putIfAbsent(item.title.normalized(), item)
+        return map
+    }
+
     private fun List<LibraryItem>.excludeSelected(): List<LibraryItem> {
         val selectedIds = _state.value.selected.map { it.id }.toSet()
         return filterNot { it.id in selectedIds }.distinctBy { it.id }
@@ -212,5 +215,6 @@ class ArtistMixViewModel @Inject constructor(
     private companion object {
         const val GRID_LIMIT = 24
         const val PER_ARTIST = 5
+        const val ARTIST_INDEX_LIMIT = 5000
     }
 }
