@@ -1171,6 +1171,28 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   all errors by flipping them back to `pending`, clearing `claimed_at`, and
   clearing `error`. This gives stale/missing/fixed library files an explicit
   retry path without changing worker claim semantics.
+- **M5.17 — Artist Mix Creator (6th station) (2026-06-24, built + Pixel 8 Pro
+  verified + deployed):** a new Home station (`ui/artistmix/`) that builds a mix
+  from a hand-picked set of artists. You pick an artist, the grid repopulates
+  with sonically similar artists (coordinator `/sonic/artists/{id}/similar`,
+  resolved against an in-memory album-artist index loaded once on open so grid
+  refreshes are instant), repeat to grow the selection, then **build** plays a
+  shuffled cross-artist queue. Coordinator endpoint `POST /sonic/artists/mix`
+  (`build_artist_mix` in `analysis/similarity.py`): for each artist it picks the
+  tracks closest to that artist's sonic centroid (its most representative songs),
+  pools them across the chosen artists de-duped by normalized artist+title
+  identity, then **shuffles** the pool (an earlier greedy nearest-neighbour walk
+  was dropped — it clumped each artist's tracks together and always started from
+  the first-selected artist). **Track count is inherited from the shared
+  "tracks per generated mix" setting** (`generatedMixTracks`, default 25): the
+  app splits the total evenly across the selected artists (`per_artist =
+  ceil(total / artists)`, rounded up) and sends `length = total` so the server
+  trims the shuffled pool to exactly the target. Fewer than the target only when
+  the selected artists lack enough analyzed tracks. Named **"Artist Mix Creator"**
+  (not "Artist Mix Builder"/"Artist Mix") to avoid colliding with Plexamp's
+  feature name. Deployed to coordinator-host via push→`git pull`→coordinator restart;
+  the grid/build flow and settings-driven sizing were user-verified on the
+  Pixel 8 Pro.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
