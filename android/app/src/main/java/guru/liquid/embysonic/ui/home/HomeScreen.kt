@@ -363,7 +363,7 @@ private fun StationsRow(
             StationCard(Icons.Default.DateRange, "Decade\nRadio") { decadePicker = true }
             StationCard(Icons.Default.Category, "Genres") { genrePicker = true }
             StationCard(Icons.Default.Explore, "Sonic\nAdventure", onClick = onOpenAdventure)
-            StationCard(Icons.Default.Groups, "Artist Mix\nBuilder", onClick = onOpenArtistMix)
+            StationCard(Icons.Default.Groups, "Artist Mix\nCreator", onClick = onOpenArtistMix)
         }
     }
     if (decadePicker) {

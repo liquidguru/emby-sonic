@@ -263,7 +263,7 @@ async def build_artist_mix(
     length: int | None = None,
 ) -> list[TrackOut]:
     """
-    Artist Mix Builder: for each selected artist, pick the tracks closest to that
+    Artist Mix Creator: for each selected artist, pick the tracks closest to that
     artist's sonic centroid (its most representative songs), pool them across all
     the chosen artists (de-duped by song identity so duplicate library files don't
     repeat), then shuffle the pool so the artists are interleaved in a fresh random

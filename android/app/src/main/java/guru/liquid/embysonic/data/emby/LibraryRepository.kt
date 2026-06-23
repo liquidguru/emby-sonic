@@ -164,7 +164,7 @@ class LibraryRepository @Inject constructor(
 
     /**
      * Distinct album-artist names from recently played tracks (most-recent first),
-     * for seeding the Artist Mix Builder. Emby tracks DatePlayed on the track (not
+     * for seeding the Artist Mix Creator. Emby tracks DatePlayed on the track (not
      * the artist), so scan recent plays and dedupe to their album-artists.
      */
     suspend fun recentlyPlayedArtistNames(libraryId: String, limit: Int): List<String> {

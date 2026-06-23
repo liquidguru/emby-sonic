@@ -73,7 +73,7 @@ fun ArtistMixBuilderScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Artist Mix Builder") },
+                title = { Text("Artist Mix Creator") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
