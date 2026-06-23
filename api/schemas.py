@@ -43,6 +43,17 @@ class AdventurePlaylist(BaseModel):
     tracks: list[TrackOut]
 
 
+class ArtistMixRequest(BaseModel):
+    artists: list[str]          # artist names (as stored on tracks)
+    per_artist: int = 5         # representative tracks to draw from each artist
+    length: int | None = None   # optional cap on the final ordered queue
+
+
+class ArtistMixPlaylist(BaseModel):
+    artists: list[str]
+    tracks: list[TrackOut]
+
+
 class MixOut(BaseModel):
     id: str
     name: str | None

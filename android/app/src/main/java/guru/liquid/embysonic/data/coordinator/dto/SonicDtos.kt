@@ -69,6 +69,21 @@ data class AdventurePlaylistDto(
     @SerialName("tracks") val tracks: List<TrackOutDto> = emptyList(),
 )
 
+/** Request for `POST /sonic/artists/mix` — a mix built from a set of chosen artists. */
+@Serializable
+data class ArtistMixRequestDto(
+    @SerialName("artists") val artists: List<String>,
+    @SerialName("per_artist") val perArtist: Int = 5,
+    @SerialName("length") val length: Int? = null,
+)
+
+/** Response of `POST /sonic/artists/mix`. */
+@Serializable
+data class ArtistMixPlaylistDto(
+    @SerialName("artists") val artists: List<String> = emptyList(),
+    @SerialName("tracks") val tracks: List<TrackOutDto> = emptyList(),
+)
+
 @Serializable
 data class SonicMixDto(
     @SerialName("id") val id: String,

@@ -30,6 +30,7 @@ import guru.liquid.embysonic.ui.library.DetailScreen
 import guru.liquid.embysonic.ui.library.LibraryScreen
 import guru.liquid.embysonic.ui.mixes.MixesScreen
 import guru.liquid.embysonic.ui.adventure.AdventureScreen
+import guru.liquid.embysonic.ui.artistmix.ArtistMixBuilderScreen
 import guru.liquid.embysonic.ui.nav.Routes
 import guru.liquid.embysonic.ui.playback.NowPlayingScreen
 import guru.liquid.embysonic.ui.search.SearchScreen
@@ -55,7 +56,8 @@ fun MainShell(
     // "remembers" and restores a search.
     val goToTab = goToTab@{ targetRoute: String, targetPattern: String ->
         when {
-            currentRoute == Routes.SEARCH || currentRoute == Routes.ADVENTURE ->
+            currentRoute == Routes.SEARCH || currentRoute == Routes.ADVENTURE ||
+                currentRoute == Routes.ARTIST_MIX ->
                 navController.navigateRootTab(targetRoute)
             currentRoute == Routes.DETAIL ->
                 navController.popBackStack(targetPattern, inclusive = false).also { found ->
@@ -117,6 +119,7 @@ fun MainShell(
                     onOpenMixes = { navController.navigateTab(Routes.MIXES) },
                     onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
                     onOpenAdventure = { navController.navigate(Routes.ADVENTURE) },
+                    onOpenArtistMix = { navController.navigate(Routes.ARTIST_MIX) },
                     onOpenSearch = { navController.navigate(Routes.search("ALL")) },
                     contentPadding = padding,
                 )
@@ -198,6 +201,13 @@ fun MainShell(
             }
             composable(Routes.ADVENTURE) {
                 AdventureScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
+                    contentPadding = padding,
+                )
+            }
+            composable(Routes.ARTIST_MIX) {
+                ArtistMixBuilderScreen(
                     onBack = { navController.popBackStack() },
                     onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
                     contentPadding = padding,

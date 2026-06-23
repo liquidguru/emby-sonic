@@ -13,6 +13,7 @@ object Routes {
     const val MIXES = "mixes"
     const val NOW_PLAYING = "now_playing"
     const val ADVENTURE = "adventure"
+    const val ARTIST_MIX = "artist_mix"
 
     // Search, with a mode arg selecting the scope set ("MUSIC" / "AUDIOBOOKS").
     const val ARG_SEARCH_MODE = "mode"

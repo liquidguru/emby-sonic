@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
@@ -88,6 +89,7 @@ fun HomeScreen(
     onOpenMixes: () -> Unit,
     onOpenNowPlaying: () -> Unit,
     onOpenAdventure: () -> Unit = {},
+    onOpenArtistMix: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(),
     viewModel: HomeViewModel = hiltViewModel(),
@@ -158,6 +160,7 @@ fun HomeScreen(
                 onOpenItem = onOpenItem,
                 onOpenMixes = onOpenMixes,
                 onOpenAdventure = onOpenAdventure,
+                onOpenArtistMix = onOpenArtistMix,
                 onPlayStation = viewModel::playStation,
                 onPlayPlaylist = viewModel::playPlaylist,
                 onDeletePlaylist = { deletePlaylistTargetId = it.id },
@@ -210,6 +213,7 @@ private fun HomeContent(
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit,
     onOpenMixes: () -> Unit,
     onOpenAdventure: () -> Unit,
+    onOpenArtistMix: () -> Unit,
     onPlayStation: (HomeStation, Int?) -> Unit,
     onPlayPlaylist: (LibraryItem) -> Unit,
     onDeletePlaylist: (LibraryItem) -> Unit,
@@ -249,6 +253,7 @@ private fun HomeContent(
                     onPlayStation = onPlayStation,
                     onOpenGenre = { onOpenItem(it.id, it.title, DetailKind.GENRE_TRACKS) },
                     onOpenAdventure = onOpenAdventure,
+                    onOpenArtistMix = onOpenArtistMix,
                 )
             }
         }
@@ -331,6 +336,7 @@ private fun StationsRow(
     onPlayStation: (HomeStation, Int?) -> Unit,
     onOpenGenre: (LibraryItem) -> Unit,
     onOpenAdventure: () -> Unit,
+    onOpenArtistMix: () -> Unit,
 ) {
     var decadePicker by remember { mutableStateOf(false) }
     var genrePicker by remember { mutableStateOf(false) }
@@ -357,6 +363,7 @@ private fun StationsRow(
             StationCard(Icons.Default.DateRange, "Decade\nRadio") { decadePicker = true }
             StationCard(Icons.Default.Category, "Genres") { genrePicker = true }
             StationCard(Icons.Default.Explore, "Sonic\nAdventure", onClick = onOpenAdventure)
+            StationCard(Icons.Default.Groups, "Artist Mix\nBuilder", onClick = onOpenArtistMix)
         }
     }
     if (decadePicker) {

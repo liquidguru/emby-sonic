@@ -2,6 +2,8 @@ package guru.liquid.embysonic.data.coordinator
 
 import guru.liquid.embysonic.data.coordinator.dto.AdventurePlaylistDto
 import guru.liquid.embysonic.data.coordinator.dto.AdventureRequestDto
+import guru.liquid.embysonic.data.coordinator.dto.ArtistMixPlaylistDto
+import guru.liquid.embysonic.data.coordinator.dto.ArtistMixRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.RadioPlaylistDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesStartedDto
@@ -60,6 +62,10 @@ interface CoordinatorApi {
     /** A sonic journey that morphs from one track to another. */
     @POST("sonic/adventure")
     suspend fun adventure(@Body body: AdventureRequestDto): AdventurePlaylistDto
+
+    /** A mix sequenced from a set of chosen artists (Artist Mix Builder). */
+    @POST("sonic/artists/mix")
+    suspend fun artistMix(@Body body: ArtistMixRequestDto): ArtistMixPlaylistDto
 
     @GET("sonic/mixes")
     suspend fun mixes(): List<SonicMixDto>
