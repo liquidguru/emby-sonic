@@ -48,6 +48,7 @@ data class HomeUiState(
 )
 
 enum class HomeSectionKind(val id: String, val label: String) {
+    STATIONS("stations", "Stations"),
     RESUME_AUDIOBOOKS("resume_audiobooks", "Resume audiobooks"),
     RECENT_PLAYS("recent_plays", "Recent plays"),
     PLAYLISTS("playlists", "Playlists"),
@@ -57,6 +58,7 @@ enum class HomeSectionKind(val id: String, val label: String) {
 
     companion object {
         val defaultOrder: List<HomeSectionKind> = listOf(
+            STATIONS,
             RESUME_AUDIOBOOKS,
             RECENT_PLAYS,
             PLAYLISTS,
@@ -69,7 +71,13 @@ enum class HomeSectionKind(val id: String, val label: String) {
 
         fun ordered(sectionIds: List<String>): List<HomeSectionKind> {
             val configured = sectionIds.mapNotNull(::fromId)
-            return (configured + defaultOrder).distinct()
+            if (configured.isEmpty()) return defaultOrder
+            // Stations used to be a fixed row pinned above everything, so users who
+            // saved an order before it became reorderable have no position for it.
+            // Restore it at the top to match what they were already seeing.
+            val withStations =
+                if (STATIONS in configured) configured else listOf(STATIONS) + configured
+            return (withStations + defaultOrder).distinct()
         }
 
         fun defaultPreferences(): List<HomeSectionPreference> =

@@ -244,24 +244,30 @@ private fun HomeContent(
             }
         }
 
-        // Stations: tap-to-play radios. Shown when a music library is present
-        // (any music-derived row has content).
-        if (state.recentAlbums.isNotEmpty() || state.artists.isNotEmpty()) {
-            item(key = "stations") {
-                StationsRow(
-                    genres = state.genres,
-                    onPlayStation = onPlayStation,
-                    onOpenGenre = { onOpenItem(it.id, it.title, DetailKind.GENRE_TRACKS) },
-                    onOpenAdventure = onOpenAdventure,
-                    onOpenArtistMix = onOpenArtistMix,
-                )
-            }
-        }
-
         state.sectionPreferences
             .filter { it.visible }
             .forEach { section ->
+                // Stations is a tap-to-play radio row, not a generic card row, so it
+                // renders its own composable rather than going through HomeSectionData.
+                if (section.kind == HomeSectionKind.STATIONS) {
+                    // Shown when a music library is present (any music row has content).
+                    if (state.recentAlbums.isNotEmpty() || state.artists.isNotEmpty()) {
+                        item(key = "stations") {
+                            StationsRow(
+                                genres = state.genres,
+                                onPlayStation = onPlayStation,
+                                onOpenGenre = { onOpenItem(it.id, it.title, DetailKind.GENRE_TRACKS) },
+                                onOpenAdventure = onOpenAdventure,
+                                onOpenArtistMix = onOpenArtistMix,
+                            )
+                        }
+                    }
+                    return@forEach
+                }
                 val sectionData = when (section.kind) {
+                    // Handled by the early return above; here only to satisfy the
+                    // exhaustive `when`.
+                    HomeSectionKind.STATIONS -> return@forEach
                     HomeSectionKind.RESUME_AUDIOBOOKS -> HomeSectionData(
                         items = state.resumeAudiobooks,
                         onClick = { onOpenItem(it.id, it.title, DetailKind.BOOK_CHAPTERS) },
