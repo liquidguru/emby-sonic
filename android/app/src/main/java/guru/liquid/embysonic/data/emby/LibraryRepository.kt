@@ -162,15 +162,29 @@ class LibraryRepository @Inject constructor(
         embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = limit)
             .items.map { it.toCollectionItem() }
 
-    /** Album-artists ordered by what the user actually plays, for seeding the Artist Mix Builder. */
-    suspend fun topArtists(libraryId: String, limit: Int = BROWSE_LIMIT): List<LibraryItem> =
-        embyApi.getAlbumArtists(
-            userId(),
+    /**
+     * Distinct album-artist names from recently played tracks (most-recent first),
+     * for seeding the Artist Mix Builder. Emby tracks DatePlayed on the track (not
+     * the artist), so scan recent plays and dedupe to their album-artists.
+     */
+    suspend fun recentlyPlayedArtistNames(libraryId: String, limit: Int): List<String> {
+        val tracks = embyApi.getItems(
+            userId = userId(),
             parentId = libraryId,
-            sortBy = "PlayCount,DatePlayed,SortName",
+            includeItemTypes = "Audio",
+            sortBy = "DatePlayed",
             sortOrder = "Descending",
-            limit = limit,
-        ).items.map { it.toCollectionItem() }
+            filters = "IsPlayed",
+            limit = RECENT_PLAYS_SCAN,
+        ).items
+        val seen = LinkedHashSet<String>()
+        for (t in tracks) {
+            val name = (t.albumArtist ?: t.artists.firstOrNull())?.takeIf { it.isNotBlank() } ?: continue
+            seen.add(name)
+            if (seen.size >= limit) break
+        }
+        return seen.toList()
+    }
 
     /**
      * Audiobook authors. Like books, most authors have no image of their own, so we

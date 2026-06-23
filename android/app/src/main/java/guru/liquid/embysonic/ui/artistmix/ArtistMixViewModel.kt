@@ -14,6 +14,9 @@ import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackSource
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -108,18 +111,16 @@ class ArtistMixViewModel @Inject constructor(
         _state.update { it.copy(loadingGrid = true) }
         gridJob?.cancel()
         gridJob = viewModelScope.launch {
-            val similar = runCatching {
+            val names = runCatching {
                 val seedTrackId = repository.playableItems(item.id, DetailKind.ARTIST_ALBUMS)
-                    .firstOrNull()?.id ?: return@runCatching emptyList<LibraryItem>()
-                coordinator.similarArtists(seedTrackId, GRID_LIMIT).mapNotNull { result ->
-                    repository.searchArtists(result.artist, limit = 5)
-                        .firstOrNull { it.title.normalized() == result.artist.normalized() }
-                }
+                    .firstOrNull()?.id ?: return@runCatching emptyList<String>()
+                coordinator.similarArtists(seedTrackId, GRID_LIMIT).map { it.artist }
             }.getOrDefault(emptyList())
-            // If the artist isn't analysed yet (no similars), fall back to the
-            // most-played set so the grid is never empty.
+            val similar = resolveArtists(names)
+            // If the artist isn't analysed yet (no similars), fall back to a plain
+            // A–Z list so the grid is never empty.
             val grid = similar.ifEmpty {
-                libId?.let { runCatching { repository.topArtists(it, GRID_LIMIT) }.getOrDefault(emptyList()) }
+                libId?.let { runCatching { repository.artists(it, GRID_LIMIT) }.getOrDefault(emptyList()) }
                     ?: emptyList()
             }
             _state.update { it.copy(grid = grid.excludeSelected(), loadingGrid = false) }
@@ -131,10 +132,31 @@ class ArtistMixViewModel @Inject constructor(
         _state.update { it.copy(loadingGrid = true) }
         gridJob?.cancel()
         gridJob = viewModelScope.launch {
-            val artists = runCatching { repository.topArtists(libId, GRID_LIMIT) }
+            val recentNames = runCatching { repository.recentlyPlayedArtistNames(libId, GRID_LIMIT) }
                 .getOrDefault(emptyList())
-            _state.update { it.copy(grid = artists.excludeSelected(), loadingGrid = false) }
+            val recent = resolveArtists(recentNames)
+            // Fall back to a plain A–Z list if nothing's been played yet.
+            val grid = recent.ifEmpty {
+                runCatching { repository.artists(libId, GRID_LIMIT) }.getOrDefault(emptyList())
+            }
+            _state.update { it.copy(grid = grid.excludeSelected(), loadingGrid = false) }
         }
+    }
+
+    /**
+     * Resolve coordinator artist *names* back to Emby artists (with id + image) in
+     * PARALLEL. Doing these searches sequentially made each grid refresh take ~a
+     * minute; fanning them out collapses it to roughly one search round-trip.
+     */
+    private suspend fun resolveArtists(names: List<String>): List<LibraryItem> = coroutineScope {
+        names.map { name ->
+            async {
+                runCatching {
+                    repository.searchArtists(name, limit = 5)
+                        .firstOrNull { it.title.normalized() == name.normalized() }
+                }.getOrNull()
+            }
+        }.awaitAll().filterNotNull().distinctBy { it.id }
     }
 
     fun build() {
