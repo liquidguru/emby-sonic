@@ -189,9 +189,10 @@ short, **shipped and verified on-device:**
   player). Crossfade only blends direct-play tracks (transcoded → normal cut).
 - **Equalizer** (audiofx, shared session, presets, persistence).
 - Sonic **mixes** (list/detail/play, per-mix refresh, save-as-playlist, build).
-- **Track Radio**, **Sonic Adventure** (A→B), **Stations** (Library/Random
-  Album/Decade radios), **Recent plays**, **Search** (music + audiobooks + Home
-  all-scopes).
+- **Track Radio**, **Sonic Adventure** (A→B), **Artist Mix Creator** (shuffled
+  cross-artist mix, count from the shared "tracks per mix" setting),
+  **Stations** (Library/Random Album/Decade radios), **Recent plays**,
+  **Search** (music + audiobooks + Home all-scopes).
 - Home customization (sections, order, compact cards).
 
 **Next candidates** (see spec "M4 — Remaining"): sonic-similar sidebars on

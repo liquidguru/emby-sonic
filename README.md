@@ -10,7 +10,8 @@ mixes, and a Guest DJ.
 > Phase 3 (Android app, **liquidWave**) is well advanced and running on real
 > hardware — browse, Media3 playback, sonic mixes (per-mix refresh), crossfade
 > with artwork cross-dissolve, an in-app equalizer, Track Radio, Sonic Adventure,
-> Stations, Recent Plays, and search across music + audiobooks. See
+> the Artist Mix Creator, Stations, Recent Plays, and search across music +
+> audiobooks. See
 > [`docs/spec.md`](docs/spec.md) for the full architecture and milestone list,
 > and [`AGENTS.md`](AGENTS.md) for the working agreement / dev environment.
 
@@ -278,9 +279,12 @@ queue, shuffle/repeat, mini player, and a system media notification; durable
 audiobook resume; music crossfade with a synced artwork cross-dissolve; an in-app
 equalizer (presets + per-band, also broadcasts its session for external EQ apps);
 auto-curated sonic mixes (per-mix refresh, save as playlist); Track Radio; Sonic
-Adventure (a sonic journey from one track to another); Stations (Library / Random
-Album / Decade radios); Recent Plays; and search across music (tracks/albums/
-artists), audiobooks (books/authors), or everything from Home.
+Adventure (a sonic journey from one track to another); the Artist Mix Creator
+(pick a set of artists — the grid suggests sonically similar ones as you go —
+then build a shuffled cross-artist mix, sized by the shared "tracks per mix"
+setting); Stations (Library / Random Album / Decade radios); Recent Plays; and
+search across music (tracks/albums/artists), audiobooks (books/authors), or
+everything from Home.
 
 ### Build
 
