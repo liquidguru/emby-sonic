@@ -20,7 +20,7 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas import SimilarTrack, TrackOut, SimilarArtist, SimilarAlbum, ArtistMixPlaylist
+from api.schemas import SimilarTrack, TrackOut, SimilarArtist, SimilarAlbum
 from analysis.faiss_index import sonic_index
 from db.models import Track, Embedding
 
