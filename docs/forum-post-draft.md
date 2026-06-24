@@ -72,6 +72,9 @@ important to her — so liquidWave handles books (with durable resume) alongside
 - **A proper player** — Media3/ExoPlayer, queue, shuffle/repeat, crossfade with an
   artwork cross-dissolve, an in-app equalizer, a Now Playing home-screen widget,
   **Android Auto**, and **Google Cast** to a Chromecast / Android TV / Shield.
+- **Offline buffer** — the next few tracks in your queue are silently pre-cached in
+  the background, so brief Wi-Fi blips don't interrupt playback. No manual download
+  needed; you'll see "Offline buffer ready" in Now Playing when it's topped up.
 - **Audiobooks** — browse by book/author, durable resume, speed control.
 - **Offline downloads** — download any playlist **or a whole audiobook** (the
   original source files, no transcode) to your phone and browse + play it with **no
@@ -81,6 +84,7 @@ important to her — so liquidWave handles books (with durable resume) alongside
   Audiobooks keep **durable resume** even fully offline, and your position syncs back
   to Emby the moment you reconnect. Managed under Settings → Downloads (Playlists and
   Audiobooks), with a one-tap "remove download" that leaves the item itself untouched.
+- **Themeable** — follows your system dark/light theme automatically.
 - **Search** across music, audiobooks, or everything.
 
 ![Mixes](screenshots/mixes.png) ![Sonic Adventure](screenshots/sonic-adventure.png)
@@ -165,7 +169,7 @@ quickstart that walks through all of it for any OS.
 
 [LINK: tester quickstart] · [LINK: GitHub repo]
 
-If you're interested, reply here or [HOW TO REACH KAJ — forum DM / email / GitHub issue].
+If you're interested, reply to this post, send me a DM, or open a GitHub issue.
 Tell me roughly your setup (Emby host OS, whether you've got a GPU, library size) and I'll
 get you the files. All I ask back is honest feedback — what worked, what didn't, what
 felt slow or weird, and any crashes.
