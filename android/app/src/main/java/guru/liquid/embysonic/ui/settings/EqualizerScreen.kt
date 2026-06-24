@@ -57,7 +57,7 @@ fun EqualizerScreen(
                 actions = {
                     if (state.available) {
                         TextButton(onClick = viewModel::reset, enabled = state.enabled && !isCasting) {
-                            Text("Flat")
+                            Text("Reset")
                         }
                     }
                 },
@@ -125,7 +125,7 @@ fun EqualizerScreen(
                 ) {
                     state.presets.forEachIndexed { index, name ->
                         FilterChip(
-                            selected = false,
+                            selected = index == state.currentPreset,
                             onClick = { viewModel.usePreset(index) },
                             label = { Text(name) },
                             enabled = state.enabled && !isCasting,

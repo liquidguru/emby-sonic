@@ -19,6 +19,8 @@ data class AppSettings(
     val eqEnabled: Boolean = false,
     // Per-band gains in millibels, indexed by equalizer band; empty = flat/default.
     val eqBandLevels: List<Int> = emptyList(),
+    // Active built-in preset index, or -1 for a manual/custom curve.
+    val eqPreset: Int = -1,
     val generatedMixTracks: Int = 25,
     val audiobookSpeed: Float = 1f,
     val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,
