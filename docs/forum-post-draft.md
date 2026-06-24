@@ -160,19 +160,21 @@ It's a **private beta**, and I want to be straight about that:
 
 It's running on my own gear every day and is genuinely usable — but you'll be early.
 
-### Want to test?
+### Interested in testing?
+
+Before you put your hand up, have a read of the
+**[tester quickstart](https://gist.github.com/liquidguru/a8f44b11b744f0d163653a3a7042f12a)**
+— it covers exactly what you'll need to stand up (coordinator + plugin + worker + Android
+app) and how long it takes. It's not a one-click install, but it's not deep either.
 
 You're a good fit if you **run Emby, can install a plugin and restart your server, and
-don't mind following a setup checklist.** You'll stand up three small pieces
-(coordinator, a plugin, a worker) and install the Android app. There's a one-page
-quickstart that walks through all of it for any OS.
+don't mind following a checklist.** A GPU helps with the initial library analysis but
+isn't required.
 
-[LINK: tester quickstart] · [LINK: GitHub repo]
-
-If you're interested, reply to this post, send me a DM, or open a GitHub issue.
-Tell me roughly your setup (Emby host OS, whether you've got a GPU, library size) and I'll
-get you the files. All I ask back is honest feedback — what worked, what didn't, what
-felt slow or weird, and any crashes.
+If that looks manageable and you want in, **reply to this post or send me a DM** with a
+rough picture of your setup — Emby host OS, whether you have a GPU, and roughly how big
+your library is. I'll send you the files and repo access directly. I'm keeping this small
+to start so I can actually act on the feedback.
 
 Thanks for reading — this has been a real labour of love. 🌊
 
@@ -188,6 +190,6 @@ Thanks for reading — this has been a real labour of love. 🌊
 - **Screenshots:** 4–6 good ones beat a wall of them. Suggested: Home, Now Playing
   (with art), Mixes, Sonic Adventure, and the Settings/analysis-status card to show the
   self-hosted machinery.
-- **Links go live** once you cut the GitHub Release (plugin zip + APK) and the repo is
-  public.
+- **Quickstart Gist** is live: https://gist.github.com/liquidguru/a8f44b11b744f0d163653a3a7042f12a — update it via `gh gist edit` if the setup steps change.
+- **Repo + files**: send to confirmed testers only (GitHub collaborator invite + private Release link). No need to go public.
 - **Check the forum's rules** on self-promo / linking before posting.
