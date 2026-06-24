@@ -1213,9 +1213,20 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   playlist) vs "Delete playlist" (Emby + local). User-verified on the Pixel 8 Pro: a
   26-track playlist downloaded in seconds and every track played in airplane mode,
   including a cold start with no connectivity. Decisions: original files (not a
-  transcode), full offline mode, dedicated Downloads screen. Not yet: a foreground
-  service for very large downloads (currently an app-scoped coroutine), artwork
-  caching for fully-offline cover art, and album/track (non-playlist) downloads.
+  transcode), full offline mode, dedicated Downloads screen.
+
+  **Offline UX polish (2026-06-24, same milestone):** downloads also fetch each
+  track's Emby cover (unauthenticated image URLs, keyed by URL so shared album art
+  is stored once), so offline playback + the Downloads list show real artwork. A
+  reorderable/hideable **Downloads row on Home** (a new `HomeSectionKind`) sourced
+  from the local snapshot makes downloaded playlists browsable and playable straight
+  from Home, including a cold start with no network. Playlist tiles carry a
+  **downloaded badge**; the playlist detail screen falls back to the snapshot when
+  the server is unreachable; **Recent plays is hidden when offline** (those queues
+  can't play); and an **online/offline indicator** (green/red cloud in the Home bar
+  + an offline banner) tells the user the connection state. Not yet: a foreground
+  service for very large downloads (currently an app-scoped coroutine) and
+  album/track (non-playlist) downloads.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
