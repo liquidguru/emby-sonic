@@ -22,7 +22,7 @@ adventures" between two songs, and auto-curated mixes — plus a companion Andro
 (**liquidWave**). It's fully self-hosted, nothing leaves your network, and I'm looking
 for a few testers who run Emby and don't mind a bit of setup.
 
-[SCREENSHOT: liquidWave Home screen — mixes / stations / recent plays]
+![liquidWave Home screen](screenshots/home-online.png)
 
 ### Why I built it
 
@@ -55,7 +55,7 @@ important to her — so liquidWave handles books (with durable resume) alongside
 
 ### What it does
 
-[SCREENSHOT: Now Playing screen]
+![Now Playing](screenshots/now-playing.png)
 
 - **Sonically similar tracks / artists / albums** — based on how the music *sounds*
   (neural audio analysis), not genre tags.
@@ -83,9 +83,10 @@ important to her — so liquidWave handles books (with durable resume) alongside
   Audiobooks), with a one-tap "remove download" that leaves the item itself untouched.
 - **Search** across music, audiobooks, or everything.
 
-[SCREENSHOT: Mixes screen] [SCREENSHOT: Sonic Adventure builder]
-[SCREENSHOT: Artist Mix Creator grid — a few artists selected, Build button visible]
-[SCREENSHOT: Downloads screen — a downloaded playlist with track count + size]
+![Mixes](screenshots/mixes.png) ![Sonic Adventure](screenshots/sonic-adventure.png)
+![Artist Mix Creator](screenshots/artist-mix-creator.png)
+![Downloads](screenshots/downloads.png) ![Offline state](screenshots/offline-state.png)
+![Android Auto](screenshots/android-auto.png)
 
 ### You can try it as a plain Emby player first
 
