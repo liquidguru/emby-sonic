@@ -1224,9 +1224,24 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   **downloaded badge**; the playlist detail screen falls back to the snapshot when
   the server is unreachable; **Recent plays is hidden when offline** (those queues
   can't play); and an **online/offline indicator** (green/red cloud in the Home bar
-  + an offline banner) tells the user the connection state. Not yet: a foreground
-  service for very large downloads (currently an app-scoped coroutine) and
-  album/track (non-playlist) downloads.
+  + an offline banner) tells the user the connection state.
+
+  **Audiobook downloads + durable offline resume (2026-06-24, same milestone, Pixel
+  8 Pro verified):** the downloader is generalized to resolve `BOOK_CHAPTERS`, so a
+  whole book downloads like a playlist; each download is tagged MUSIC vs AUDIOBOOK
+  and the Downloads screen splits into Playlists / Audiobooks. Long-form playback now
+  prefers a downloaded file for any track and **seeks it in-player** (no server-side
+  `/stream` offset), so books play and scrub offline. `DownloadProgressStore` records
+  listening positions locally (throttled, plus a hard save on stop) so a book resumes
+  at the right chapter/position even when listened to fully offline; positions saved
+  offline are flushed to Emby on reconnect/startup. To keep resume unambiguous a book
+  has a **single resume point**: advancing clears the earlier started chapters
+  (locally and on Emby) so neither the app nor Emby's "Continue Listening" snaps back
+  to chapter 0. A **"download over Wi-Fi only"** setting (default on, enforced via
+  `NetworkMonitor`) avoids spending mobile data on original files. Verified online →
+  airplane-mode resume → back-online Emby catch-up. Not yet: a foreground service for
+  very large downloads (currently an app-scoped coroutine) and album/track
+  (non-playlist) downloads.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 

@@ -193,9 +193,12 @@ short, **shipped and verified on-device:**
   cross-artist mix, count from the shared "tracks per mix" setting),
   **Stations** (Library/Random Album/Decade radios), **Recent plays**,
   **Search** (music + audiobooks + Home all-scopes).
-- **Offline playlist downloads** (original source files via `Static=true`,
-  persisted snapshot + cover art for no-network browse/play; Settings → Downloads,
-  a Home Downloads row, downloaded badge, and an online/offline indicator).
+- **Offline downloads** of playlists *and* whole audiobooks (original source files
+  via `Static=true`, persisted snapshot + cover art for no-network browse/play;
+  Settings → Downloads split Playlists/Audiobooks, a Home Downloads row, downloaded
+  badge, online/offline indicator, Wi-Fi-only setting). Downloaded long-form plays
+  from the local file and seeks in-player; `DownloadProgressStore` gives durable
+  offline resume with a single resume point per book, synced to Emby on reconnect.
 - Home customization (sections, order, compact cards).
 
 **Next candidates** (see spec "M4 — Remaining"): sonic-similar sidebars on
