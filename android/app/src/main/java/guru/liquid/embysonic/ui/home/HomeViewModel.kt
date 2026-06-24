@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.download.DownloadStore
+import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
 import guru.liquid.embysonic.data.emby.DetailKind
@@ -40,6 +41,9 @@ data class HomeUiState(
     val userName: String? = null,
     val loading: Boolean = true,
     val error: String? = null,
+    // True when the Emby server is unreachable (e.g. airplane mode). Used to hide
+    // rows whose tiles can only play online, like Recent plays.
+    val offline: Boolean = false,
     val compactCards: Boolean = false,
     val sectionPreferences: List<HomeSectionPreference> = HomeSectionKind.defaultPreferences(),
     val resumeAudiobooks: List<LibraryItem> = emptyList(),
@@ -49,10 +53,12 @@ data class HomeUiState(
     val recentAlbums: List<LibraryItem> = emptyList(),
     val artists: List<LibraryItem> = emptyList(),
     val genres: List<LibraryItem> = emptyList(),
+    val downloads: List<LibraryItem> = emptyList(),
 )
 
 enum class HomeSectionKind(val id: String, val label: String) {
     STATIONS("stations", "Stations"),
+    DOWNLOADS("downloads", "Downloads"),
     RESUME_AUDIOBOOKS("resume_audiobooks", "Resume audiobooks"),
     RECENT_PLAYS("recent_plays", "Recent plays"),
     PLAYLISTS("playlists", "Playlists"),
@@ -63,6 +69,7 @@ enum class HomeSectionKind(val id: String, val label: String) {
     companion object {
         val defaultOrder: List<HomeSectionKind> = listOf(
             STATIONS,
+            DOWNLOADS,
             RESUME_AUDIOBOOKS,
             RECENT_PLAYS,
             PLAYLISTS,
@@ -141,7 +148,40 @@ class HomeViewModel @Inject constructor(
         _state.update { it.copy(userName = snap.userName) }
         observeHomePreferences()
         observeRecentPlays()
+        observeDownloads()
         refresh()
+    }
+
+    /** Downloaded playlists are a local source — populate their Home row even offline. */
+    private fun observeDownloads() {
+        viewModelScope.launch {
+            downloadStore.state.collect { index ->
+                val items = index.playlists.map { pl ->
+                    LibraryItem(
+                        id = pl.playlistId,
+                        title = pl.name,
+                        subtitle = "${pl.completeCount} track${if (pl.completeCount == 1) "" else "s"} • offline",
+                        imageUrl = pl.tracks.firstNotNullOfOrNull { downloadStore.artUri(it)?.toString() }
+                            ?: pl.coverUrl,
+                        contentKind = ContentKind.MUSIC,
+                    )
+                }
+                _state.update { it.copy(downloads = items) }
+            }
+        }
+    }
+
+    /** Play a downloaded playlist from its offline snapshot (no network needed). */
+    fun playDownloadedPlaylist(item: LibraryItem) {
+        val playlist = downloadStore.playlist(item.id) ?: return
+        val items = downloadStore.playableItems(item.id)
+        if (items.isEmpty()) return
+        playback.playQueue(
+            items = items,
+            startItem = items.first(),
+            source = PlaybackSource("downloaded:${playlist.playlistId}", playlist.name, "Downloaded", item.imageUrl),
+        )
+        viewModelScope.launch { _openNowPlaying.send(Unit) }
     }
 
     /** Recent plays is a live local history — update its row as new plays land. */
@@ -203,6 +243,7 @@ class HomeViewModel @Inject constructor(
                 it.copy(
                     userName = settings.snapshot().userName,
                     loading = false,
+                    offline = libraries.isEmpty(),
                     error = if (libraries.isEmpty() && it.hasNoContent()) "Couldn't reach your server" else null,
                 )
             }
@@ -259,7 +300,8 @@ class HomeViewModel @Inject constructor(
             playlists.isEmpty() &&
             sonicMixes.isEmpty() &&
             recentAlbums.isEmpty() &&
-            artists.isEmpty()
+            artists.isEmpty() &&
+            downloads.isEmpty()
 
     /** Runs one Home section's fetch, swallowing failure to an empty list. */
     private suspend fun <T> section(block: suspend () -> List<T>): List<T> =
