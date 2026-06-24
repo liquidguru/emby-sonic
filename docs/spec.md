@@ -1194,6 +1194,29 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   the grid/build flow and settings-driven sizing were user-verified on the
   Pixel 8 Pro.
 
+- **M5.18 — Offline playlist downloads (2026-06-24, built + Pixel 8 Pro verified):**
+  download whole playlists for true offline listening. `data/download/`:
+  `DownloadStore` persists the **original source files** (`/Audio/{id}/stream?Static=true`
+  — no transcode) under `filesDir/downloads/` plus a JSON index, and exposes a
+  **synchronous** `localUri(trackId)` so the playback engine resolves a downloaded
+  file with no suspend. `PlaylistDownloader` resolves a playlist's tracks, writes a
+  browsable metadata **snapshot** (so a queue can be rebuilt and played with zero
+  network), then fetches each track sequentially, driving per-track state
+  (PENDING/DOWNLOADING/COMPLETE/FAILED). Playback hook: `PlaybackController.mediaItem`
+  now prefers `downloadStore.localUri(...)` over the transient prefetch cache, then
+  the stream — gated to track-start music so long-form server-offset seeking is
+  untouched. UI: a download / progress-ring / "downloaded" action on the playlist
+  detail; a dedicated **Downloads screen** (Settings → Downloads) listing downloaded
+  playlists with track count + storage used, offline play, and per-item remove.
+  Deletion: removing an Emby playlist cascades to its local files; long-pressing a
+  **downloaded** playlist on Home offers "Remove download only" (keep the Emby
+  playlist) vs "Delete playlist" (Emby + local). User-verified on the Pixel 8 Pro: a
+  26-track playlist downloaded in seconds and every track played in airplane mode,
+  including a cold start with no connectivity. Decisions: original files (not a
+  transcode), full offline mode, dedicated Downloads screen. Not yet: a foreground
+  service for very large downloads (currently an app-scoped coroutine), artwork
+  caching for fully-offline cover art, and album/track (non-playlist) downloads.
+
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
 **M3 verification (dev-pc / Pixel_3a_API_36, 2026-06-09):**

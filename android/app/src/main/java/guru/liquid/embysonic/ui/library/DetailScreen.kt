@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Refresh
@@ -80,6 +82,8 @@ fun DetailScreen(
     var saveDialogOpen by rememberSaveable { mutableStateOf(false) }
     var refreshDialogOpen by rememberSaveable { mutableStateOf(false) }
     var removeTarget by remember { mutableStateOf<LibraryItem?>(null) }
+    var removeDownloadOpen by remember { mutableStateOf(false) }
+    val download by viewModel.downloadState.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -143,6 +147,32 @@ fun DetailScreen(
                                     Icons.AutoMirrored.Filled.PlaylistAdd,
                                     contentDescription = "Save as playlist",
                                 )
+                            }
+                        }
+                        if (kind == DetailKind.PLAYLIST_TRACKS) {
+                            val dl = download
+                            when {
+                                dl == null -> IconButton(onClick = viewModel::downloadForOffline) {
+                                    Icon(Icons.Default.Download, contentDescription = "Download for offline")
+                                }
+                                dl.isDownloading -> IconButton(onClick = { removeDownloadOpen = true }) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(
+                                            progress = {
+                                                if (dl.tracks.isEmpty()) 0f
+                                                else dl.completeCount.toFloat() / dl.tracks.size
+                                            },
+                                            modifier = Modifier.size(22.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    }
+                                }
+                                else -> IconButton(onClick = { removeDownloadOpen = true }) {
+                                    Icon(
+                                        Icons.Default.DownloadForOffline,
+                                        contentDescription = "Downloaded — tap to remove",
+                                    )
+                                }
                             }
                         }
                     }
@@ -266,6 +296,35 @@ fun DetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { removeTarget = null }) { Text("Cancel") }
+            },
+        )
+    }
+    if (removeDownloadOpen) {
+        val downloading = download?.isDownloading == true
+        AlertDialog(
+            onDismissRequest = { removeDownloadOpen = false },
+            title = { Text(if (downloading) "Stop download" else "Remove download") },
+            text = {
+                Text(
+                    if (downloading) {
+                        "Stop downloading and delete the files saved so far? The playlist stays in your library."
+                    } else {
+                        "Delete the downloaded files from this device? The playlist stays in your library."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        removeDownloadOpen = false
+                        viewModel.removeDownload()
+                    },
+                ) {
+                    Text(if (downloading) "Stop" else "Remove")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { removeDownloadOpen = false }) { Text("Cancel") }
             },
         )
     }

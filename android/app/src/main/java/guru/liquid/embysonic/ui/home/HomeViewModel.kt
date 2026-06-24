@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.download.DownloadStore
 import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
 import guru.liquid.embysonic.data.emby.DetailKind
@@ -25,9 +26,12 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -105,6 +109,7 @@ class HomeViewModel @Inject constructor(
     private val playback: PlaybackController,
     private val recentPlaysRepo: RecentPlaysRepository,
     private val playlists: PlaylistRepository,
+    private val downloadStore: DownloadStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -295,10 +300,30 @@ class HomeViewModel @Inject constructor(
 
     fun playPlaylist(item: LibraryItem) = playCollection(item, DetailKind.PLAYLIST_TRACKS)
 
+    /** Playlist ids that currently have an offline download (any state). */
+    val downloadedPlaylistIds: StateFlow<Set<String>> =
+        downloadStore.state
+            .map { index -> index.playlists.map { it.playlistId }.toSet() }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                downloadStore.state.value.playlists.map { it.playlistId }.toSet(),
+            )
+
+    /** Delete only the offline download, leaving the Emby playlist intact. */
+    fun removePlaylistDownload(item: LibraryItem) {
+        viewModelScope.launch {
+            downloadStore.removePlaylist(item.id)
+            _messages.send("Removed offline download for \"${item.title}\"")
+        }
+    }
+
     fun deletePlaylist(item: LibraryItem) {
         viewModelScope.launch {
             runCatching { playlists.deletePlaylist(item.id) }.fold(
                 onSuccess = {
+                    // Deleting the playlist also clears any offline download of it.
+                    downloadStore.removePlaylist(item.id)
                     _state.update { state ->
                         state.copy(playlists = state.playlists.filterNot { it.id == item.id })
                     }

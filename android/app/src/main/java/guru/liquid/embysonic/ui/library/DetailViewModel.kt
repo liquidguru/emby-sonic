@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.SimilarAlbumDto
+import guru.liquid.embysonic.data.download.DownloadStore
+import guru.liquid.embysonic.data.download.DownloadedPlaylist
+import guru.liquid.embysonic.data.download.PlaylistDownloader
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
@@ -23,6 +26,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -41,6 +45,8 @@ class DetailViewModel @Inject constructor(
     private val playlists: PlaylistRepository,
     private val settings: SettingsRepository,
     private val playback: PlaybackController,
+    private val downloadStore: DownloadStore,
+    private val downloader: PlaylistDownloader,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -66,6 +72,30 @@ class DetailViewModel @Inject constructor(
 
     private val _state = MutableStateFlow<TabState>(TabState.Loading)
     val state: StateFlow<TabState> = _state.asStateFlow()
+
+    /** Offline-download status of this playlist (null = not downloaded). */
+    val downloadState: StateFlow<DownloadedPlaylist?> =
+        downloadStore.state
+            .map { index -> index.playlists.firstOrNull { it.playlistId == itemId } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), downloadStore.playlist(itemId))
+
+    /** Queue this playlist for offline download (original source files). */
+    fun downloadForOffline() {
+        if (kind != DetailKind.PLAYLIST_TRACKS) return
+        val cover = (state.value as? TabState.Data)?.items
+            ?.firstOrNull { it.imageUrl != null }?.imageUrl
+        downloader.downloadPlaylist(itemId, title.ifBlank { "Playlist" }, cover)
+        viewModelScope.launch { _messages.send("Downloading \"${title.ifBlank { "playlist" }}\" for offline") }
+    }
+
+    /** Delete this playlist's downloaded files (keeps the Emby playlist). */
+    fun removeDownload() {
+        viewModelScope.launch {
+            downloader.cancel(itemId)
+            downloadStore.removePlaylist(itemId)
+            _messages.send("Removed download")
+        }
+    }
 
     private val _similarState = MutableStateFlow<SimilarCollectionsState>(SimilarCollectionsState.Hidden)
     val similarState: StateFlow<SimilarCollectionsState> = _similarState.asStateFlow()

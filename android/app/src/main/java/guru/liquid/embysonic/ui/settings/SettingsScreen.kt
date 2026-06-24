@@ -45,6 +45,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onLoggedOut: () -> Unit,
     onOpenEqualizer: () -> Unit = {},
+    onOpenDownloads: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -76,6 +77,23 @@ fun SettingsScreen(
             Text("Signed in as ${state.userName}", style = MaterialTheme.typography.titleMedium)
             if (state.isCasting) {
                 CastUnavailableHint(deviceName = state.castDeviceName)
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Downloads", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Playlists saved on this device for offline listening.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = onOpenDownloads, modifier = Modifier.fillMaxWidth()) {
+                        Text("Manage downloads")
+                    }
+                }
             }
 
             Card(modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f)) {

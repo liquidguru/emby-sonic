@@ -42,6 +42,7 @@ import guru.liquid.embysonic.MainActivity
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
 import guru.liquid.embysonic.data.coordinator.toLibraryItem
+import guru.liquid.embysonic.data.download.DownloadStore
 import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.EmbyApi
 import guru.liquid.embysonic.data.emby.LibraryItem
@@ -94,6 +95,7 @@ class PlaybackController @Inject constructor(
     private val coordinator: CoordinatorApi,
     private val library: LibraryRepository,
     private val sessionStore: PlaybackSessionStore,
+    private val downloadStore: DownloadStore,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
@@ -1162,8 +1164,11 @@ class PlaybackController @Inject constructor(
             Log.w(TAG, "Track ${track.id} has no Emby duration for MediaSession metadata")
         }
         val metadata = metadataBuilder.build()
+        // Prefer a persistently downloaded file (offline playback), then the
+        // transient prefetch cache, else stream. Gated to track-start music the
+        // same way as prefetch, so long-form server-offset seeking is untouched.
         val localUri = if (startOffsetMs == 0L && !track.isLongForm) {
-            prefetchCache.cachedUri(track.id)
+            downloadStore.localUri(track.id) ?: prefetchCache.cachedUri(track.id)
         } else {
             null
         }
