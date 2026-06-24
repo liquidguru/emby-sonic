@@ -194,7 +194,8 @@ short, **shipped and verified on-device:**
   **Stations** (Library/Random Album/Decade radios), **Recent plays**,
   **Search** (music + audiobooks + Home all-scopes).
 - **Offline playlist downloads** (original source files via `Static=true`,
-  persisted snapshot for no-network browse/play, Settings → Downloads).
+  persisted snapshot + cover art for no-network browse/play; Settings → Downloads,
+  a Home Downloads row, downloaded badge, and an online/offline indicator).
 - Home customization (sections, order, compact cards).
 
 **Next candidates** (see spec "M4 — Remaining"): sonic-similar sidebars on
