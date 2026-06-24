@@ -282,11 +282,13 @@ Once some of your library is analysed:
 - **Stations** on Home, **Guest DJ** queue injection, **crossfade**, the in-app **EQ**.
 - **Customize Home** (sliders icon, top-right) — reorder or hide any row, **including
   Stations**, and toggle small cards. Your layout is remembered.
-- **Offline downloads** — open a playlist, tap the **download** icon (top-right), let
-  it finish, then turn on **airplane mode**: the Home bar's cloud goes red, a
-  "Recent plays" row drops away, and your downloaded playlists appear in a **Downloads
-  row on Home** (and Settings → Downloads) to play with no signal. Long-press a
-  downloaded playlist on Home to remove just the download or delete the whole playlist.
+- **Offline downloads** — open a playlist **or an audiobook**, tap the **download**
+  icon (top-right), let it finish, then turn on **airplane mode**: the Home bar's
+  cloud goes red, the "Recent plays" row drops away, and your downloads appear in a
+  **Downloads row on Home** (and Settings → Downloads, split into Playlists /
+  Audiobooks) to play with no signal. Audiobooks resume where you left off even
+  offline, then sync your position back to Emby when you reconnect. Downloads are
+  **Wi-Fi-only by default** (toggle in Settings → Downloads).
 - **Cast** to a Chromecast/Android TV/SHIELD if you have one.
 
 **Please report:** what you tried, what device/Android version, what you expected vs.

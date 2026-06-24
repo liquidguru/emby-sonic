@@ -73,12 +73,14 @@ important to her — so liquidWave handles books (with durable resume) alongside
   artwork cross-dissolve, an in-app equalizer, a Now Playing home-screen widget,
   **Android Auto**, and **Google Cast** to a Chromecast / Android TV / Shield.
 - **Audiobooks** — browse by book/author, durable resume, speed control.
-- **Offline downloads** — download any playlist (the original source files, no
-  transcode) to your phone and browse + play it with **no connection at all** —
-  on a plane, underground, wherever. Downloaded playlists get their own row on Home
-  (with cover art) and a badge in your Playlists, an online/offline indicator shows
-  the connection state, and a one-tap "remove download" leaves the playlist itself
-  untouched. Managed under Settings → Downloads.
+- **Offline downloads** — download any playlist **or a whole audiobook** (the
+  original source files, no transcode) to your phone and browse + play it with **no
+  connection at all** — on a plane, underground, wherever. Downloads get their own
+  row on Home (with cover art) and a badge in your Playlists; an online/offline
+  indicator shows the connection state; downloads are **Wi-Fi-only by default**.
+  Audiobooks keep **durable resume** even fully offline, and your position syncs back
+  to Emby the moment you reconnect. Managed under Settings → Downloads (Playlists and
+  Audiobooks), with a one-tap "remove download" that leaves the item itself untouched.
 - **Search** across music, audiobooks, or everything.
 
 [SCREENSHOT: Mixes screen] [SCREENSHOT: Sonic Adventure builder]
