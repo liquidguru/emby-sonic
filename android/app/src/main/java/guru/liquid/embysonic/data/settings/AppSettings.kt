@@ -21,6 +21,8 @@ data class AppSettings(
     val eqBandLevels: List<Int> = emptyList(),
     // Active built-in preset index, or -1 for a manual/custom curve.
     val eqPreset: Int = -1,
+    // Restrict offline downloads to unmetered (Wi-Fi) networks.
+    val downloadWifiOnly: Boolean = true,
     val generatedMixTracks: Int = 25,
     val audiobookSpeed: Float = 1f,
     val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,

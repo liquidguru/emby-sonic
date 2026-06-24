@@ -7,6 +7,7 @@ import guru.liquid.embysonic.data.download.DownloadIndex
 import guru.liquid.embysonic.data.download.DownloadStore
 import guru.liquid.embysonic.data.download.DownloadedPlaylist
 import guru.liquid.embysonic.data.download.PlaylistDownloader
+import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackSource
 import kotlinx.coroutines.channels.Channel
@@ -24,10 +25,18 @@ class DownloadsViewModel @Inject constructor(
     private val downloadStore: DownloadStore,
     private val downloader: PlaylistDownloader,
     private val playback: PlaybackController,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     val state: StateFlow<DownloadIndex> =
         downloadStore.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), downloadStore.state.value)
+
+    val wifiOnly: StateFlow<Boolean> =
+        settings.downloadWifiOnly.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun setWifiOnly(value: Boolean) {
+        viewModelScope.launch { settings.setDownloadWifiOnly(value) }
+    }
 
     private val _openNowPlaying = Channel<Unit>(Channel.BUFFERED)
     val openNowPlaying: Flow<Unit> = _openNowPlaying.receiveAsFlow()
@@ -36,9 +45,10 @@ class DownloadsViewModel @Inject constructor(
     fun play(playlist: DownloadedPlaylist) {
         val items = downloadStore.playableItems(playlist.playlistId)
         if (items.isEmpty()) return
+        val startItem = downloadStore.startItem(playlist.playlistId, items) ?: items.first()
         playback.playQueue(
             items = items,
-            startItem = items.first(),
+            startItem = startItem,
             source = PlaybackSource(
                 key = "downloaded:${playlist.playlistId}",
                 title = playlist.name,

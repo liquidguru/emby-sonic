@@ -42,6 +42,7 @@ import guru.liquid.embysonic.MainActivity
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
 import guru.liquid.embysonic.data.coordinator.toLibraryItem
+import guru.liquid.embysonic.data.download.DownloadProgressStore
 import guru.liquid.embysonic.data.download.DownloadStore
 import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.EmbyApi
@@ -96,6 +97,7 @@ class PlaybackController @Inject constructor(
     private val library: LibraryRepository,
     private val sessionStore: PlaybackSessionStore,
     private val downloadStore: DownloadStore,
+    private val downloadProgress: DownloadProgressStore,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
@@ -278,6 +280,8 @@ class PlaybackController @Inject constructor(
                 }
             }
         })
+        // Push any positions saved while offline up to Emby on startup (best-effort).
+        flushPendingProgress()
         scope.launch {
             settings.playbackRepeatMode
                 .distinctUntilChanged()
@@ -886,7 +890,10 @@ class PlaybackController @Inject constructor(
         // ExoPlayer marks the window unseekable, and an in-player seek on an
         // unseekable stream restarts from zero. Only trust the seekable flag
         // once READY — before that every stream looks unseekable.
-        val needsServerSeek = activePlayerRef === this.player && track != null && (
+        // A downloaded file is local and seekable, so seek it in-player even when
+        // it's long-form (server-side seeking only applies to streamed content).
+        val needsServerSeek = activePlayerRef === this.player && track != null &&
+            !downloadStore.isTrackDownloaded(track.id) && (
             track.isLongForm ||
                 (player.playbackState == Player.STATE_READY && !player.isCurrentMediaItemSeekable)
             )
@@ -1164,14 +1171,12 @@ class PlaybackController @Inject constructor(
             Log.w(TAG, "Track ${track.id} has no Emby duration for MediaSession metadata")
         }
         val metadata = metadataBuilder.build()
-        // Prefer a persistently downloaded file (offline playback), then the
-        // transient prefetch cache, else stream. Gated to track-start music the
-        // same way as prefetch, so long-form server-offset seeking is untouched.
-        val localUri = if (startOffsetMs == 0L && !track.isLongForm) {
-            downloadStore.localUri(track.id) ?: prefetchCache.cachedUri(track.id)
-        } else {
-            null
-        }
+        // Prefer a persistently downloaded file (offline playback) for any track —
+        // a local file is seekable, so long-form resume is handled by the player
+        // rather than a server offset. Otherwise fall back to the transient prefetch
+        // cache (track-start music only) or streaming.
+        val localUri = downloadStore.localUri(track.id)
+            ?: if (startOffsetMs == 0L && !track.isLongForm) prefetchCache.cachedUri(track.id) else null
 
         return MediaItem.Builder()
             .setMediaId(track.id)
@@ -1741,7 +1746,9 @@ class PlaybackController @Inject constructor(
         }
 
     private fun PlaybackTrack.streamStartOffset(): Long =
-        if (isLongForm) resumePositionForPlayback() else 0L
+        // A downloaded file is a normal seekable local file: no server-side offset;
+        // the resume position is applied by the player instead (playerStartPosition).
+        if (isLongForm && !downloadStore.isTrackDownloaded(id)) resumePositionForPlayback() else 0L
 
     private fun PlaybackTrack.playerStartPosition(index: Int): Long =
         resumePositionForPlayback() - (streamOffsetsByIndex[index] ?: 0L)
@@ -1991,7 +1998,40 @@ class PlaybackController @Inject constructor(
             // would replay mid-song), and a rolling Played=false write would
             // wipe played status earned in other sessions/clients.
             if (track.isLongForm) {
-                runCatching { syncLongFormResume(track, state.positionMs) }
+                val synced = runCatching { syncLongFormResume(track, state.positionMs) }.isSuccess
+                recordDownloadProgress(track, state.positionMs, played = false, synced = synced)
+            }
+        }
+    }
+
+    /** Persist a downloaded long-form position locally; flush any offline backlog when online. */
+    private suspend fun recordDownloadProgress(
+        track: PlaybackTrack,
+        positionMs: Long,
+        played: Boolean,
+        synced: Boolean,
+        flushNow: Boolean = false,
+    ) {
+        if (!downloadStore.isTrackDownloaded(track.id)) return
+        val pos = if (played) 0L else durableResumePosition(track, positionMs)
+        // The book's chapter order is the current queue (downloaded long-form items),
+        // so advancing keeps a single resume point and earlier chapters don't pull
+        // resume backward — locally or, after flush, on Emby.
+        val orderedIds = queue.filter { it.isLongForm && downloadStore.isTrackDownloaded(it.id) }.map { it.id }
+        downloadProgress.setBookmark(orderedIds, track.id, pos, played, syncedToServer = synced, flushNow = flushNow)
+        if (synced) flushPendingProgress()
+    }
+
+    /** Push positions saved while offline up to Emby once a write succeeds (we're online). */
+    private fun flushPendingProgress() {
+        val pending = downloadProgress.unsynced()
+        if (pending.isEmpty()) return
+        scope.launch {
+            pending.forEach { (itemId, prog) ->
+                val ok = runCatching {
+                    writeUserDataById(itemId, prog.positionMs, prog.played)
+                }.isSuccess
+                if (ok) downloadProgress.markSynced(itemId)
             }
         }
     }
@@ -2024,9 +2064,14 @@ class PlaybackController @Inject constructor(
                     ),
                 )
             }
-            when {
-                completed -> runCatching { writeUserData(track, positionMs = 0L, played = true) }
-                track.isLongForm -> runCatching { syncLongFormResume(track, state.positionMs) }
+            val synced = when {
+                completed -> runCatching { writeUserData(track, positionMs = 0L, played = true) }.isSuccess
+                track.isLongForm -> runCatching { syncLongFormResume(track, state.positionMs) }.isSuccess
+                else -> true
+            }
+            // A stop/transition is a good moment to persist the final position to disk.
+            if (completed || track.isLongForm) {
+                recordDownloadProgress(track, state.positionMs, played = completed, synced = synced, flushNow = true)
             }
         }
     }
@@ -2048,11 +2093,15 @@ class PlaybackController @Inject constructor(
         writeUserData(track, durableResumePosition(track, positionMs), played = false)
     }
 
-    private suspend fun writeUserData(track: PlaybackTrack, positionMs: Long, played: Boolean) {
-        val userId = settings.snapshot().userId?.takeIf { it.isNotBlank() } ?: return
+    private suspend fun writeUserData(track: PlaybackTrack, positionMs: Long, played: Boolean) =
+        writeUserDataById(track.id, positionMs, played)
+
+    private suspend fun writeUserDataById(itemId: String, positionMs: Long, played: Boolean) {
+        val userId = settings.snapshot().userId?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Not signed in")
         embyApi.updateUserData(
             userId = userId,
-            itemId = track.id,
+            itemId = itemId,
             body = UserDataUpdateDto(
                 playbackPositionTicks = positionMs.msToTicks(),
                 played = played,

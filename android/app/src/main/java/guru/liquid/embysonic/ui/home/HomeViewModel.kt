@@ -157,13 +157,14 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             downloadStore.state.collect { index ->
                 val items = index.playlists.map { pl ->
+                    val unit = if (pl.isAudiobook) "chapter" else "track"
                     LibraryItem(
                         id = pl.playlistId,
                         title = pl.name,
-                        subtitle = "${pl.completeCount} track${if (pl.completeCount == 1) "" else "s"} • offline",
+                        subtitle = "${pl.completeCount} $unit${if (pl.completeCount == 1) "" else "s"} • offline",
                         imageUrl = pl.tracks.firstNotNullOfOrNull { downloadStore.artUri(it)?.toString() }
                             ?: pl.coverUrl,
-                        contentKind = ContentKind.MUSIC,
+                        contentKind = if (pl.isAudiobook) ContentKind.AUDIOBOOK else ContentKind.MUSIC,
                     )
                 }
                 _state.update { it.copy(downloads = items) }
@@ -176,9 +177,10 @@ class HomeViewModel @Inject constructor(
         val playlist = downloadStore.playlist(item.id) ?: return
         val items = downloadStore.playableItems(item.id)
         if (items.isEmpty()) return
+        val startItem = downloadStore.startItem(item.id, items) ?: items.first()
         playback.playQueue(
             items = items,
-            startItem = items.first(),
+            startItem = startItem,
             source = PlaybackSource("downloaded:${playlist.playlistId}", playlist.name, "Downloaded", item.imageUrl),
         )
         viewModelScope.launch { _openNowPlaying.send(Unit) }

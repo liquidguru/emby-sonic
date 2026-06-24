@@ -13,6 +13,7 @@ import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.resumeStartItem
+import guru.liquid.embysonic.data.net.NetworkMonitor
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
@@ -47,6 +48,7 @@ class DetailViewModel @Inject constructor(
     private val playback: PlaybackController,
     private val downloadStore: DownloadStore,
     private val downloader: PlaylistDownloader,
+    private val network: NetworkMonitor,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -79,13 +81,23 @@ class DetailViewModel @Inject constructor(
             .map { index -> index.playlists.firstOrNull { it.playlistId == itemId } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), downloadStore.playlist(itemId))
 
-    /** Queue this playlist for offline download (original source files). */
+    /** True when this drill-down can be downloaded for offline (playlist or book). */
+    val isDownloadable: Boolean =
+        kind == DetailKind.PLAYLIST_TRACKS || kind == DetailKind.BOOK_CHAPTERS
+
+    /** Queue this playlist or audiobook for offline download (original source files). */
     fun downloadForOffline() {
-        if (kind != DetailKind.PLAYLIST_TRACKS) return
+        if (!isDownloadable) return
+        if (settings.snapshot().downloadWifiOnly && network.isActiveNetworkMetered()) {
+            viewModelScope.launch {
+                _messages.send("On cellular — connect to Wi-Fi, or allow cellular in Settings → Downloads")
+            }
+            return
+        }
         val cover = (state.value as? TabState.Data)?.items
             ?.firstOrNull { it.imageUrl != null }?.imageUrl
-        downloader.downloadPlaylist(itemId, title.ifBlank { "Playlist" }, cover)
-        viewModelScope.launch { _messages.send("Downloading \"${title.ifBlank { "playlist" }}\" for offline") }
+        downloader.downloadPlaylist(itemId, title.ifBlank { "Download" }, cover, kind)
+        viewModelScope.launch { _messages.send("Downloading \"${title.ifBlank { "this" }}\" for offline") }
     }
 
     /** Delete this playlist's downloaded files (keeps the Emby playlist). */
@@ -129,9 +141,9 @@ class DetailViewModel @Inject constructor(
                     loadSimilarCollections(it)
                 },
                 onFailure = { err ->
-                    // Offline fallback: a downloaded playlist can still be listed and
-                    // played from its local snapshot when the server is unreachable.
-                    val offline = if (kind == DetailKind.PLAYLIST_TRACKS) {
+                    // Offline fallback: a downloaded playlist or book can still be
+                    // listed and played from its local snapshot when offline.
+                    val offline = if (isDownloadable) {
                         downloadStore.playableItems(itemId)
                     } else {
                         emptyList()
@@ -278,7 +290,13 @@ class DetailViewModel @Inject constructor(
 
     fun playFirst() {
         val items = (state.value as? TabState.Data)?.items.orEmpty()
-        val seed = if (kind == DetailKind.BOOK_CHAPTERS) items.resumeStartItem() else items.firstOrNull()
+        val seed = when {
+            // A downloaded book resumes at the chapter it was most recently in.
+            kind == DetailKind.BOOK_CHAPTERS && downloadStore.playlist(itemId) != null ->
+                downloadStore.startItem(itemId, items)
+            kind == DetailKind.BOOK_CHAPTERS -> items.resumeStartItem()
+            else -> items.firstOrNull()
+        }
         if (seed == null) {
             viewModelScope.launch { _messages.send("Nothing playable here") }
             return
