@@ -48,6 +48,7 @@ class SettingsRepository @Inject constructor(
         val CROSSFADE_DURATION_MS = intPreferencesKey("crossfade_duration_ms")
         val EQ_ENABLED = booleanPreferencesKey("eq_enabled")
         val EQ_BAND_LEVELS = stringPreferencesKey("eq_band_levels")
+        val EQ_PRESET = intPreferencesKey("eq_preset")
         val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
         val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
         val THEME_CHOICE = stringPreferencesKey("theme_choice")
@@ -151,6 +152,12 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    /** Active built-in preset index, or a negative value for a manual/custom curve. */
+    suspend fun setEqPreset(preset: Int) {
+        context.dataStore.edit { it[Keys.EQ_PRESET] = preset }
+        refreshCache()
+    }
+
     suspend fun setGeneratedMixTracks(value: Int) {
         context.dataStore.edit { it[Keys.GENERATED_MIX_TRACKS] = value }
     }
@@ -198,6 +205,7 @@ class SettingsRepository @Inject constructor(
                 ?.splitCsv()
                 ?.mapNotNull { it.toIntOrNull() }
                 .orEmpty(),
+            eqPreset = this[Keys.EQ_PRESET] ?: -1,
             generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
             audiobookSpeed = (this[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed(),
             themeChoice = ThemeChoice.fromKey(this[Keys.THEME_CHOICE]),

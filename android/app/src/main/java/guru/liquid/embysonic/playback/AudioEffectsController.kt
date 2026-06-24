@@ -27,7 +27,17 @@ data class EqualizerState(
     val maxLevelMb: Int = 1500,
     val bands: List<EqBand> = emptyList(),
     val presets: List<String> = emptyList(),
-)
+    /**
+     * Index of the active built-in preset, or [NO_PRESET] when the bands have
+     * been set manually (the system reports `PRESET_UNDEFINED` once any band is
+     * adjusted away from a preset's curve).
+     */
+    val currentPreset: Int = NO_PRESET,
+) {
+    companion object {
+        const val NO_PRESET = -1
+    }
+}
 
 /**
  * Owns the system [Equalizer] bound to the shared audio session of both
@@ -67,8 +77,14 @@ class AudioEffectsController @Inject constructor(
         val saved = settings.snapshot()
         runCatching {
             eq.enabled = saved.eqEnabled
-            saved.eqBandLevels.forEachIndexed { band, level ->
-                if (band < eq.numberOfBands) eq.setBandLevel(band.toShort(), level.toShort())
+            if (saved.eqPreset in 0 until eq.numberOfPresets) {
+                // A built-in preset was selected; re-apply it so currentPreset
+                // reports it again and the chip shows as selected after restart.
+                eq.usePreset(saved.eqPreset.toShort())
+            } else {
+                saved.eqBandLevels.forEachIndexed { band, level ->
+                    if (band < eq.numberOfBands) eq.setBandLevel(band.toShort(), level.toShort())
+                }
             }
         }
         publish()
@@ -98,27 +114,39 @@ class AudioEffectsController @Inject constructor(
         publish()
     }
 
-    /** Persist the current live band values after a slider drag finishes. */
+    /**
+     * Persist the current live band values after a slider drag finishes. A manual
+     * adjustment means we're no longer on a preset, so clear the saved preset too.
+     */
     fun persistBandLevels() {
         if (equalizer == null) return
-        scope.launch { settings.setEqBandLevels(currentLevels()) }
+        scope.launch {
+            settings.setEqPreset(EqualizerState.NO_PRESET)
+            settings.setEqBandLevels(currentLevels())
+        }
     }
 
-    /** Apply a built-in preset, then persist the resulting per-band gains. */
+    /** Apply a built-in preset, then persist the preset and its per-band gains. */
     fun usePreset(preset: Int) {
         val eq = equalizer ?: return
         runCatching { eq.usePreset(preset.toShort()) }
-        scope.launch { settings.setEqBandLevels(currentLevels()) }
+        scope.launch {
+            settings.setEqPreset(preset)
+            settings.setEqBandLevels(currentLevels())
+        }
         publish()
     }
 
-    /** Reset every band to 0 dB (flat). */
+    /** Reset every band to 0 dB (flat) and drop any selected preset. */
     fun reset() {
         val eq = equalizer ?: return
         runCatching {
             for (b in 0 until eq.numberOfBands) eq.setBandLevel(b.toShort(), 0)
         }
-        scope.launch { settings.setEqBandLevels(currentLevels()) }
+        scope.launch {
+            settings.setEqPreset(EqualizerState.NO_PRESET)
+            settings.setEqBandLevels(currentLevels())
+        }
         publish()
     }
 
@@ -150,6 +178,8 @@ class AudioEffectsController @Inject constructor(
                 maxLevelMb = range[1].toInt(),
                 bands = bands,
                 presets = presets,
+                // currentPreset is PRESET_UNDEFINED (-1) once any band is moved.
+                currentPreset = eq.currentPreset.toInt(),
             )
         }.getOrNull() ?: EqualizerState(available = false)
         _state.value = state
