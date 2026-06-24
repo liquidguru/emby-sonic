@@ -283,9 +283,11 @@ Adventure (a sonic journey from one track to another); the Artist Mix Creator
 (pick a set of artists — the grid suggests sonically similar ones as you go —
 then build a shuffled cross-artist mix, sized by the shared "tracks per mix"
 setting); Stations (Library / Random Album / Decade radios); Recent Plays; offline
-playlist downloads (download a playlist's original source files for browsing and
-playback with no network, managed under Settings → Downloads); and search across
-music (tracks/albums/artists), audiobooks (books/authors), or everything from Home.
+downloads (download a playlist or a whole audiobook's original source files for
+browsing and playback with no network — audiobooks keep durable resume across the
+offline→online boundary; Wi-Fi-only by default; managed under Settings → Downloads);
+and search across music (tracks/albums/artists), audiobooks (books/authors), or
+everything from Home.
 
 ### Build
 
