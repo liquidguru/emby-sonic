@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
@@ -31,7 +33,10 @@ import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -67,6 +72,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
@@ -125,6 +131,12 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text(state.userName?.let { "Hi, $it" } ?: "liquidWave") },
                 actions = {
+                    Icon(
+                        imageVector = if (state.offline) Icons.Default.CloudOff else Icons.Default.CloudDone,
+                        contentDescription = if (state.offline) "Offline" else "Online",
+                        tint = if (state.offline) MaterialTheme.colorScheme.error else Color(0xFF43A047),
+                        modifier = Modifier.padding(horizontal = 6.dp).size(22.dp),
+                    )
                     IconButton(onClick = onOpenSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
                     }
@@ -164,6 +176,7 @@ fun HomeScreen(
                 onOpenArtistMix = onOpenArtistMix,
                 onPlayStation = viewModel::playStation,
                 onPlayPlaylist = viewModel::playPlaylist,
+                onPlayDownloaded = viewModel::playDownloadedPlaylist,
                 onDeletePlaylist = { deletePlaylistTargetId = it.id },
                 onPlaySonicMix = viewModel::playSonicMix,
                 onPlayAlbum = viewModel::playAlbum,
@@ -255,6 +268,7 @@ private fun HomeContent(
     onOpenArtistMix: () -> Unit,
     onPlayStation: (HomeStation, Int?) -> Unit,
     onPlayPlaylist: (LibraryItem) -> Unit,
+    onPlayDownloaded: (LibraryItem) -> Unit,
     onDeletePlaylist: (LibraryItem) -> Unit,
     onPlaySonicMix: (LibraryItem) -> Unit,
     onPlayAlbum: (LibraryItem) -> Unit,
@@ -269,6 +283,33 @@ private fun HomeContent(
         contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        if (state.offline) {
+            item(key = "offline_banner") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.CloudOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        "You're offline — showing downloaded music only.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(start = 10.dp),
+                    )
+                }
+            }
+        }
+
         item {
             Column(
                 modifier = Modifier.padding(horizontal = 20.dp),
@@ -307,6 +348,12 @@ private fun HomeContent(
                     // Handled by the early return above; here only to satisfy the
                     // exhaustive `when`.
                     HomeSectionKind.STATIONS -> return@forEach
+                    HomeSectionKind.DOWNLOADS -> HomeSectionData(
+                        // Sourced from the local download snapshot — plays with no network.
+                        items = state.downloads,
+                        onClick = onPlayDownloaded,
+                        onPlay = onPlayDownloaded,
+                    )
                     HomeSectionKind.RESUME_AUDIOBOOKS -> HomeSectionData(
                         items = state.resumeAudiobooks,
                         onClick = { onOpenItem(it.id, it.title, DetailKind.BOOK_CHAPTERS) },
@@ -314,8 +361,9 @@ private fun HomeContent(
                     )
                     HomeSectionKind.RECENT_PLAYS -> HomeSectionData(
                         // Each tile is a recorded session; tap or play replays its
-                        // exact stored queue (works for generated radios too).
-                        items = state.recentPlays,
+                        // exact stored queue (works for generated radios too). Hidden
+                        // when offline — those server-backed queues can't play.
+                        items = if (state.offline) emptyList() else state.recentPlays,
                         onClick = onPlayRecent,
                         onPlay = onPlayRecent,
                     )
@@ -350,6 +398,12 @@ private fun HomeContent(
                             onClick = sectionData.onClick,
                             onPlay = sectionData.onPlay,
                             onLongPress = sectionData.onLongPress,
+                            // Badge downloaded playlists (downloads carry their playlist id).
+                            downloadedIds = if (section.kind == HomeSectionKind.PLAYLISTS) {
+                                state.downloads.map { it.id }.toSet()
+                            } else {
+                                emptySet()
+                            },
                         )
                     }
                 }
@@ -361,7 +415,8 @@ private fun HomeContent(
             state.playlists.isEmpty() &&
             state.sonicMixes.isEmpty() &&
             state.recentAlbums.isEmpty() &&
-            state.artists.isEmpty()
+            state.artists.isEmpty() &&
+            state.downloads.isEmpty()
         ) {
             item {
                 Text(
@@ -553,6 +608,7 @@ private fun HomeSection(
     onClick: (LibraryItem) -> Unit,
     onPlay: (LibraryItem) -> Unit,
     onLongPress: ((LibraryItem) -> Unit)? = null,
+    downloadedIds: Set<String> = emptySet(),
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -571,6 +627,7 @@ private fun HomeSection(
                     onClick = { onClick(item) },
                     onPlay = { onPlay(item) },
                     onLongPress = onLongPress?.let { { it(item) } },
+                    downloaded = item.id in downloadedIds,
                 )
             }
         }
@@ -585,6 +642,7 @@ private fun HomeTile(
     onClick: () -> Unit,
     onPlay: () -> Unit,
     onLongPress: (() -> Unit)? = null,
+    downloaded: Boolean = false,
 ) {
     val width = if (compact) 116.dp else 148.dp
     val playSize = if (compact) 34.dp else 40.dp
@@ -610,6 +668,19 @@ private fun HomeTile(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(playSize),
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+            }
+            if (downloaded) {
+                Icon(
+                    Icons.Default.DownloadForOffline,
+                    contentDescription = "Downloaded",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .size(22.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), CircleShape)
+                        .padding(2.dp),
+                )
             }
         }
         Column(modifier = Modifier.padding(textPadding)) {

@@ -24,6 +24,8 @@ data class DownloadedTrack(
     // Source container (e.g. "flac", "mp3") for display and the local extension.
     val container: String? = null,
     val fileName: String,
+    // Local cover-art file (relative to the downloads dir), for fully-offline art.
+    val artFileName: String? = null,
     val sizeBytes: Long = 0,
     val state: DownloadState = DownloadState.PENDING,
 )

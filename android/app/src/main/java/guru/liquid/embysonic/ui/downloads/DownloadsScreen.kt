@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -92,6 +96,7 @@ fun DownloadsScreen(
                 items(index.playlists, key = { it.playlistId }) { playlist ->
                     DownloadedPlaylistRow(
                         playlist = playlist,
+                        coverModel = viewModel.coverModel(playlist),
                         onPlay = { viewModel.play(playlist) },
                         onRemove = { removeTarget = playlist },
                     )
@@ -135,6 +140,7 @@ fun DownloadsScreen(
 @Composable
 private fun DownloadedPlaylistRow(
     playlist: DownloadedPlaylist,
+    coverModel: String?,
     onPlay: () -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -153,20 +159,26 @@ private fun DownloadedPlaylistRow(
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
         },
         leadingContent = {
-            if (playlist.isDownloading) {
-                CircularProgressIndicator(
+            when {
+                playlist.isDownloading -> CircularProgressIndicator(
                     progress = {
                         if (playlist.tracks.isEmpty()) 0f
                         else playlist.completeCount.toFloat() / playlist.tracks.size
                     },
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(40.dp),
                     strokeWidth = 2.dp,
                 )
-            } else {
-                Icon(
+                coverModel != null -> AsyncImage(
+                    model = coverModel,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
+                )
+                else -> Icon(
                     Icons.Default.DownloadForOffline,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp),
                 )
             }
         },

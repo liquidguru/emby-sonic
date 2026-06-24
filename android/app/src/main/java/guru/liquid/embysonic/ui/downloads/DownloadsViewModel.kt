@@ -4,13 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.download.DownloadIndex
-import guru.liquid.embysonic.data.download.DownloadState
 import guru.liquid.embysonic.data.download.DownloadStore
 import guru.liquid.embysonic.data.download.DownloadedPlaylist
-import guru.liquid.embysonic.data.download.DownloadedTrack
 import guru.liquid.embysonic.data.download.PlaylistDownloader
-import guru.liquid.embysonic.data.emby.ContentKind
-import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackSource
 import kotlinx.coroutines.channels.Channel
@@ -38,9 +34,7 @@ class DownloadsViewModel @Inject constructor(
 
     /** Play the downloaded tracks of a playlist from local files. */
     fun play(playlist: DownloadedPlaylist) {
-        val items = playlist.tracks
-            .filter { it.state == DownloadState.COMPLETE }
-            .map { it.toLibraryItem() }
+        val items = downloadStore.playableItems(playlist.playlistId)
         if (items.isEmpty()) return
         playback.playQueue(
             items = items,
@@ -63,13 +57,7 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
-    private fun DownloadedTrack.toLibraryItem(): LibraryItem = LibraryItem(
-        id = id,
-        title = title,
-        subtitle = artist,
-        imageUrl = imageUrl,
-        album = album,
-        durationMs = durationMs,
-        contentKind = runCatching { ContentKind.valueOf(contentKind) }.getOrDefault(ContentKind.UNKNOWN),
-    )
+    /** Local cover-art URI string for a playlist's first track that has one. */
+    fun coverModel(playlist: DownloadedPlaylist): String? =
+        playlist.tracks.firstNotNullOfOrNull { downloadStore.artUri(it) }?.toString()
 }

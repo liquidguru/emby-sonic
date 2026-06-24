@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
+import guru.liquid.embysonic.data.emby.ContentKind
+import guru.liquid.embysonic.data.emby.LibraryItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,10 +58,38 @@ class DownloadStore @Inject constructor(
     fun playlist(playlistId: String): DownloadedPlaylist? =
         _state.value.playlists.firstOrNull { it.playlistId == playlistId }
 
+    /** A downloaded playlist's complete tracks as playable items (local art preferred). */
+    fun playableItems(playlistId: String): List<LibraryItem> =
+        playlist(playlistId)?.tracks
+            ?.filter { it.state == DownloadState.COMPLETE }
+            ?.map { it.toLibraryItem() }
+            .orEmpty()
+
+    private fun DownloadedTrack.toLibraryItem(): LibraryItem = LibraryItem(
+        id = id,
+        title = title,
+        subtitle = artist,
+        imageUrl = artUri(this)?.toString() ?: imageUrl,
+        album = album,
+        durationMs = durationMs,
+        contentKind = runCatching { ContentKind.valueOf(contentKind) }.getOrDefault(ContentKind.UNKNOWN),
+    )
+
     /** Destination file for a track; [container] sets the extension when known. */
     fun fileFor(trackId: String, container: String?): File {
         val ext = container?.lowercase()?.takeIf { it.isNotBlank() }?.let { ".$it" } ?: ""
         return File(downloadsDir, "$FILE_PREFIX${hash(trackId)}$ext")
+    }
+
+    /** Destination file for a cover image, keyed by URL so shared album art is one file. */
+    fun artFileFor(imageUrl: String): File =
+        File(downloadsDir, "$ART_PREFIX${hash(imageUrl)}.jpg")
+
+    /** A local file URI for a track's downloaded cover art, or null if not present. */
+    fun artUri(track: DownloadedTrack): Uri? {
+        val name = track.artFileName ?: return null
+        val file = File(downloadsDir, name)
+        return if (file.exists() && file.length() > 0) Uri.fromFile(file) else null
     }
 
     /** Insert or replace a playlist entry (e.g. when a download is queued). */
@@ -93,13 +123,12 @@ class DownloadStore @Inject constructor(
         if (entry != null) {
             withContext(Dispatchers.IO) {
                 // Only delete files not still referenced by another downloaded playlist.
-                val keepFiles = _state.value.playlists
-                    .filter { it.playlistId != playlistId }
-                    .flatMap { it.tracks }
-                    .map { it.fileName }
-                    .toSet()
+                val others = _state.value.playlists.filter { it.playlistId != playlistId }
+                val keepFiles = others.flatMap { it.tracks }.map { it.fileName }.toSet()
+                val keepArt = others.flatMap { it.tracks }.mapNotNull { it.artFileName }.toSet()
                 entry.tracks.forEach { tr ->
                     if (tr.fileName !in keepFiles) File(downloadsDir, tr.fileName).delete()
+                    tr.artFileName?.takeIf { it !in keepArt }?.let { File(downloadsDir, it).delete() }
                 }
             }
         }
@@ -153,5 +182,6 @@ class DownloadStore @Inject constructor(
         const val DIR_NAME = "downloads"
         const val INDEX_FILE = "index.json"
         const val FILE_PREFIX = "dl_"
+        const val ART_PREFIX = "art_"
     }
 }

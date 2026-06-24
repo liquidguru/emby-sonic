@@ -128,8 +128,19 @@ class DetailViewModel @Inject constructor(
                     _state.value = TabState.Data(it)
                     loadSimilarCollections(it)
                 },
-                onFailure = {
-                    _state.value = TabState.Error(it.message ?: "Failed to load")
+                onFailure = { err ->
+                    // Offline fallback: a downloaded playlist can still be listed and
+                    // played from its local snapshot when the server is unreachable.
+                    val offline = if (kind == DetailKind.PLAYLIST_TRACKS) {
+                        downloadStore.playableItems(itemId)
+                    } else {
+                        emptyList()
+                    }
+                    if (offline.isNotEmpty()) {
+                        _state.value = TabState.Data(offline)
+                    } else {
+                        _state.value = TabState.Error(err.message ?: "Failed to load")
+                    }
                     _similarState.value = SimilarCollectionsState.Hidden
                 },
             )

@@ -92,6 +92,7 @@ class PlaylistDownloader @Inject constructor(
                 durationMs = item.durationMs,
                 contentKind = item.contentKind.name,
                 fileName = store.fileFor(item.id, null).name,
+                artFileName = item.imageUrl?.let { store.artFileFor(it).name },
                 state = DownloadState.PENDING,
             )
         }
@@ -117,6 +118,11 @@ class PlaylistDownloader @Inject constructor(
                 Log.w(TAG, "Download failed for ${track.id}", it)
                 -1L
             }
+            // Cover art is best-effort and never fails the track download.
+            track.imageUrl?.let { url ->
+                val artFile = store.artFileFor(url)
+                if (!artFile.exists()) runCatching { downloadFile(url, artFile, withAuth = false) }
+            }
             store.updateTrack(
                 playlistId,
                 track.id,
@@ -126,44 +132,48 @@ class PlaylistDownloader @Inject constructor(
         }
     }
 
-    /** Fetch the original file to its destination; returns bytes written, or -1 on failure. */
-    private suspend fun downloadTrack(track: DownloadedTrack): Long = withContext(Dispatchers.IO) {
-        val destination = store.fileFor(track.id, track.container)
-        val temp = File(destination.parentFile, "${destination.name}.${System.nanoTime()}.tmp")
-        try {
-            val connection = (URL(originalFileUrl(track.id)).openConnection() as HttpURLConnection).apply {
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                instanceFollowRedirects = true
-                playbackHeaders().forEach { (k, v) -> setRequestProperty(k, v) }
-            }
-            connection.connect()
-            if (connection.responseCode !in 200..299) {
-                Log.w(TAG, "Download HTTP ${connection.responseCode} for ${track.id}")
-                return@withContext -1L
-            }
-            connection.inputStream.use { input ->
-                temp.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        output.write(buffer, 0, read)
+    /** Fetch the original source file with auth; returns bytes written, or -1 on failure. */
+    private suspend fun downloadTrack(track: DownloadedTrack): Long =
+        downloadFile(originalFileUrl(track.id), store.fileFor(track.id, track.container), withAuth = true)
+
+    /** Stream [url] to [destination] via a temp file; returns bytes written, or -1 on failure. */
+    private suspend fun downloadFile(url: String, destination: File, withAuth: Boolean): Long =
+        withContext(Dispatchers.IO) {
+            val temp = File(destination.parentFile, "${destination.name}.${System.nanoTime()}.tmp")
+            try {
+                val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = CONNECT_TIMEOUT_MS
+                    readTimeout = READ_TIMEOUT_MS
+                    instanceFollowRedirects = true
+                    if (withAuth) playbackHeaders().forEach { (k, v) -> setRequestProperty(k, v) }
+                }
+                connection.connect()
+                if (connection.responseCode !in 200..299) {
+                    Log.w(TAG, "Download HTTP ${connection.responseCode} for $url")
+                    return@withContext -1L
+                }
+                connection.inputStream.use { input ->
+                    temp.outputStream().use { output ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            output.write(buffer, 0, read)
+                        }
                     }
                 }
+                if (temp.length() <= 0L) return@withContext -1L
+                if (destination.exists()) destination.delete()
+                if (!temp.renameTo(destination)) {
+                    temp.copyTo(destination, overwrite = true)
+                    temp.delete()
+                }
+                destination.length()
+            } finally {
+                if (temp.exists()) temp.delete()
             }
-            if (temp.length() <= 0L) return@withContext -1L
-            if (destination.exists()) destination.delete()
-            if (!temp.renameTo(destination)) {
-                temp.copyTo(destination, overwrite = true)
-                temp.delete()
-            }
-            destination.length()
-        } finally {
-            if (temp.exists()) temp.delete()
         }
-    }
 
     /** `/Audio/{id}/stream?Static=true` returns the unmodified source file. */
     private fun originalFileUrl(itemId: String): String {
