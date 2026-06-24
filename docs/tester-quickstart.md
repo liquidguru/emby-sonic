@@ -283,9 +283,10 @@ Once some of your library is analysed:
 - **Customize Home** (sliders icon, top-right) — reorder or hide any row, **including
   Stations**, and toggle small cards. Your layout is remembered.
 - **Offline downloads** — open a playlist, tap the **download** icon (top-right), let
-  it finish, then turn on **airplane mode** and play it from **Settings → Downloads**.
-  Long-press a downloaded playlist on Home to remove just the download or delete the
-  whole playlist.
+  it finish, then turn on **airplane mode**: the Home bar's cloud goes red, a
+  "Recent plays" row drops away, and your downloaded playlists appear in a **Downloads
+  row on Home** (and Settings → Downloads) to play with no signal. Long-press a
+  downloaded playlist on Home to remove just the download or delete the whole playlist.
 - **Cast** to a Chromecast/Android TV/SHIELD if you have one.
 
 **Please report:** what you tried, what device/Android version, what you expected vs.

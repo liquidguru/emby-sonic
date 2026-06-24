@@ -75,8 +75,10 @@ important to her — so liquidWave handles books (with durable resume) alongside
 - **Audiobooks** — browse by book/author, durable resume, speed control.
 - **Offline downloads** — download any playlist (the original source files, no
   transcode) to your phone and browse + play it with **no connection at all** —
-  on a plane, underground, wherever. Managed under Settings → Downloads, with a
-  one-tap "remove download" that leaves the playlist itself untouched.
+  on a plane, underground, wherever. Downloaded playlists get their own row on Home
+  (with cover art) and a badge in your Playlists, an online/offline indicator shows
+  the connection state, and a one-tap "remove download" leaves the playlist itself
+  untouched. Managed under Settings → Downloads.
 - **Search** across music, audiobooks, or everything.
 
 [SCREENSHOT: Mixes screen] [SCREENSHOT: Sonic Adventure builder]
