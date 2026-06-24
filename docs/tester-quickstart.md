@@ -46,7 +46,9 @@ before you can play anything).
 genres and audiobooks; full playback with queue, shuffle/repeat, crossfade, the
 in-app equalizer, mini player, the Now Playing widget, Google Cast, and **Android
 Auto**; durable audiobook resume + speed control; Emby playlists; Recent Plays;
-search; and the metadata Stations (Library / Random Album / Decade radios).
+**offline playlist downloads** (download a playlist's original files, then browse +
+play it with no network); search; and the metadata Stations (Library / Random Album /
+Decade radios).
 
 **Needs the coordinator (the sonic features):** Sonic Mixes, Track Radio, Similar
 tracks / artists / albums, Sonic Adventure, the Guest DJ, and the Artist Mix Creator.
@@ -280,6 +282,10 @@ Once some of your library is analysed:
 - **Stations** on Home, **Guest DJ** queue injection, **crossfade**, the in-app **EQ**.
 - **Customize Home** (sliders icon, top-right) — reorder or hide any row, **including
   Stations**, and toggle small cards. Your layout is remembered.
+- **Offline downloads** — open a playlist, tap the **download** icon (top-right), let
+  it finish, then turn on **airplane mode** and play it from **Settings → Downloads**.
+  Long-press a downloaded playlist on Home to remove just the download or delete the
+  whole playlist.
 - **Cast** to a Chromecast/Android TV/SHIELD if you have one.
 
 **Please report:** what you tried, what device/Android version, what you expected vs.

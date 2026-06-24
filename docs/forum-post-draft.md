@@ -73,10 +73,15 @@ important to her — so liquidWave handles books (with durable resume) alongside
   artwork cross-dissolve, an in-app equalizer, a Now Playing home-screen widget,
   **Android Auto**, and **Google Cast** to a Chromecast / Android TV / Shield.
 - **Audiobooks** — browse by book/author, durable resume, speed control.
+- **Offline downloads** — download any playlist (the original source files, no
+  transcode) to your phone and browse + play it with **no connection at all** —
+  on a plane, underground, wherever. Managed under Settings → Downloads, with a
+  one-tap "remove download" that leaves the playlist itself untouched.
 - **Search** across music, audiobooks, or everything.
 
 [SCREENSHOT: Mixes screen] [SCREENSHOT: Sonic Adventure builder]
 [SCREENSHOT: Artist Mix Creator grid — a few artists selected, Build button visible]
+[SCREENSHOT: Downloads screen — a downloaded playlist with track count + size]
 
 ### You can try it as a plain Emby player first
 
@@ -84,8 +89,9 @@ Worth knowing: the sonic backend is **optional**. The app on its own is a fully
 working **Emby music + audiobook player** — you can install it, skip the coordinator
 entirely, and have a usable player straight away. Browse, full playback (queue,
 shuffle/repeat, crossfade, EQ, mini player, the Now Playing widget, **Cast**),
-audiobook resume + speed, Emby playlists, Recent Plays, search, and the metadata
-Stations all work with nothing but your Emby server.
+audiobook resume + speed, Emby playlists, Recent Plays, **offline playlist
+downloads**, search, and the metadata Stations all work with nothing but your Emby
+server — and a downloaded playlist then plays with no server at all.
 
 The sonic features — **Mixes, Track Radio, Similar, Sonic Adventure, Guest DJ, and the
 Artist Mix Creator** — are what the backend adds on top. Without it they just stay
