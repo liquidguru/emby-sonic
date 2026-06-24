@@ -193,6 +193,8 @@ short, **shipped and verified on-device:**
   cross-artist mix, count from the shared "tracks per mix" setting),
   **Stations** (Library/Random Album/Decade radios), **Recent plays**,
   **Search** (music + audiobooks + Home all-scopes).
+- **Offline playlist downloads** (original source files via `Static=true`,
+  persisted snapshot for no-network browse/play, Settings → Downloads).
 - Home customization (sections, order, compact cards).
 
 **Next candidates** (see spec "M4 — Remaining"): sonic-similar sidebars on

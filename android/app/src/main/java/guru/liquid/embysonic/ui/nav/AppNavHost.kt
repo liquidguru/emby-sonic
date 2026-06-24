@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import guru.liquid.embysonic.ui.brand.LiquidWaveSplashScreen
+import guru.liquid.embysonic.ui.downloads.DownloadsScreen
 import guru.liquid.embysonic.ui.login.LoginScreen
 import guru.liquid.embysonic.ui.main.MainShell
 import guru.liquid.embysonic.ui.settings.EqualizerScreen
@@ -49,6 +50,7 @@ fun AppNavHost(startLoggedIn: Boolean) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenEqualizer = { navController.navigate(Routes.EQUALIZER) },
+                onOpenDownloads = { navController.navigate(Routes.DOWNLOADS) },
                 onLoggedOut = {
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(0) { inclusive = true }
@@ -58,6 +60,12 @@ fun AppNavHost(startLoggedIn: Boolean) {
         }
         composable(Routes.EQUALIZER) {
             EqualizerScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.DOWNLOADS) {
+            DownloadsScreen(
+                onBack = { navController.popBackStack() },
+                onPlayed = { navController.popBackStack(Routes.MAIN, inclusive = false) },
+            )
         }
     }
 }

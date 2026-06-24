@@ -100,6 +100,7 @@ fun HomeScreen(
     var customizeHome by remember { mutableStateOf(false) }
     var deletePlaylistTargetId by rememberSaveable { mutableStateOf<String?>(null) }
     val deletePlaylistTarget = state.playlists.firstOrNull { it.id == deletePlaylistTargetId }
+    val downloadedPlaylistIds by viewModel.downloadedPlaylistIds.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -186,24 +187,62 @@ fun HomeScreen(
         )
     }
     if (deletePlaylistTarget != null) {
-        AlertDialog(
-            onDismissRequest = { deletePlaylistTargetId = null },
-            title = { Text("Delete playlist") },
-            text = { Text("Delete \"${deletePlaylistTarget.title}\" from Emby? This cannot be undone.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deletePlaylist(deletePlaylistTarget)
-                        deletePlaylistTargetId = null
-                    },
-                ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deletePlaylistTargetId = null }) { Text("Cancel") }
-            },
-        )
+        val isDownloaded = deletePlaylistTarget.id in downloadedPlaylistIds
+        if (isDownloaded) {
+            AlertDialog(
+                onDismissRequest = { deletePlaylistTargetId = null },
+                title = { Text("Delete \"${deletePlaylistTarget.title}\"") },
+                text = {
+                    Text(
+                        "This playlist is downloaded for offline listening. Remove just the offline copy " +
+                            "(the playlist stays in Emby and can be played or re-downloaded online), or delete " +
+                            "the whole playlist from Emby?",
+                    )
+                },
+                confirmButton = {
+                    // All three actions stack in one column; a separate dismissButton
+                    // would be laid out on the same row and overlap the bottom action.
+                    Column(horizontalAlignment = Alignment.End) {
+                        TextButton(
+                            onClick = {
+                                viewModel.removePlaylistDownload(deletePlaylistTarget)
+                                deletePlaylistTargetId = null
+                            },
+                        ) {
+                            Text("Remove download only")
+                        }
+                        TextButton(
+                            onClick = {
+                                viewModel.deletePlaylist(deletePlaylistTarget)
+                                deletePlaylistTargetId = null
+                            },
+                        ) {
+                            Text("Delete playlist", color = MaterialTheme.colorScheme.error)
+                        }
+                        TextButton(onClick = { deletePlaylistTargetId = null }) { Text("Cancel") }
+                    }
+                },
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { deletePlaylistTargetId = null },
+                title = { Text("Delete playlist") },
+                text = { Text("Delete \"${deletePlaylistTarget.title}\" from Emby? This cannot be undone.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.deletePlaylist(deletePlaylistTarget)
+                            deletePlaylistTargetId = null
+                        },
+                    ) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deletePlaylistTargetId = null }) { Text("Cancel") }
+                },
+            )
+        }
     }
 }
 

@@ -1,0 +1,157 @@
+package guru.liquid.embysonic.data.download
+
+import android.content.Context
+import android.net.Uri
+import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import java.io.File
+import java.security.MessageDigest
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Owns persistently downloaded playlists: the audio files live in
+ * `filesDir/downloads/` (never auto-evicted, unlike [OfflinePrefetchCache]), and
+ * a JSON index alongside them records the playlist/track metadata so a queue can
+ * be rebuilt and played with no network.
+ *
+ * The index is read synchronously on construction so [localUri] — called from
+ * the playback engine on the main thread — can resolve a downloaded file without
+ * suspending. Mutations update the in-memory [state] immediately and persist the
+ * index on IO.
+ */
+@Singleton
+class DownloadStore @Inject constructor(
+    @ApplicationContext private val context: Context,
+) {
+    private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
+    private val downloadsDir = File(context.filesDir, DIR_NAME).also { it.mkdirs() }
+    private val indexFile = File(downloadsDir, INDEX_FILE)
+    private val writeMutex = Mutex()
+
+    private val _state = MutableStateFlow(loadIndexBlocking())
+    val state: StateFlow<DownloadIndex> = _state.asStateFlow()
+
+    /** trackId -> absolute file path for COMPLETE tracks whose file still exists. */
+    @Volatile
+    private var fileIndex: Map<String, String> = buildFileIndex(_state.value)
+
+    /** A local file URI for a downloaded, complete track, or null if not available. */
+    fun localUri(trackId: String): Uri? {
+        val path = fileIndex[trackId] ?: return null
+        val file = File(path)
+        return if (file.exists() && file.length() > 0) Uri.fromFile(file) else null
+    }
+
+    fun isTrackDownloaded(trackId: String): Boolean = localUri(trackId) != null
+
+    fun playlist(playlistId: String): DownloadedPlaylist? =
+        _state.value.playlists.firstOrNull { it.playlistId == playlistId }
+
+    /** Destination file for a track; [container] sets the extension when known. */
+    fun fileFor(trackId: String, container: String?): File {
+        val ext = container?.lowercase()?.takeIf { it.isNotBlank() }?.let { ".$it" } ?: ""
+        return File(downloadsDir, "$FILE_PREFIX${hash(trackId)}$ext")
+    }
+
+    /** Insert or replace a playlist entry (e.g. when a download is queued). */
+    suspend fun putPlaylist(playlist: DownloadedPlaylist) = mutate { index ->
+        index.copy(playlists = index.playlists.filter { it.playlistId != playlist.playlistId } + playlist)
+    }
+
+    /** Update a single track's state/size within a playlist. */
+    suspend fun updateTrack(
+        playlistId: String,
+        trackId: String,
+        state: DownloadState,
+        sizeBytes: Long? = null,
+    ) = mutate { index ->
+        index.copy(
+            playlists = index.playlists.map { pl ->
+                if (pl.playlistId != playlistId) return@map pl
+                pl.copy(
+                    tracks = pl.tracks.map { tr ->
+                        if (tr.id != trackId) tr
+                        else tr.copy(state = state, sizeBytes = sizeBytes ?: tr.sizeBytes)
+                    },
+                )
+            },
+        )
+    }
+
+    /** Remove a playlist's download: delete its files and drop the index entry. */
+    suspend fun removePlaylist(playlistId: String) {
+        val entry = playlist(playlistId)
+        if (entry != null) {
+            withContext(Dispatchers.IO) {
+                // Only delete files not still referenced by another downloaded playlist.
+                val keepFiles = _state.value.playlists
+                    .filter { it.playlistId != playlistId }
+                    .flatMap { it.tracks }
+                    .map { it.fileName }
+                    .toSet()
+                entry.tracks.forEach { tr ->
+                    if (tr.fileName !in keepFiles) File(downloadsDir, tr.fileName).delete()
+                }
+            }
+        }
+        mutate { index -> index.copy(playlists = index.playlists.filter { it.playlistId != playlistId }) }
+    }
+
+    private suspend fun mutate(transform: (DownloadIndex) -> DownloadIndex) {
+        writeMutex.withLock {
+            val next = transform(_state.value)
+            _state.value = next
+            fileIndex = buildFileIndex(next)
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    downloadsDir.mkdirs()
+                    indexFile.writeText(json.encodeToString(DownloadIndex.serializer(), next))
+                }.onFailure { Log.w(TAG, "Failed to persist download index", it) }
+            }
+        }
+    }
+
+    private fun buildFileIndex(index: DownloadIndex): Map<String, String> {
+        val map = HashMap<String, String>()
+        index.playlists.forEach { pl ->
+            pl.tracks.forEach { tr ->
+                if (tr.state == DownloadState.COMPLETE) {
+                    val file = File(downloadsDir, tr.fileName)
+                    if (file.exists() && file.length() > 0) map[tr.id] = file.absolutePath
+                }
+            }
+        }
+        return map
+    }
+
+    private fun loadIndexBlocking(): DownloadIndex {
+        if (!indexFile.exists()) return DownloadIndex()
+        return runCatching {
+            json.decodeFromString(DownloadIndex.serializer(), indexFile.readText())
+        }.getOrElse {
+            Log.w(TAG, "Corrupt download index, starting empty", it)
+            DownloadIndex()
+        }
+    }
+
+    private fun hash(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+    private companion object {
+        const val TAG = "DownloadStore"
+        const val DIR_NAME = "downloads"
+        const val INDEX_FILE = "index.json"
+        const val FILE_PREFIX = "dl_"
+    }
+}
