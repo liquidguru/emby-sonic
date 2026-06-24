@@ -35,6 +35,7 @@ class PlaylistDownloader @Inject constructor(
     private val library: LibraryRepository,
     private val settings: SettingsRepository,
     private val store: DownloadStore,
+    private val progress: DownloadProgressStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobsMutex = Mutex()
@@ -44,8 +45,16 @@ class PlaylistDownloader @Inject constructor(
     suspend fun isActive(playlistId: String): Boolean =
         jobsMutex.withLock { activeJobs.containsKey(playlistId) }
 
-    /** Queue a playlist for offline download. A no-op if it's already in flight. */
-    fun downloadPlaylist(playlistId: String, name: String, coverUrl: String?) {
+    /**
+     * Queue a collection for offline download. [detailKind] is `PLAYLIST_TRACKS` for
+     * a music playlist or `BOOK_CHAPTERS` for an audiobook. A no-op if already in flight.
+     */
+    fun downloadPlaylist(
+        playlistId: String,
+        name: String,
+        coverUrl: String?,
+        detailKind: DetailKind = DetailKind.PLAYLIST_TRACKS,
+    ) {
         scope.launch {
             val start = jobsMutex.withLock {
                 if (activeJobs.containsKey(playlistId)) {
@@ -57,7 +66,7 @@ class PlaylistDownloader @Inject constructor(
             }
             if (!start) return@launch
             try {
-                runDownload(playlistId, name, coverUrl)
+                runDownload(playlistId, name, coverUrl, detailKind)
             } catch (e: Exception) {
                 Log.w(TAG, "Download of $playlistId stopped: ${e.message}")
             } finally {
@@ -73,10 +82,15 @@ class PlaylistDownloader @Inject constructor(
         }
     }
 
-    private suspend fun runDownload(playlistId: String, name: String, coverUrl: String?) {
-        val items = runCatching { library.playableItems(playlistId, DetailKind.PLAYLIST_TRACKS) }
+    private suspend fun runDownload(
+        playlistId: String,
+        name: String,
+        coverUrl: String?,
+        detailKind: DetailKind,
+    ) {
+        val items = runCatching { library.playableItems(playlistId, detailKind) }
             .getOrElse {
-                Log.w(TAG, "Could not resolve playlist $playlistId for download", it)
+                Log.w(TAG, "Could not resolve $playlistId for download", it)
                 return
             }
             .filter { it.id.isNotBlank() }
@@ -90,6 +104,8 @@ class PlaylistDownloader @Inject constructor(
                 album = item.album,
                 imageUrl = item.imageUrl,
                 durationMs = item.durationMs,
+                playbackPositionMs = item.playbackPositionMs,
+                played = item.played,
                 contentKind = item.contentKind.name,
                 fileName = store.fileFor(item.id, null).name,
                 artFileName = item.imageUrl?.let { store.artFileFor(it).name },
@@ -102,9 +118,13 @@ class PlaylistDownloader @Inject constructor(
                 name = name,
                 coverUrl = coverUrl,
                 downloadedAt = System.currentTimeMillis(),
+                contentKind = if (detailKind == DetailKind.BOOK_CHAPTERS) "AUDIOBOOK" else "MUSIC",
                 tracks = tracks,
             ),
         )
+        // The snapshot now holds the authoritative server position; drop any stale
+        // local progress so it isn't masked by a previous download's leftover.
+        progress.clear(tracks.map { it.id })
 
         for (track in tracks) {
             currentCoroutineContext().ensureActive()

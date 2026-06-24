@@ -149,7 +149,7 @@ fun DetailScreen(
                                 )
                             }
                         }
-                        if (kind == DetailKind.PLAYLIST_TRACKS) {
+                        if (viewModel.isDownloadable) {
                             val dl = download
                             when {
                                 dl == null -> IconButton(onClick = viewModel::downloadForOffline) {

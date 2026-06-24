@@ -49,6 +49,7 @@ class SettingsRepository @Inject constructor(
         val EQ_ENABLED = booleanPreferencesKey("eq_enabled")
         val EQ_BAND_LEVELS = stringPreferencesKey("eq_band_levels")
         val EQ_PRESET = intPreferencesKey("eq_preset")
+        val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
         val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
         val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
         val THEME_CHOICE = stringPreferencesKey("theme_choice")
@@ -158,6 +159,15 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    /** Whether offline downloads are restricted to unmetered (Wi-Fi) networks. */
+    val downloadWifiOnly: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.DOWNLOAD_WIFI_ONLY] ?: true }
+
+    suspend fun setDownloadWifiOnly(value: Boolean) {
+        context.dataStore.edit { it[Keys.DOWNLOAD_WIFI_ONLY] = value }
+        refreshCache()
+    }
+
     suspend fun setGeneratedMixTracks(value: Int) {
         context.dataStore.edit { it[Keys.GENERATED_MIX_TRACKS] = value }
     }
@@ -206,6 +216,7 @@ class SettingsRepository @Inject constructor(
                 ?.mapNotNull { it.toIntOrNull() }
                 .orEmpty(),
             eqPreset = this[Keys.EQ_PRESET] ?: -1,
+            downloadWifiOnly = this[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
             generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
             audiobookSpeed = (this[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed(),
             themeChoice = ThemeChoice.fromKey(this[Keys.THEME_CHOICE]),

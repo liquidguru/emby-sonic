@@ -6,6 +6,7 @@ import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.data.emby.ContentKind
 import guru.liquid.embysonic.data.emby.LibraryItem
+import guru.liquid.embysonic.data.emby.resumeStartItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,7 @@ import javax.inject.Singleton
 @Singleton
 class DownloadStore @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val progressStore: DownloadProgressStore,
 ) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
     private val downloadsDir = File(context.filesDir, DIR_NAME).also { it.mkdirs() }
@@ -65,15 +67,34 @@ class DownloadStore @Inject constructor(
             ?.map { it.toLibraryItem() }
             .orEmpty()
 
-    private fun DownloadedTrack.toLibraryItem(): LibraryItem = LibraryItem(
-        id = id,
-        title = title,
-        subtitle = artist,
-        imageUrl = artUri(this)?.toString() ?: imageUrl,
-        album = album,
-        durationMs = durationMs,
-        contentKind = runCatching { ContentKind.valueOf(contentKind) }.getOrDefault(ContentKind.UNKNOWN),
-    )
+    /**
+     * Where to start a downloaded collection: a music playlist plays from the top;
+     * a book resumes at the chapter you were *most recently* in (by recorded
+     * recency), falling back to the snapshot's resume heuristic, then the start.
+     */
+    fun startItem(playlistId: String, items: List<LibraryItem>): LibraryItem? {
+        if (items.isEmpty()) return null
+        if (playlist(playlistId)?.isAudiobook != true) return items.first()
+        val recent = progressStore.latestInProgress(items.map { it.id })
+        return items.firstOrNull { it.id == recent } ?: items.resumeStartItem() ?: items.first()
+    }
+
+    private fun DownloadedTrack.toLibraryItem(): LibraryItem {
+        // Local progress (incl. positions recorded offline) wins over the snapshot's
+        // download-time values, so an offline book resumes where you actually stopped.
+        val local = progressStore.progress(id)
+        return LibraryItem(
+            id = id,
+            title = title,
+            subtitle = artist,
+            imageUrl = artUri(this)?.toString() ?: imageUrl,
+            album = album,
+            durationMs = durationMs,
+            playbackPositionMs = local?.positionMs ?: playbackPositionMs,
+            played = local?.played ?: played,
+            contentKind = runCatching { ContentKind.valueOf(contentKind) }.getOrDefault(ContentKind.UNKNOWN),
+        )
+    }
 
     /** Destination file for a track; [container] sets the extension when known. */
     fun fileFor(trackId: String, container: String?): File {
@@ -131,6 +152,7 @@ class DownloadStore @Inject constructor(
                     tr.artFileName?.takeIf { it !in keepArt }?.let { File(downloadsDir, it).delete() }
                 }
             }
+            progressStore.clear(entry.tracks.map { it.id })
         }
         mutate { index -> index.copy(playlists = index.playlists.filter { it.playlistId != playlistId }) }
     }

@@ -20,6 +20,10 @@ data class DownloadedTrack(
     val album: String? = null,
     val imageUrl: String? = null,
     val durationMs: Long? = null,
+    // Resume position + played flag captured at download time, so an offline book
+    // resumes at the right chapter/position (see resumeStartItem).
+    val playbackPositionMs: Long = 0,
+    val played: Boolean = false,
     val contentKind: String = "UNKNOWN",
     // Source container (e.g. "flac", "mp3") for display and the local extension.
     val container: String? = null,
@@ -37,8 +41,11 @@ data class DownloadedPlaylist(
     val name: String,
     val coverUrl: String? = null,
     val downloadedAt: Long = 0,
+    // "MUSIC" for a playlist, "AUDIOBOOK" for a downloaded book.
+    val contentKind: String = "MUSIC",
     val tracks: List<DownloadedTrack> = emptyList(),
 ) {
+    val isAudiobook: Boolean get() = contentKind == "AUDIOBOOK"
     val completeCount: Int get() = tracks.count { it.state == DownloadState.COMPLETE }
     val failedCount: Int get() = tracks.count { it.state == DownloadState.FAILED }
     val isComplete: Boolean get() = tracks.isNotEmpty() && completeCount == tracks.size
