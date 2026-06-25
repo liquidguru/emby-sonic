@@ -146,8 +146,10 @@ works, it just takes longer.
 To give you a real-world reference point: my own setup is Emby on an Intel N100 mini
 PC, music on a Synology NAS, and a gaming PC with an RTX 4070 Super as the worker.
 My library is around **25,000 tracks** and the initial analysis took roughly **7 hours**
-overnight. After that it's incremental — new imports are picked up automatically and
-done in the background. If you're running CPU-only or have a smaller library it'll
+overnight — it would have taken days, maybe a week, running on the N100 alone, which
+is exactly why I designed it so the heavy work can be handed off to a separate machine.
+After that it's incremental — new imports are picked up automatically and done in the
+background. If you're running CPU-only or have a smaller library it'll
 scale accordingly; the benchmarks in the quickstart give per-track timings for both.
 
 You should never have to compile a native dependency — the painful cross-platform bits
