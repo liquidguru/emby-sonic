@@ -1,5 +1,9 @@
 # liquidWave / Emby Sonic — Tester Quickstart
 
+> **Private beta — repo access is by invite.** If you've found this page before
+> reaching out, head back to the forum thread and reply or send a DM first. Once
+> you're confirmed I'll send you the repo link, APK, and plugin zip directly.
+
 Thanks for testing! This is a private beta. liquidWave brings Plexamp-style
 **sonic analysis** (similar tracks, track radio, sonic adventures, auto-curated
 mixes, a Guest DJ) to **your own Emby server** — fully self-hosted, nothing leaves
