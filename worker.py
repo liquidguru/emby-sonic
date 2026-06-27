@@ -19,6 +19,7 @@ Config via environment (same EMBY_URL + EMBY_API_KEY as the service):
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import socket
 import sys
@@ -36,6 +37,34 @@ COORDINATOR = os.environ.get("COORDINATOR_URL", "http://localhost:8765").rstrip(
 WORKER_ID = os.environ.get("WORKER_ID", socket.gethostname())
 BATCH = int(os.environ.get("WORKER_BATCH", "16"))
 _HEADERS = {"X-Worker-Token": settings.effective_worker_secret}
+
+
+def _build_logger() -> logging.Logger:
+    """
+    Log to worker.log next to this file, plus the console when one exists.
+
+    The scheduled-task installer launches the worker with pythonw.exe so no
+    console window is ever shown (windowless on any machine, regardless of the
+    Windows 11 default-terminal setting). Under pythonw there is no stdout, so a
+    file handler is the source of truth; the stream handler is added only when a
+    real console is attached (i.e. an interactive `python worker.py` run).
+    """
+    logger = logging.getLogger("worker")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    fmt = logging.Formatter("%(asctime)s %(message)s", "%Y-%m-%d %H:%M:%S")
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "worker.log")
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(fmt)
+    logger.addHandler(file_handler)
+    if sys.stdout is not None:  # absent under pythonw.exe
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(fmt)
+        logger.addHandler(stream_handler)
+    return logger
+
+
+log = _build_logger()
 
 
 def _claim(client: httpx.Client) -> list[dict]:
@@ -71,9 +100,9 @@ def _analyse(track: dict) -> dict:
 
 
 def main() -> None:
-    print(f"[worker {WORKER_ID}] coordinator={COORDINATOR} batch={BATCH}")
+    log.info(f"[worker {WORKER_ID}] coordinator={COORDINATOR} batch={BATCH}")
     embedder._ensure_loaded()  # warm the model so the device is reported up front
-    print(f"[worker {WORKER_ID}] device={embedder._device}")
+    log.info(f"[worker {WORKER_ID}] device={embedder._device}")
 
     with httpx.Client(timeout=300.0) as client:
         announced_idle = False
@@ -81,13 +110,13 @@ def main() -> None:
             try:
                 tracks = _claim(client)
             except Exception as exc:
-                print(f"[worker] claim failed: {exc}; retry in 30s")
+                log.info(f"[worker] claim failed: {exc}; retry in 30s")
                 time.sleep(30)
                 continue
 
             if not tracks:
                 if not announced_idle:
-                    print("[worker] no pending tracks; waiting...")
+                    log.info("[worker] no pending tracks; waiting...")
                     announced_idle = True
                 time.sleep(30)
                 continue
@@ -108,10 +137,10 @@ def main() -> None:
                 )
                 r.raise_for_status()
                 out = r.json()
-                print(f"[worker] batch done: stored={out['stored']} failed={out['failed']}")
+                log.info(f"[worker] batch done: stored={out['stored']} failed={out['failed']}")
             except Exception as exc:
                 # Don't crash — the coordinator's lease re-queues these tracks.
-                print(f"[worker] results POST failed: {exc}; tracks will be re-leased")
+                log.info(f"[worker] results POST failed: {exc}; tracks will be re-leased")
                 time.sleep(5)
 
 
