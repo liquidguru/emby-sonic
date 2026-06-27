@@ -23,6 +23,8 @@ data class AppSettings(
     val eqPreset: Int = -1,
     // Restrict offline downloads to unmetered (Wi-Fi) networks.
     val downloadWifiOnly: Boolean = true,
+    // Apply per-track loudness (LUFS) volume normalisation during playback.
+    val volumeNormalizationEnabled: Boolean = true,
     val generatedMixTracks: Int = 25,
     val audiobookSpeed: Float = 1f,
     val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,

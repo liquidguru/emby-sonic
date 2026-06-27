@@ -165,6 +165,32 @@ fun SettingsScreen(
                 }
             }
 
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Volume normalisation", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Levels tracks to a consistent loudness so quiet songs and loud masters play at a similar volume. Uses the sonic analysis backend.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = state.volumeNormalizationEnabled,
+                            onCheckedChange = viewModel::setVolumeNormalizationEnabled,
+                        )
+                    }
+                }
+            }
+
             Card(modifier = Modifier.fillMaxWidth().alpha(if (state.isCasting) 0.62f else 1f)) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(18.dp),
