@@ -8,6 +8,7 @@ venv/
 /models/
 worker.log
 worker_run.generated.ps1
+worker_run.generated.py
 *.egg-info/
 dist/
 
