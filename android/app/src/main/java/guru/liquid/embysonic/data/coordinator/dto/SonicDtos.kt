@@ -123,3 +123,15 @@ data class BuildMixesStartedDto(
 data class BuildStateDto(
     @SerialName("running") val running: Boolean = false,
 )
+
+/** Request for `POST /sonic/tracks/loudness` — batch loudness lookup for a queue. */
+@Serializable
+data class LoudnessRequestDto(
+    @SerialName("ids") val ids: List<String>,
+)
+
+/** Response of `POST /sonic/tracks/loudness` — integrated loudness (LUFS) by track id. */
+@Serializable
+data class LoudnessResponseDto(
+    @SerialName("loudness") val loudness: Map<String, Float> = emptyMap(),
+)

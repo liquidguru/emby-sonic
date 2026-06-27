@@ -20,10 +20,15 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -40,6 +45,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.BuildConfig
 import guru.liquid.embysonic.MainActivity
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.dto.LoudnessRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
 import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.download.DownloadProgressStore
@@ -113,7 +119,27 @@ class PlaybackController @Inject constructor(
     private val sharedAudioSessionId: Int =
         (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
 
+    // Per-track volume normalisation. Each player gets its own gain processor in
+    // its audio sink so the primary (incoming track) and the crossfade helper
+    // (outgoing track) can be normalised to their own levels independently.
+    private val mainGain = GainAudioProcessor()
+    private val fadeGain = GainAudioProcessor()
+
+    /** A renderers factory whose audio sink runs [gain] in its processing chain. */
+    private fun audioRenderersFactory(gain: GainAudioProcessor): RenderersFactory =
+        object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): AudioSink =
+                DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf<AudioProcessor>(gain))
+                    .build()
+        }
+
     val player: ExoPlayer = ExoPlayer.Builder(context)
+        .setRenderersFactory(audioRenderersFactory(mainGain))
         .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory))
         .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ true)
         .setHandleAudioBecomingNoisy(true)
@@ -133,6 +159,7 @@ class PlaybackController @Inject constructor(
     /** The crossfade helper, created (with its listener) if it doesn't exist yet. */
     private fun fadePlayerInstance(): ExoPlayer =
         fadePlayer ?: ExoPlayer.Builder(context)
+            .setRenderersFactory(audioRenderersFactory(fadeGain))
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory))
             .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ false)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -211,6 +238,13 @@ class PlaybackController @Inject constructor(
     private var prefetchJob: Job? = null
     private var prefetchSignature: String? = null
     private var offlinePrefetch = OfflinePrefetchState()
+
+    // Volume normalisation: measured loudness (LUFS) per track id for the current
+    // queue, fetched from the coordinator. Missing id = no data = unity gain.
+    private val lufsByTrackId = mutableMapOf<String, Float>()
+    @Volatile
+    private var normalizationEnabled = true
+    private var lastNormalizedTrackId: String? = null
     private var sleepTimerJob: Job? = null
     private var sleepTimerMode: SleepTimerMode = SleepTimerMode.OFF
     private var sleepTimerEndsAtMs: Long = 0L
@@ -303,6 +337,16 @@ class PlaybackController @Inject constructor(
                     audiobookSpeed = speed
                     applyPlaybackSpeed()
                     publishState()
+                }
+        }
+        scope.launch {
+            settings.volumeNormalizationEnabled
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    normalizationEnabled = enabled
+                    // Re-apply for the current track + any armed crossfade tail.
+                    lastReportedState.currentTrack?.let { mainGain.gain = normalizationGainFor(it.id) }
+                    crossfadeFromTrack?.let { fadeGain.gain = normalizationGainFor(it.id) }
                 }
         }
         // collectLatest cancels the inner loop the moment playback stops and
@@ -655,6 +699,7 @@ class PlaybackController @Inject constructor(
         refreshHeaders()
         resetRepeatForNewSession()
         queue = tracks
+        fetchLoudness(tracks.map { it.id })
         queueShuffled = shuffled
         streamOffsetsByIndex = tracks
             .mapIndexedNotNull { index, track ->
@@ -1395,6 +1440,11 @@ class PlaybackController @Inject constructor(
                 crossfadeFromIndex == previous.currentIndex
             reportStopped(previous, completedByCrossfade = completedByCrossfade)
         }
+        // Set the primary player's normalisation gain whenever the current track
+        // changes (independent of play state, so it's correct before the first frame).
+        if (nextState.currentTrack != null && nextState.currentTrack.id != lastNormalizedTrackId) {
+            applyNormalizationGain(nextState.currentTrack.id)
+        }
         if (nextState.currentTrack != null && nextState.currentTrack.id != lastStartedItemId && nextState.isPlaying) {
             reportStarted(nextState.currentTrack, nextState.positionMs, nextState.currentIndex)
         }
@@ -1535,6 +1585,7 @@ class PlaybackController @Inject constructor(
             playSessionIdsByIndex[startIndex + offset] = UUID.randomUUID().toString()
         }
         queue = queue + tracks
+        fetchLoudness(tracks.map { it.id })
         activePlayerRef.addMediaItems(
             tracks.mapIndexed { offset, track ->
                 val index = startIndex + offset
@@ -1842,6 +1893,9 @@ class PlaybackController @Inject constructor(
         val helper = fadePlayerInstance()
         helper.volume = 0f
         helper.playWhenReady = false
+        // The helper plays the OUTGOING track's tail, so normalise it to that
+        // track's level (the primary's gain has already advanced to the incoming).
+        fadeGain.gain = normalizationGainFor(outgoing.id)
         // The helper is a concurrent Emby playback request. Reusing the
         // primary queue's PlaySessionId lets a helper transcode replace the
         // server-side stream context, so the primary's next item can receive
@@ -1942,6 +1996,40 @@ class PlaybackController @Inject constructor(
     private fun cancelCrossfade() {
         if (!crossfadeInProgress && !crossfadeArmed) return
         endCrossfade()
+    }
+
+    /**
+     * Linear gain for a track from its measured loudness, levelling toward
+     * [NORMALIZATION_TARGET_LUFS]. Returns 1.0 (unity) when normalisation is off
+     * or we have no loudness for the track. The dB range is clamped so a very
+     * quiet track gets a sane boost cap and a very loud one isn't crushed.
+     */
+    private fun normalizationGainFor(trackId: String): Float {
+        if (!normalizationEnabled) return 1f
+        val lufs = lufsByTrackId[trackId] ?: return 1f
+        val gainDb = (NORMALIZATION_TARGET_LUFS - lufs)
+            .coerceIn(NORMALIZATION_MIN_GAIN_DB, NORMALIZATION_MAX_GAIN_DB)
+        return 10.0.pow(gainDb / 20.0).toFloat()
+    }
+
+    /** Apply the primary player's gain for [trackId] (called on each track change). */
+    private fun applyNormalizationGain(trackId: String) {
+        lastNormalizedTrackId = trackId
+        mainGain.gain = normalizationGainFor(trackId)
+    }
+
+    /** Fetch loudness for a queue's tracks (best-effort; no coordinator → no-op). */
+    private fun fetchLoudness(ids: List<String>) {
+        val unknown = ids.filter { it !in lufsByTrackId }.distinct()
+        if (unknown.isEmpty()) return
+        scope.launch {
+            val response = runCatching { coordinator.loudness(LoudnessRequestDto(unknown)) }.getOrNull()
+                ?: return@launch
+            if (response.loudness.isEmpty()) return@launch
+            lufsByTrackId.putAll(response.loudness)
+            // Re-apply for whatever is playing now that its loudness may be known.
+            lastReportedState.currentTrack?.let { applyNormalizationGain(it.id) }
+        }
     }
 
     private fun reportStarted(track: PlaybackTrack, positionMs: Long, index: Int) {
@@ -2127,6 +2215,13 @@ class PlaybackController @Inject constructor(
     }
 
     private companion object {
+        // Volume normalisation target + safe gain range (EBU R128 LUFS / dB).
+        // -14 LUFS is the common streaming reference; most masters sit louder than
+        // this and are gently attenuated, while quiet tracks are boosted up to a
+        // capped amount to avoid pumping or clipping.
+        const val NORMALIZATION_TARGET_LUFS = -14.0
+        const val NORMALIZATION_MIN_GAIN_DB = -15.0
+        const val NORMALIZATION_MAX_GAIN_DB = 6.0
         const val PROGRESS_REPORT_INTERVAL_MS = 3_000L
         const val RESUME_MIN_POSITION_MS = 5_000L
         const val RESUME_END_PADDING_MS = 5_000L

@@ -50,6 +50,7 @@ class SettingsRepository @Inject constructor(
         val EQ_BAND_LEVELS = stringPreferencesKey("eq_band_levels")
         val EQ_PRESET = intPreferencesKey("eq_preset")
         val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
+        val VOLUME_NORMALIZATION = booleanPreferencesKey("volume_normalization")
         val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
         val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
         val THEME_CHOICE = stringPreferencesKey("theme_choice")
@@ -168,6 +169,19 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    /**
+     * Whether per-track volume normalisation is applied during playback. Uses the
+     * coordinator's measured loudness (LUFS) to level tracks to a common target,
+     * so a quiet track and a loud master play back at a similar perceived volume.
+     */
+    val volumeNormalizationEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.VOLUME_NORMALIZATION] ?: true }
+
+    suspend fun setVolumeNormalizationEnabled(value: Boolean) {
+        context.dataStore.edit { it[Keys.VOLUME_NORMALIZATION] = value }
+        refreshCache()
+    }
+
     suspend fun setGeneratedMixTracks(value: Int) {
         context.dataStore.edit { it[Keys.GENERATED_MIX_TRACKS] = value }
     }
@@ -217,6 +231,7 @@ class SettingsRepository @Inject constructor(
                 .orEmpty(),
             eqPreset = this[Keys.EQ_PRESET] ?: -1,
             downloadWifiOnly = this[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
+            volumeNormalizationEnabled = this[Keys.VOLUME_NORMALIZATION] ?: true,
             generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
             audiobookSpeed = (this[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed(),
             themeChoice = ThemeChoice.fromKey(this[Keys.THEME_CHOICE]),
