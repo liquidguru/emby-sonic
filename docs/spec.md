@@ -1261,7 +1261,11 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   unity gain), computes gain = `clamp(-14 LUFS − trackLUFS, -15..+6 dB)`, and sets it
   on each track change. A **Settings → Volume normalisation** toggle (default on)
   drives it live. Backend loudness math verified against synthetic + real tracks;
-  on-device listening verification pending.
+  backend deployed to liquidBee and the `/sonic/tracks/loudness` endpoint verified
+  live. **On-device A/B verified on the Pixel 8 Pro (2026-06-25):** with the toggle
+  on a loud master (Mona "Shooting the Moon", −9.8 LUFS) was attenuated and a quiet
+  track (Dire Straits "Why Worry", −34 LUFS) boosted; flipping the toggle reversed
+  both, live. Remaining: full-library LUFS backfill (test ran a 200-track batch).
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
