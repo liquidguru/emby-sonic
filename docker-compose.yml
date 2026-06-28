@@ -35,6 +35,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # CPU is the default. Set TORCH_VARIANT=cuda before building on an
+        # NVIDIA Linux host to install a CUDA-capable PyTorch wheel instead.
+        TORCH_VARIANT: "${TORCH_VARIANT:-cpu}"
     image: emby-sonic-worker
     container_name: emby-sonic-worker
     restart: unless-stopped
@@ -55,8 +59,10 @@ services:
     volumes:
       - emby-sonic-panns:/root/panns_data
     # Optional NVIDIA GPU support:
+    #   TORCH_VARIANT=cuda docker compose build worker
     #   docker compose run --rm --gpus all worker
-    # or uncomment the next line with a recent Docker Compose + NVIDIA runtime.
+    # For a long-running GPU worker, uncomment the next line after building the
+    # CUDA variant on a host with NVIDIA Container Toolkit installed.
     # gpus: all
 
 volumes:
