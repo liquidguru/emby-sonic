@@ -1,0 +1,65 @@
+name: Publish Docker images
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/liquidguru/emby-sonic
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push coordinator
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.coordinator
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-coordinator:latest
+            ${{ env.IMAGE_PREFIX }}-coordinator:${{ github.ref_name }}
+
+      - name: Build and push worker CPU
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          build-args: |
+            TORCH_VARIANT=cpu
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-worker:latest
+            ${{ env.IMAGE_PREFIX }}-worker:${{ github.ref_name }}
+
+      - name: Build and push worker CUDA
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          build-args: |
+            TORCH_VARIANT=cuda
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-worker:cuda
+            ${{ env.IMAGE_PREFIX }}-worker:${{ github.ref_name }}-cuda

@@ -12,10 +12,12 @@
 
 services:
   coordinator:
-    build:
-      context: .
-      dockerfile: Dockerfile.coordinator
-    image: emby-sonic-coordinator
+    image: "${COORDINATOR_IMAGE:-ghcr.io/liquidguru/emby-sonic-coordinator:latest}"
+    # Local source build for development:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.coordinator
+    # image: emby-sonic-coordinator
     container_name: emby-sonic-coordinator
     restart: unless-stopped
     ports:
@@ -32,14 +34,14 @@ services:
       - emby-sonic-data:/app/data
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # CPU is the default. Set TORCH_VARIANT=cuda before building on an
-        # NVIDIA Linux host to install a CUDA-capable PyTorch wheel instead.
-        TORCH_VARIANT: "${TORCH_VARIANT:-cpu}"
-    image: emby-sonic-worker
+    image: "${WORKER_IMAGE:-ghcr.io/liquidguru/emby-sonic-worker:latest}"
+    # Local source build for development:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     TORCH_VARIANT: "${TORCH_VARIANT:-cpu}"
+    # image: emby-sonic-worker
     container_name: emby-sonic-worker
     restart: unless-stopped
     depends_on:
@@ -59,10 +61,8 @@ services:
     volumes:
       - emby-sonic-panns:/root/panns_data
     # Optional NVIDIA GPU support:
-    #   TORCH_VARIANT=cuda docker compose build worker
-    #   docker compose run --rm --gpus all worker
-    # For a long-running GPU worker, uncomment the next line after building the
-    # CUDA variant on a host with NVIDIA Container Toolkit installed.
+    #   WORKER_IMAGE=ghcr.io/liquidguru/emby-sonic-worker:cuda docker compose up -d worker
+    # Then uncomment the next line on a host with NVIDIA Container Toolkit installed.
     # gpus: all
 
 volumes:
