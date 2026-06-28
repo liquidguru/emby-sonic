@@ -21,9 +21,21 @@ class SimilarTrack(BaseModel):
 class StatusOut(BaseModel):
     total_tracks: int
     analysed_tracks: int
-    pending_tracks: int
+    pending_tracks: int          # genuinely queued (excludes permanently-failed tracks)
+    failed_tracks: int = 0       # couldn't be analysed (e.g. unreadable/missing files) — won't retry
     scan_running: bool
-    scan_progress: float | None  # 0.0–1.0, None if not running
+    scan_progress: float | None  # 0.0–1.0 over *analysable* tracks; reaches 1.0 when only failed remain
+
+
+class ErroredTrack(BaseModel):
+    """A track that failed analysis and won't be retried, with the reason."""
+    id: str
+    title: str | None
+    artist: str | None
+    album: str | None
+    error: str | None
+
+    model_config = {"from_attributes": True}
 
 
 class RadioPlaylist(BaseModel):

@@ -11,10 +11,23 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
         try { return ApiClient.accessToken(); } catch (e) { return ''; }
     }
 
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+    }
+
+    function fmt(n) {
+        return (n == null ? 0 : n).toLocaleString();
+    }
+
     function refreshStatus(view, serviceUrl) {
         var url = normalizeUrl(serviceUrl);
         var el = view.querySelector('.sonicStatus');
-        el.innerHTML = 'Contacting ' + url + '/sonic/status ...';
+        var skip = view.querySelector('.sonicSkipped');
+        skip.style.display = 'none';
+        skip.innerHTML = '';
+        el.innerHTML = 'Contacting ' + esc(url) + '/sonic/status ...';
         fetch(url + '/sonic/status', { headers: { 'X-Emby-Token': token() } })
             .then(function (r) {
                 if (!r.ok) { throw new Error('HTTP ' + r.status); }
@@ -22,17 +35,72 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
             })
             .then(function (d) {
                 var pct = d.scan_progress != null ? (d.scan_progress * 100).toFixed(1) + '%' : 'N/A';
-                el.innerHTML =
+                var failed = d.failed_tracks || 0;
+                var pending = d.pending_tracks || 0;
+                var html =
                     '<b style="color:#2ecc71">Service: online</b><br>' +
-                    'Tracks: ' + d.analysed_tracks + ' / ' + d.total_tracks + ' analysed (' + pct + ')<br>' +
-                    'Pending: ' + d.pending_tracks +
-                    (d.scan_running ? ' &nbsp; <em>Scan running...</em>' : '');
+                    'Analysed: ' + fmt(d.analysed_tracks) + ' / ' + fmt(d.total_tracks) +
+                    ' (' + pct + ' of analysable)<br>';
+                if (pending > 0) {
+                    html += 'Pending: ' + fmt(pending) +
+                        (d.scan_running ? ' &nbsp; <em>Scan running...</em>' : '');
+                } else {
+                    html += '<b style="color:#2ecc71">✓ Analysis complete</b>';
+                }
+                if (failed > 0) {
+                    html += '<br><span style="color:#e0a030">' + fmt(failed) + ' skipped</span> ' +
+                        '<small>(couldn’t be read — broken or missing files)</small> ' +
+                        '<a href="#" class="lnkShowSkipped" style="margin-left:0.4em;">Show details</a>';
+                }
+                el.innerHTML = html;
+                var lnk = el.querySelector('.lnkShowSkipped');
+                if (lnk) {
+                    lnk.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        toggleSkipped(view, url, lnk);
+                    });
+                }
             })
             .catch(function (err) {
+                skip.style.display = 'none';
                 el.innerHTML =
                     '<b style="color:#e74c3c">Service: offline</b><br>' +
-                    'Could not reach ' + url + '/sonic/status<br>' +
-                    '<small>' + (err && err.message ? err.message : err) + '</small>';
+                    'Could not reach ' + esc(url) + '/sonic/status<br>' +
+                    '<small>' + esc(err && err.message ? err.message : err) + '</small>';
+            });
+    }
+
+    function toggleSkipped(view, url, lnk) {
+        var skip = view.querySelector('.sonicSkipped');
+        if (skip.style.display !== 'none') {
+            skip.style.display = 'none';
+            if (lnk) { lnk.textContent = 'Show details'; }
+            return;
+        }
+        skip.style.display = 'block';
+        if (lnk) { lnk.textContent = 'Hide details'; }
+        skip.innerHTML = 'Loading skipped tracks...';
+        fetch(url + '/sonic/status/errors', { headers: { 'X-Emby-Token': token() } })
+            .then(function (r) {
+                if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                return r.json();
+            })
+            .then(function (list) {
+                if (!list || !list.length) { skip.innerHTML = 'No skipped tracks.'; return; }
+                var rows = list.map(function (t) {
+                    var who = [t.artist, t.title].filter(Boolean).join(' — ') || t.id;
+                    return '<div style="margin-bottom:0.5em;">' +
+                        '<div>' + esc(who) + '</div>' +
+                        '<small style="color:#888;">' + esc(t.error || 'unknown error') + '</small>' +
+                        '</div>';
+                }).join('');
+                skip.innerHTML =
+                    '<b>' + list.length + ' skipped track' + (list.length === 1 ? '' : 's') + '</b>' +
+                    '<div style="margin-top:0.6em;">' + rows + '</div>';
+            })
+            .catch(function (err) {
+                skip.innerHTML = '<small style="color:#e74c3c">Could not load skipped tracks: ' +
+                    esc(err && err.message ? err.message : err) + '</small>';
             });
     }
 
