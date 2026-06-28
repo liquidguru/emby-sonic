@@ -201,11 +201,22 @@ fun SettingsScreen(
                         if (state.isCasting) {
                             "Unavailable while casting. Cast receivers fetch directly from Emby."
                         } else {
-                            "Keeps upcoming tracks buffered on this phone so local playback can ride through short Wi-Fi drops. Cast playback does its own streaming on the receiver."
+                            "Keeps the next few tracks buffered on this phone so playback rides through short signal drops. Higher = more resilient to skipping ahead with no signal, but uses more data and storage. Cast playback streams on the receiver."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Text("Tracks ahead", style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(3, 5, 10, 15).forEach { count ->
+                            FilterChip(
+                                selected = state.prefetchAheadCount == count,
+                                onClick = { viewModel.setPrefetchAheadCount(count) },
+                                label = { Text("$count") },
+                                enabled = !state.isCasting,
+                            )
+                        }
+                    }
                 }
             }
 

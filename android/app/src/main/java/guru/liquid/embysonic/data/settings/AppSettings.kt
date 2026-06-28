@@ -25,6 +25,8 @@ data class AppSettings(
     val downloadWifiOnly: Boolean = true,
     // Apply per-track loudness (LUFS) volume normalisation during playback.
     val volumeNormalizationEnabled: Boolean = true,
+    // How many upcoming tracks to pre-cache for gap-free playback (3/5/10/15).
+    val prefetchAheadCount: Int = 3,
     val generatedMixTracks: Int = 25,
     val audiobookSpeed: Float = 1f,
     val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,

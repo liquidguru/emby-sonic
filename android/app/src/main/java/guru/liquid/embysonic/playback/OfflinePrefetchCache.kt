@@ -21,6 +21,11 @@ class OfflinePrefetchCache @Inject constructor(
 ) {
     private val cacheDir = File(context.cacheDir, CACHE_DIR_NAME).also { it.mkdirs() }
 
+    // How many tracks to retain — set from the user's prefetch-ahead setting (plus
+    // headroom) so a larger prefetch isn't immediately self-evicted by the LRU.
+    @Volatile
+    var maxTracks: Int = DEFAULT_MAX_TRACKS
+
     fun cachedUri(trackId: String): Uri? {
         val file = cacheFile(trackId)
         if (!file.exists() || file.length() <= 0) return null
@@ -52,7 +57,7 @@ class OfflinePrefetchCache @Inject constructor(
                     return@withContext null
                 }
                 val expectedBytes = connection.contentLengthLong
-                if (expectedBytes > MAX_CACHE_BYTES) {
+                if (expectedBytes > PER_FILE_MAX_BYTES) {
                     Log.w(TAG, "Prefetch skipped for $trackId: $expectedBytes bytes exceeds cache cap")
                     return@withContext null
                 }
@@ -65,7 +70,7 @@ class OfflinePrefetchCache @Inject constructor(
                             val read = input.read(buffer)
                             if (read == -1) break
                             total += read
-                            if (total > MAX_CACHE_BYTES) {
+                            if (total > PER_FILE_MAX_BYTES) {
                                 Log.w(TAG, "Prefetch aborted for $trackId: exceeded cache cap")
                                 return@withContext null
                             }
@@ -99,8 +104,13 @@ class OfflinePrefetchCache @Inject constructor(
         val files = cacheDir.listFiles { file ->
             file.isFile && file.name.startsWith(FILE_PREFIX) && file.name.endsWith(FILE_SUFFIX)
         }?.sortedBy { it.lastModified() }?.toMutableList() ?: return
+        val keep = maxTracks.coerceAtLeast(1)
+        // Total byte ceiling scales with the track count so a larger prefetch
+        // isn't capped by a fixed budget; the per-file limit (PER_FILE_MAX_BYTES)
+        // still guards against a single oversized file.
+        val byteCap = keep.toLong() * PER_TRACK_BUDGET_BYTES
         var total = files.sumOf { it.length() }
-        while (files.size > MAX_TRACKS || total > MAX_CACHE_BYTES) {
+        while (files.size > keep || total > byteCap) {
             val victim = files.removeFirst()
             total -= victim.length()
             victim.delete()
@@ -122,8 +132,11 @@ class OfflinePrefetchCache @Inject constructor(
         const val FILE_PREFIX = "prefetch_"
         const val FILE_SUFFIX = ".lwcache"
         const val QUALITY_KEY = "universal-140000000-v1"
-        const val MAX_TRACKS = 5
-        const val MAX_CACHE_BYTES = 200L * 1024L * 1024L
+        const val DEFAULT_MAX_TRACKS = 5
+        // Total-cache budget per retained track (scales the eviction byte cap).
+        const val PER_TRACK_BUDGET_BYTES = 35L * 1024L * 1024L
+        // Largest single file we'll prefetch (a guard against oversized items).
+        const val PER_FILE_MAX_BYTES = 200L * 1024L * 1024L
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 30_000
     }

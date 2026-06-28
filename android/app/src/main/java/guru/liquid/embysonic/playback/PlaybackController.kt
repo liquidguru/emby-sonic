@@ -245,6 +245,11 @@ class PlaybackController @Inject constructor(
     @Volatile
     private var normalizationEnabled = true
     private var lastNormalizedTrackId: String? = null
+
+    // How many upcoming tracks to pre-cache; driven by the user setting (collected
+    // in init). The prefetch cache keeps this many (plus headroom) so a larger
+    // value isn't immediately self-evicted.
+    private var prefetchAheadCount = PREFETCH_AHEAD_COUNT
     private var sleepTimerJob: Job? = null
     private var sleepTimerMode: SleepTimerMode = SleepTimerMode.OFF
     private var sleepTimerEndsAtMs: Long = 0L
@@ -347,6 +352,16 @@ class PlaybackController @Inject constructor(
                     // Re-apply for the current track + any armed crossfade tail.
                     lastReportedState.currentTrack?.let { mainGain.gain = normalizationGainFor(it.id) }
                     crossfadeFromTrack?.let { fadeGain.gain = normalizationGainFor(it.id) }
+                }
+        }
+        scope.launch {
+            settings.prefetchAheadCount
+                .distinctUntilChanged()
+                .collect { count ->
+                    prefetchAheadCount = count
+                    // Keep a little headroom so the just-prefetched set isn't evicted.
+                    prefetchCache.maxTracks = count + 2
+                    schedulePrefetch(activePlayerRef.currentMediaItemIndex.coerceAtLeast(0))
                 }
         }
         // collectLatest cancels the inner loop the moment playback stops and
@@ -1623,7 +1638,7 @@ class PlaybackController @Inject constructor(
         val queueSnapshot = queue
         val upcoming = queueSnapshot
             .drop(anchorIndex + 1)
-            .take(PREFETCH_AHEAD_COUNT)
+            .take(prefetchAheadCount)
             .filterNot { it.isLongForm }
         if (upcoming.isEmpty()) {
             prefetchJob?.cancel()
