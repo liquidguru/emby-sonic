@@ -1,12 +1,25 @@
 package guru.liquid.embysonic.data.emby
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.data.emby.dto.EmbyItemDto
 import guru.liquid.embysonic.data.settings.SettingsRepository
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /** A browsable audio library. Audiobooks are kept distinct from music. */
 enum class LibraryKind { MUSIC, AUDIOBOOKS }
@@ -60,8 +73,10 @@ data class AudioLibrary(
  * back to the legacy duration heuristic. Drives resume, crossfade eligibility,
  * the stream endpoint, and Played-on-completion in PlaybackController.
  */
+@kotlinx.serialization.Serializable
 enum class ContentKind { MUSIC, AUDIOBOOK, UNKNOWN }
 
+@kotlinx.serialization.Serializable
 data class LibraryItem(
     val id: String,
     val title: String,
@@ -108,6 +123,9 @@ private const val RESUME_END_PADDING_MS = 5_000L
 private const val BROWSE_LIMIT = 10000
 private const val ALBUM_ART_SCAN_PAGE_SIZE = 1000
 
+/** Max concurrent per-album cover lookups during hydration (avoids flooding Emby). */
+private const val ART_HYDRATION_CONCURRENCY = 8
+
 /** How many recently played tracks to scan when grouping recent plays to albums. */
 private const val RECENT_PLAYS_SCAN = 100
 
@@ -138,6 +156,7 @@ private fun formatDuration(ms: Long?): String? {
  */
 @Singleton
 class LibraryRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val embyApi: EmbyApi,
     private val settings: SettingsRepository,
     private val imageUrls: EmbyImageUrls,
@@ -145,6 +164,80 @@ class LibraryRepository @Inject constructor(
     private fun userId(): String =
         settings.snapshot().userId?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("Not signed in")
+
+    // Cache of browse-tab results (artists/albums/genres/authors/books), keyed per
+    // library and **persisted to disk**. This is a @Singleton, so the in-memory copy
+    // survives ViewModel recreation (instant in/out), and the on-disk copy survives a
+    // full app restart (instant cold start) instead of re-fetching the whole list AND
+    // re-resolving cover art (a per-item Emby query) every time. Callers use the
+    // stale-while-revalidate pattern: show the cached list instantly, then refresh in
+    // the background. Cleared on logout.
+    private val browseCache = ConcurrentHashMap<String, List<LibraryItem>>()
+    private val browseCacheFile = File(context.filesDir, "library-browse-cache.json")
+    private val browseJson = Json { ignoreUnknownKeys = true }
+    private val browseLoadMutex = Mutex()
+    @Volatile private var browseLoaded = false
+    // Keys already revalidated this app session — so a cached tab refreshes in the
+    // background once after launch, not on every in/out navigation.
+    private val revalidatedKeys = ConcurrentHashMap.newKeySet<String>()
+
+    private suspend fun ensureBrowseLoaded() {
+        if (browseLoaded) return
+        browseLoadMutex.withLock {
+            if (browseLoaded) return
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    if (browseCacheFile.exists()) {
+                        val map: Map<String, List<LibraryItem>> =
+                            browseJson.decodeFromString(browseCacheFile.readText())
+                        browseCache.putAll(map)
+                    }
+                }
+            }
+            browseLoaded = true
+        }
+    }
+
+    private suspend fun persistBrowse() = withContext(Dispatchers.IO) {
+        runCatching { browseCacheFile.writeText(browseJson.encodeToString(browseCache.toMap())) }
+    }
+
+    /** Cached browse list (memory or persisted) for [key], or null if not cached. */
+    suspend fun peekBrowse(key: String): List<LibraryItem>? {
+        ensureBrowseLoaded()
+        return browseCache[key]
+    }
+
+    /** True the first time per app session for [key] — gates a one-off background refresh. */
+    fun shouldRevalidate(key: String): Boolean = revalidatedKeys.add(key)
+
+    private suspend fun cachedBrowse(
+        key: String,
+        forceRefresh: Boolean,
+        fetch: suspend () -> List<LibraryItem>,
+    ): List<LibraryItem> {
+        ensureBrowseLoaded()
+        if (!forceRefresh) browseCache[key]?.let { return it }
+        return fetch().also {
+            browseCache[key] = it
+            persistBrowse()
+        }
+    }
+
+    /** Drop cached browse lists, in memory and on disk (e.g. on logout). */
+    fun invalidateBrowseCache() {
+        browseCache.clear()
+        revalidatedKeys.clear()
+        runCatching { browseCacheFile.delete() }
+    }
+
+    // Cache keys (must match what the browse methods use), exposed so the ViewModel
+    // can peek the cache for stale-while-revalidate loads.
+    fun artistsCacheKey(libraryId: String) = "artists:$libraryId"
+    fun albumsCacheKey(libraryId: String) = "albums:$libraryId"
+    fun genresCacheKey(libraryId: String) = "genres:$libraryId"
+    fun authorsCacheKey(libraryId: String) = "authors:$libraryId"
+    fun booksCacheKey(libraryId: String) = "books:$libraryId"
 
     /** The user's audio libraries (music + audiobooks), discovered at runtime. */
     suspend fun audioLibraries(): List<AudioLibrary> =
@@ -158,9 +251,15 @@ class LibraryRepository @Inject constructor(
             AudioLibrary(id = id, name = v.name.orEmpty(), kind = kind)
         }
 
-    suspend fun artists(libraryId: String, limit: Int = BROWSE_LIMIT): List<LibraryItem> =
-        embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = limit)
-            .items.map { it.toCollectionItem() }
+    suspend fun artists(
+        libraryId: String,
+        limit: Int = BROWSE_LIMIT,
+        forceRefresh: Boolean = false,
+    ): List<LibraryItem> =
+        cachedBrowse("artists:$libraryId", forceRefresh) {
+            embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = limit)
+                .items.map { it.toCollectionItem() }
+        }
 
     /**
      * Distinct album-artist names from recently played tracks (most-recent first),
@@ -190,12 +289,13 @@ class LibraryRepository @Inject constructor(
      * Audiobook authors. Like books, most authors have no image of their own, so we
      * resolve each author's cover from one of their chapters (keyed by album-artist id).
      */
-    suspend fun authors(libraryId: String): List<LibraryItem> {
-        val authors = embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = BROWSE_LIMIT)
-            .items.map { it.toCollectionItem() }
-        val covers = audiobookAuthorCovers(libraryId)
-        return authors.map { if (it.imageUrl == null) it.copy(imageUrl = covers[it.id]) else it }
-    }
+    suspend fun authors(libraryId: String, forceRefresh: Boolean = false): List<LibraryItem> =
+        cachedBrowse("authors:$libraryId", forceRefresh) {
+            val authors = embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = BROWSE_LIMIT)
+                .items.map { it.toCollectionItem() }
+            val covers = audiobookAuthorCovers(libraryId)
+            authors.map { if (it.imageUrl == null) it.copy(imageUrl = covers[it.id]) else it }
+        }
 
     /** Author id → a chapter's Primary image URL, for authors lacking their own image. */
     private suspend fun audiobookAuthorCovers(libraryId: String): Map<String, String> {
@@ -218,22 +318,25 @@ class LibraryRepository @Inject constructor(
         return covers
     }
 
-    suspend fun albums(libraryId: String): List<LibraryItem> {
-        val albums = embyApi.getItems(
-            userId = userId(),
-            parentId = libraryId,
-            includeItemTypes = "MusicAlbum",
-            limit = BROWSE_LIMIT,
-        ).items.map { it.toCollectionItem() }
-        return hydrateMusicAlbumArtFromChildren(albums)
-    }
+    suspend fun albums(libraryId: String, forceRefresh: Boolean = false): List<LibraryItem> =
+        cachedBrowse("albums:$libraryId", forceRefresh) {
+            val albums = embyApi.getItems(
+                userId = userId(),
+                parentId = libraryId,
+                includeItemTypes = "MusicAlbum",
+                limit = BROWSE_LIMIT,
+            ).items.map { it.toCollectionItem() }
+            hydrateMusicAlbumArtFromChildren(albums)
+        }
 
-    suspend fun genres(libraryId: String): List<LibraryItem> =
-        embyApi.getGenres(
-            userId = userId(),
-            parentId = libraryId,
-            limit = BROWSE_LIMIT,
-        ).items.mapNotNull { it.toGenreItem(libraryId) }
+    suspend fun genres(libraryId: String, forceRefresh: Boolean = false): List<LibraryItem> =
+        cachedBrowse("genres:$libraryId", forceRefresh) {
+            embyApi.getGenres(
+                userId = userId(),
+                parentId = libraryId,
+                limit = BROWSE_LIMIT,
+            ).items.mapNotNull { it.toGenreItem(libraryId) }
+        }
 
     suspend fun recentlyAddedAlbums(libraryId: String, limit: Int): List<LibraryItem> {
         val albums = embyApi.getItems(
@@ -398,16 +501,29 @@ class LibraryRepository @Inject constructor(
      * from a representative chapter in one extra query. Scope by [parentId] (the
      * library, for the Books tab) or [albumArtistId] (an author, for the detail).
      */
-    suspend fun books(parentId: String? = null, albumArtistId: String? = null): List<LibraryItem> {
-        val books = embyApi.getItems(
-            userId = userId(),
-            includeItemTypes = "MusicAlbum",
-            parentId = parentId,
-            albumArtistIds = albumArtistId,
-            limit = BROWSE_LIMIT,
-        ).items.map { it.toCollectionItem() }
-        val covers = audiobookCovers(parentId, albumArtistId)
-        return books.map { if (it.imageUrl == null) it.copy(imageUrl = covers[it.id]) else it }
+    suspend fun books(
+        parentId: String? = null,
+        albumArtistId: String? = null,
+        forceRefresh: Boolean = false,
+    ): List<LibraryItem> {
+        val fetch: suspend () -> List<LibraryItem> = {
+            val books = embyApi.getItems(
+                userId = userId(),
+                includeItemTypes = "MusicAlbum",
+                parentId = parentId,
+                albumArtistIds = albumArtistId,
+                limit = BROWSE_LIMIT,
+            ).items.map { it.toCollectionItem() }
+            val covers = audiobookCovers(parentId, albumArtistId)
+            books.map { if (it.imageUrl == null) it.copy(imageUrl = covers[it.id]) else it }
+        }
+        // Cache only the library-wide Books tab; the per-author drill-down is a
+        // smaller query and stays uncached.
+        return if (parentId != null && albumArtistId == null) {
+            cachedBrowse("books:$parentId", forceRefresh, fetch)
+        } else {
+            fetch()
+        }
     }
 
     /** AlbumId → a child chapter's Primary image URL, for books lacking their own cover. */
@@ -599,17 +715,23 @@ class LibraryRepository @Inject constructor(
     private suspend fun hydrateMusicAlbumArtFromChildren(albums: List<LibraryItem>): List<LibraryItem> {
         val missing = albums.filter { it.imageUrl == null }
         if (missing.isEmpty()) return albums
+        // Each cover-less album needs its own Emby query. Firing hundreds at once
+        // hammers Emby / a reverse proxy (and is slower, not faster), so bound the
+        // concurrency to a small permit pool.
+        val gate = Semaphore(ART_HYDRATION_CONCURRENCY)
         val covers = coroutineScope {
             missing.map { album ->
                 async {
-                    val art = embyApi.getItems(
-                        userId = userId(),
-                        includeItemTypes = "Audio",
-                        parentId = album.id,
-                        sortBy = "ParentIndexNumber,IndexNumber",
-                        limit = 1,
-                    ).items.firstOrNull()?.artUrl()
-                    album.id to art
+                    gate.withPermit {
+                        val art = embyApi.getItems(
+                            userId = userId(),
+                            includeItemTypes = "Audio",
+                            parentId = album.id,
+                            sortBy = "ParentIndexNumber,IndexNumber",
+                            limit = 1,
+                        ).items.firstOrNull()?.artUrl()
+                        album.id to art
+                    }
                 }
             }.awaitAll()
                 .mapNotNull { (id, art) -> art?.let { id to it } }
