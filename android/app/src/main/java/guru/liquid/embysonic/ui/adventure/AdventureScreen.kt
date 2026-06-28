@@ -345,15 +345,8 @@ private fun AdventureTrackRow(item: LibraryItem, onClick: () -> Unit) {
         supportingContent = item.subtitle?.let {
             { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         },
-        trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                item.trailingText?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall)
-                }
-                IconButton(onClick = onClick) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
-                }
-            }
+        trailingContent = item.trailingText?.let {
+            { Text(it, style = MaterialTheme.typography.bodySmall) }
         },
     )
 }
