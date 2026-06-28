@@ -93,39 +93,67 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    fun loadArtists() = load(
-        block = {
+    fun loadArtists() {
+        val audiobooks = kind == LibraryKind.AUDIOBOOKS
+        load(
+            cacheKey = if (audiobooks) repository.authorsCacheKey(libraryId)
+            else repository.artistsCacheKey(libraryId),
             // Audiobook authors need cover resolution from their chapters too.
-            if (kind == LibraryKind.AUDIOBOOKS) repository.authors(libraryId)
-            else repository.artists(libraryId)
-        },
-        onResult = { tab -> _state.update { it.copy(artists = tab) } },
-    )
+            fetch = { force ->
+                if (audiobooks) repository.authors(libraryId, forceRefresh = force)
+                else repository.artists(libraryId, forceRefresh = force)
+            },
+            onResult = { tab -> _state.update { it.copy(artists = tab) } },
+        )
+    }
 
-    fun loadAlbums() = load(
-        block = {
+    fun loadAlbums() {
+        val audiobooks = kind == LibraryKind.AUDIOBOOKS
+        load(
+            cacheKey = if (audiobooks) repository.booksCacheKey(libraryId)
+            else repository.albumsCacheKey(libraryId),
             // Audiobook "books" need cover resolution from their child chapters.
-            if (kind == LibraryKind.AUDIOBOOKS) repository.books(parentId = libraryId)
-            else repository.albums(libraryId)
-        },
-        onResult = { tab -> _state.update { it.copy(albums = tab) } },
-    )
+            fetch = { force ->
+                if (audiobooks) repository.books(parentId = libraryId, forceRefresh = force)
+                else repository.albums(libraryId, forceRefresh = force)
+            },
+            onResult = { tab -> _state.update { it.copy(albums = tab) } },
+        )
+    }
 
     fun loadGenres() = load(
-        block = { repository.genres(libraryId) },
+        cacheKey = repository.genresCacheKey(libraryId),
+        fetch = { force -> repository.genres(libraryId, forceRefresh = force) },
         onResult = { tab -> _state.update { it.copy(genres = tab) } },
     )
 
+    /**
+     * Stale-while-revalidate: show the cached list instantly (persisted across app
+     * restarts), then refresh once per session in the background and update. Falls
+     * back to a plain blocking load when nothing is cached.
+     */
     private fun load(
-        block: suspend () -> List<LibraryItem>,
+        cacheKey: String,
+        fetch: suspend (forceRefresh: Boolean) -> List<LibraryItem>,
         onResult: (TabState) -> Unit,
     ) {
-        onResult(TabState.Loading)
         viewModelScope.launch {
-            runCatching { block() }.fold(
-                onSuccess = { onResult(TabState.Data(it)) },
-                onFailure = { onResult(TabState.Error(it.message ?: "Failed to load")) },
-            )
+            val cached = runCatching { repository.peekBrowse(cacheKey) }.getOrNull()
+            if (cached != null) {
+                onResult(TabState.Data(cached))
+                if (repository.shouldRevalidate(cacheKey)) {
+                    runCatching { fetch(true) }.onSuccess { onResult(TabState.Data(it)) }
+                }
+            } else {
+                onResult(TabState.Loading)
+                runCatching { fetch(false) }.fold(
+                    onSuccess = {
+                        repository.shouldRevalidate(cacheKey) // mark refreshed this session
+                        onResult(TabState.Data(it))
+                    },
+                    onFailure = { onResult(TabState.Error(it.message ?: "Failed to load")) },
+                )
+            }
         }
     }
 
