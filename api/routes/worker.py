@@ -96,6 +96,7 @@ async def results(body: ResultsRequest, db: DB, _auth: WorkerAuth) -> ResultsRes
                 emb.arousal = r.arousal
                 emb.instrumentalness = r.instrumentalness
                 emb.vocals_present = r.vocals_present
+                emb.lufs = r.lufs
 
                 track.analysis_status = "done"
                 track.analysed_at = _utcnow()

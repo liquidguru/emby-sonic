@@ -13,6 +13,17 @@ class TrackOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LoudnessRequest(BaseModel):
+    ids: list[str]  # Emby track ids to look up integrated loudness for
+
+
+class LoudnessResponse(BaseModel):
+    # Integrated loudness in LUFS, keyed by track id. Only analysed tracks that
+    # have a measured value are present; the client treats a missing id as "no
+    # data" and leaves that track at unity gain.
+    loudness: dict[str, float]
+
+
 class SimilarTrack(BaseModel):
     track: TrackOut
     score: float  # cosine similarity (0–1, higher = more similar)
@@ -156,6 +167,7 @@ class WorkerResult(BaseModel):
     arousal: float | None = None
     instrumentalness: float | None = None
     vocals_present: int | None = None
+    lufs: float | None = None      # integrated loudness (EBU R128); None if unmeasured
     error: str | None = None       # set if this track failed on the worker
 
 

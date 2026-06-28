@@ -43,6 +43,9 @@ class Embedding(Base):
     arousal: Mapped[float | None] = mapped_column(Float)
     instrumentalness: Mapped[float | None] = mapped_column(Float)
     vocals_present: Mapped[int | None] = mapped_column(Integer)
+    # Integrated loudness in LUFS (EBU R128 / BS.1770), measured over the analysis
+    # windows. Drives client-side volume normalisation. NULL until measured.
+    lufs: Mapped[float | None] = mapped_column(Float)
 
     track: Mapped["Track"] = relationship(back_populates="embedding")
 

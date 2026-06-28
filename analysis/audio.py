@@ -26,6 +26,16 @@ try:
 except ImportError:
     _HAS_ESSENTIA = False
 
+try:
+    import pyloudnorm as _pyln
+    _HAS_PYLOUDNORM = True
+except ImportError:
+    _HAS_PYLOUDNORM = False
+
+# Reuse one meter per sample rate — building the K-weighting filters is cheap but
+# pointless to repeat for every track.
+_loudness_meters: dict[int, "object"] = {}
+
 
 def load_audio(file_path: str, target_sr: int = 32000) -> tuple[np.ndarray, int]:
     """Load the whole file, mono, resampled to target_sr. (Used as a fallback.)"""
@@ -70,6 +80,37 @@ def load_windows(file_path: str) -> list[np.ndarray]:
         y, _ = librosa.load(file_path, sr=sr, mono=True)
         windows = [y] if len(y) else []
     return windows
+
+
+def measure_loudness(waveform: np.ndarray, sample_rate: int) -> float | None:
+    """
+    Integrated loudness in LUFS (EBU R128 / ITU-R BS.1770), or None.
+
+    Measured over the same sampled analysis windows the embedder uses (~90 s of
+    representative audio), which is a close, *consistent* estimate of whole-track
+    integrated loudness for music — every track is measured identically, which is
+    what matters for relative volume levelling.
+
+    Returns None when pyloudnorm isn't installed, the clip is too short for a
+    gating block, or the signal is silent (loudness would be -inf). Callers treat
+    None as "no normalisation data" and leave the track at unity gain.
+    """
+    if not _HAS_PYLOUDNORM:
+        return None
+    if waveform is None or waveform.size == 0:
+        return None
+    meter = _loudness_meters.get(sample_rate)
+    if meter is None:
+        meter = _pyln.Meter(sample_rate)  # BS.1770-4 K-weighting + gating
+        _loudness_meters[sample_rate] = meter
+    try:
+        # pyloudnorm wants float64; librosa gives float32 mono (shape (n,)).
+        lufs = float(meter.integrated_loudness(waveform.astype(np.float64)))
+    except Exception:
+        return None
+    if not np.isfinite(lufs):  # silent clip → -inf
+        return None
+    return lufs
 
 
 def extract_features(file_path: str, waveform: np.ndarray, sample_rate: int) -> dict:
