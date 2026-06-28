@@ -57,7 +57,7 @@ an existing file is reused.
 ### Deploy on a NAS (Docker)
 
 The coordinator is lightweight (no torch/librosa/panns — those live on workers),
-so it runs in a small container on any NAS (Synology, QNAP, UGREEN, …), including
+so it runs in a small container on any NAS (Synology, QNAP, UGREEN, ...), including
 ARM. Audio analysis runs on separate **workers** on a machine with spare CPU/GPU.
 
 ```bash
@@ -183,6 +183,34 @@ The Compose `worker` service uses the full [`Dockerfile`](Dockerfile), runs
 not redownloaded on every container rebuild/restart. Workers stream audio from
 Emby; no music library bind mount is needed.
 
+Worker images are CPU-only by default. To build a CUDA-capable worker on an
+x86_64 Linux host with an NVIDIA GPU, set `TORCH_VARIANT=cuda` before building
+and run the worker with GPU access:
+
+```bash
+# Keep the coordinator running normally.
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d coordinator
+
+# Build a CUDA-capable worker image and run it with the NVIDIA runtime.
+TORCH_VARIANT=cuda docker compose build worker
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> \
+  docker compose run --rm --gpus all worker
+```
+
+For a detached GPU worker, uncomment `gpus: all` under the `worker` service in
+[`docker-compose.yml`](docker-compose.yml), then run:
+
+```bash
+TORCH_VARIANT=cuda EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> \
+  docker compose up -d --build worker
+```
+
+The startup log is the proof: `docker compose run --rm --gpus all worker` prints
+`[worker <id>] device=cuda` to the terminal. For a detached worker, check
+`docker logs emby-sonic-worker`. If it says `device=cpu`, confirm the image was
+built with `TORCH_VARIANT=cuda` and that `nvidia-smi` works inside a test
+container.
+
 Standalone worker container:
 
 ```bash
@@ -195,12 +223,17 @@ docker run -d --name emby-sonic-worker \
   emby-sonic-worker python worker.py
 ```
 
-For NVIDIA GPU acceleration, install the NVIDIA Container Toolkit and run the
-worker with GPU access, for example:
+Standalone NVIDIA GPU worker:
 
 ```bash
-docker run --gpus all ...
-docker compose run --rm --gpus all worker
+docker build --build-arg TORCH_VARIANT=cuda -t emby-sonic-worker:cuda .
+docker run -d --name emby-sonic-worker-gpu --gpus all \
+  -e COORDINATOR_URL=http://<coordinator-host>:8765 \
+  -e EMBY_URL=http://<emby-host>:8096 \
+  -e EMBY_API_KEY=<key> \
+  -v emby-sonic-panns:/root/panns_data \
+  emby-sonic-worker:cuda python worker.py
+docker logs emby-sonic-worker-gpu | grep 'device='
 ```
 
 ## API

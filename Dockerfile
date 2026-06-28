@@ -6,6 +6,7 @@
 # and this full image for workers.
 #
 # Build:  docker build -t emby-sonic-worker .
+# GPU:    docker build --build-arg TORCH_VARIANT=cuda -t emby-sonic-worker:cuda .
 # Run:    docker run -d --name emby-sonic-worker \
 #           -e COORDINATOR_URL=http://<coordinator-host>:8765 \
 #           -e EMBY_URL=http://<emby-host>:8096 \
@@ -27,10 +28,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# CPU-only torch first (smaller image, no CUDA), then the rest
+# Install torch first so requirements.txt does not choose a different variant.
+# TORCH_VARIANT:
+#   cpu   = CPU-only PyTorch wheel, the default and smallest worker image.
+#   cuda  = PyPI PyTorch wheel with bundled NVIDIA CUDA dependencies.
+#   cuXXX = explicit PyTorch CUDA wheel index, for example cu124.
 COPY requirements.txt .
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir -r requirements.txt
+ARG TORCH_VARIANT=cpu
+RUN set -eux; \
+    case "$TORCH_VARIANT" in \
+        cpu) \
+            pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu; \
+            ;; \
+        cuda) \
+            pip install --no-cache-dir torch; \
+            ;; \
+        cu*) \
+            pip install --no-cache-dir torch --index-url "https://download.pytorch.org/whl/${TORCH_VARIANT}"; \
+            ;; \
+        *) \
+            echo "Unsupported TORCH_VARIANT=${TORCH_VARIANT}; expected cpu, cuda, or cuXXX" >&2; \
+            exit 1; \
+            ;; \
+    esac; \
+    pip install --no-cache-dir -r requirements.txt
 
 # Essentia is intentionally NOT installed here — librosa fallback is used.
 # To enable it on a supported base image, add requirements-optional.txt.

@@ -1314,6 +1314,16 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   logged as issues #9 (Docker GPU = CPU-only torch in image), #10 (guided install),
   #11 (publish prebuilt Docker images). Verified on the Pixel 8 Pro.
 
+- **M5.25 — Docker GPU worker image path (2026-06-29, PR for issue #9):**
+  the full worker `Dockerfile` keeps CPU-only PyTorch as the default, but now
+  accepts `TORCH_VARIANT=cpu|cuda|cuXXX` at build time. `cpu` uses the smaller
+  PyTorch CPU wheel index; `cuda` uses the normal Linux PyTorch wheel with bundled
+  NVIDIA CUDA dependencies; explicit `cuXXX` values use PyTorch's matching CUDA
+  wheel index. `docker-compose.yml` passes the build arg while defaulting to CPU
+  and documents the NVIDIA Container Toolkit + `--gpus all` path. Verification
+  still needs to be run on an NVIDIA Docker host; expected worker proof is the
+  startup log `[worker <id>] device=cuda`.
+
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
 **M3 verification (liquidHulk / Pixel_3a_API_36, 2026-06-09):**
