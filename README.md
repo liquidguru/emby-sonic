@@ -33,6 +33,9 @@ directly from Emby's HTTP API — no file shares or special network config neede
 
 ## Phase 1 — Python Analysis Service
 
+New installs should start with the scenario guide:
+[`docs/quickstart.md`](docs/quickstart.md).
+
 ### Requirements
 
 - Python 3.11+ (tested on 3.12)

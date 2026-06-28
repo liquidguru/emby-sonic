@@ -1324,6 +1324,14 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   still needs to be run on an NVIDIA Docker host; expected worker proof is the
   startup log `[worker <id>] device=cuda`.
 
+- **M5.26 — Guided Docker quickstart (2026-06-29, PR for issue #10):**
+  added an interactive Bash `install.sh` that prompts for Emby URL/API key,
+  writes `.env`, generates a GHCR-image Compose file, pulls images, and starts
+  the chosen services. It covers NAS coordinator installs, a single Docker host,
+  and a separate worker rig, with an NVIDIA GPU option that selects the CUDA
+  worker image and emits `gpus: all` in the generated Compose file. Added
+  `docs/quickstart.md` as the scenario-first setup guide.
+
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
 **M3 verification (dev-pc / Pixel_3a_API_36, 2026-06-09):**
