@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Drawing;
@@ -8,7 +9,7 @@ using MediaBrowser.Model.Serialization;
 
 namespace EmbysonicPlugin;
 
-public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
+public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IHasThumbImage
 {
     public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
         : base(applicationPaths, xmlSerializer)
@@ -24,6 +25,15 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
     public override string Description =>
         "Neural audio analysis for Emby — sonically intelligent discovery via PANNs CNN14 embeddings.";
+
+    // Tile image shown on Emby's Plugins page (embedded thumb.png).
+    public Stream GetThumbImage()
+    {
+        var type = GetType();
+        return type.Assembly.GetManifestResourceStream(type.Namespace + ".thumb.png")!;
+    }
+
+    public ImageFormat ThumbImageFormat => ImageFormat.Png;
 
     public IEnumerable<PluginPageInfo> GetPages() =>
     [
