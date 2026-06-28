@@ -24,7 +24,8 @@ CREATE TABLE embeddings (
   valence REAL,                 -- mood: sad → happy (Essentia)
   arousal REAL,                 -- mood: calm → energetic (Essentia)
   instrumentalness REAL,
-  vocals_present INTEGER        -- boolean (0/1)
+  vocals_present INTEGER,        -- boolean (0/1)
+  lufs REAL                     -- integrated loudness (EBU R128 LUFS); drives volume normalisation
 );
 
 CREATE TABLE mixes (

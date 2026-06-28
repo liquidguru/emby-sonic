@@ -8,6 +8,8 @@ import guru.liquid.embysonic.data.coordinator.dto.RadioPlaylistDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesStartedDto
 import guru.liquid.embysonic.data.coordinator.dto.BuildStateDto
+import guru.liquid.embysonic.data.coordinator.dto.LoudnessRequestDto
+import guru.liquid.embysonic.data.coordinator.dto.LoudnessResponseDto
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectDto
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.RegenerateMixRequestDto
@@ -95,6 +97,12 @@ interface CoordinatorApi {
     suspend fun injectQueue(
         @Body body: QueueInjectRequestDto,
     ): QueueInjectDto
+
+    /** Batch loudness (LUFS) lookup for a queue, to apply per-track volume normalisation. */
+    @POST("sonic/tracks/loudness")
+    suspend fun loudness(
+        @Body body: LoudnessRequestDto,
+    ): LoudnessResponseDto
 
     // --- Waveform (design-for-A placeholder; see docs/spec.md) -------------------
     // Reserved from day one so real waveforms drop in without restructuring the

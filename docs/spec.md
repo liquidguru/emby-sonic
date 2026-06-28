@@ -1243,6 +1243,30 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   very large downloads (currently an app-scoped coroutine) and album/track
   (non-playlist) downloads.
 
+- **M5.19 — Volume normalisation (2026-06-25, built; on branch
+  `feat/volume-normalization`, not yet merged to master):** per-track loudness
+  levelling so a quiet track and a loud master play at a similar perceived volume.
+  Emby itself exposes no loudness data on this library (no `LUFS`/`NormalizationGain`
+  field, no analysis task in 4.10), so loudness is **measured in our own pipeline**:
+  the worker computes EBU R128 / BS.1770 integrated loudness (`pyloudnorm`) over the
+  same sampled analysis windows it already decodes for embedding, stored in
+  `embeddings.lufs` and served via `POST /sonic/tracks/loudness` (batch lookup by id).
+  `tools/backfill_loudness.py` fills LUFS for tracks analysed before this (CPU-only,
+  no model load, resumable). Android applies the gain in the audio pipeline, not via
+  `player.volume` (which the crossfade/fade logic owns): a `GainAudioProcessor`
+  (`BaseAudioProcessor`) sits in each player's `DefaultAudioSink` chain — the primary
+  for the incoming track and the crossfade helper for the outgoing tail, so both are
+  normalised to their own level and the two compose with the fade envelope.
+  `PlaybackController` fetches loudness for a queue (best-effort; no coordinator →
+  unity gain), computes gain = `clamp(-14 LUFS − trackLUFS, -15..+6 dB)`, and sets it
+  on each track change. A **Settings → Volume normalisation** toggle (default on)
+  drives it live. Backend loudness math verified against synthetic + real tracks;
+  backend deployed to liquidBee and the `/sonic/tracks/loudness` endpoint verified
+  live. **On-device A/B verified on the Pixel 8 Pro (2026-06-25):** with the toggle
+  on a loud master (Mona "Shooting the Moon", −9.8 LUFS) was attenuated and a quiet
+  track (Dire Straits "Why Worry", −34 LUFS) boosted; flipping the toggle reversed
+  both, live. Remaining: full-library LUFS backfill (test ran a 200-track batch).
+
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
 **M3 verification (liquidHulk / Pixel_3a_API_36, 2026-06-09):**

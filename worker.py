@@ -30,7 +30,7 @@ import numpy as np
 
 from config import settings
 from analysis import emby
-from analysis.audio import load_windows, extract_features
+from analysis.audio import load_windows, extract_features, measure_loudness
 from analysis.embeddings import embedder
 
 COORDINATOR = os.environ.get("COORDINATOR_URL", "http://localhost:8765").rstrip("/")
@@ -86,6 +86,7 @@ def _analyse(track: dict) -> dict:
             raise ValueError("no decodable audio")
         window_audio = np.concatenate(windows)
         feats = extract_features(path, window_audio, settings.sample_rate)
+        lufs = measure_loudness(window_audio, settings.sample_rate)
         raw = embedder.embed_raw(windows)
     finally:
         try:
@@ -95,6 +96,7 @@ def _analyse(track: dict) -> dict:
     return {
         "track_id": track["id"],
         "raw_vector": base64.b64encode(raw.tobytes()).decode("ascii"),
+        "lufs": lufs,
         **feats,
     }
 

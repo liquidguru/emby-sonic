@@ -13,6 +13,7 @@ huggingface-hub>=0.23.0
 scipy>=1.13.0
 scikit-learn>=1.5.0
 panns-inference>=0.1.1
+pyloudnorm>=0.1.1   # EBU R128 integrated loudness for volume normalisation (pure-python; numpy/scipy)
 
 # PyTorch CPU-only (smaller, fine for N100):
 # pip install torch --index-url https://download.pytorch.org/whl/cpu
