@@ -10,8 +10,8 @@ mixes, and a Guest DJ.
 > Phase 3 (Android app, **liquidWave**) is well advanced and running on real
 > hardware — browse, Media3 playback, sonic mixes (per-mix refresh), crossfade
 > with artwork cross-dissolve, an in-app equalizer, Track Radio, Sonic Adventure,
-> the Artist Mix Creator, Stations, Recent Plays, offline playlist downloads, and
-> search across music + audiobooks. See
+> the Artist Mix Creator, Stations, Recent Plays, offline playlist downloads,
+> per-track volume normalisation, and search across music + audiobooks. See
 > [`docs/spec.md`](docs/spec.md) for the full architecture and milestone list,
 > and [`AGENTS.md`](AGENTS.md) for the working agreement / dev environment.
 
@@ -96,6 +96,13 @@ python worker.py
 Workers authenticate to the coordinator with `WORKER_SECRET` when it is set, or
 fall back to `EMBY_API_KEY` for older deployments. They auto-detect CUDA. Run
 multiple workers in parallel for faster scanning.
+
+> **Music libraries only.** The scan is scoped to Emby libraries whose collection
+> type is **`music`** — audiobooks (a separate `audiobooks` library) and other
+> audio are never analysed, so spoken-word content can't pollute Track Radio /
+> Similar / Adventure. If an earlier scan already embedded audiobooks, clean them
+> out with `python tools/purge_audiobooks.py` (dry-run by default; `--apply` to
+> delete; rebuilds on the next coordinator restart).
 
 ### Broken-track maintenance
 
@@ -237,8 +244,16 @@ Set via environment variables or a `.env` file:
 ## Phase 2 — Emby Plugin
 
 A .NET 8 plugin (`plugin/`) that adds an Emby dashboard config page (set the
-coordinator URL, view live analysis status, trigger scans / mix rebuilds) and
+coordinator URL, view live analysis status — including a "skipped tracks" list
+with the reason each couldn't be analysed — and trigger scans / mix rebuilds) and
 fires an incremental scan when tracks are added to the library.
+
+> **Requires Emby Server 4.8 or newer.** .NET assembly binding only resolves
+> "upward", so a plugin must be built against an Emby SDK **no newer** than the
+> target server or Emby silently skips it (it never appears on the Plugins page).
+> The shipped builds target the 4.8 SDK, so they load on 4.8 / 4.9 stable and the
+> 4.10 beta alike. If you build it yourself, use the oldest Emby you want to
+> support — see the note in `plugin/EmbysonicPlugin.csproj`.
 
 **Build** (requires the .NET 8 SDK and Emby's SDK DLLs in `plugin/lib/` —
 `MediaBrowser.Common.dll`, `MediaBrowser.Controller.dll`, `MediaBrowser.Model.dll`,
@@ -286,8 +301,10 @@ setting); Stations (Library / Random Album / Decade radios); Recent Plays; offli
 downloads (download a playlist or a whole audiobook's original source files for
 browsing and playback with no network — audiobooks keep durable resume across the
 offline→online boundary; Wi-Fi-only by default; managed under Settings → Downloads);
-and search across music (tracks/albums/artists), audiobooks (books/authors), or
-everything from Home.
+per-track **volume normalisation** (levels playback to a consistent loudness using
+the coordinator's measured LUFS — a `GainAudioProcessor` in the audio sink, toggle
+in Settings, on by default); and search across music (tracks/albums/artists),
+audiobooks (books/authors), or everything from Home.
 
 ### Build
 
