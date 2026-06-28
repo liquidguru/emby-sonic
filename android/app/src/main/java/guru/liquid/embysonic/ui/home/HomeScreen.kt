@@ -446,24 +446,24 @@ private fun StationsRow(
             modifier = Modifier.padding(horizontal = 20.dp),
             style = MaterialTheme.typography.titleLarge,
         )
-        // All stations visible at once: a 3-per-row grid that wraps (3 + 2) so
-        // nothing is hidden behind a horizontal scroll.
+        // All stations visible at once: a 3-per-row grid (3 + 3) whose cards fill
+        // the row width evenly, so nothing hides behind a horizontal scroll.
         FlowRow(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             maxItemsInEachRow = 3,
         ) {
-            StationCard(Icons.Default.Shuffle, "Library\nRadio") {
+            StationCard(Icons.Default.Shuffle, "Library\nRadio", modifier = Modifier.weight(1f)) {
                 onPlayStation(HomeStation.LIBRARY, null)
             }
-            StationCard(Icons.Default.Album, "Random\nAlbum") {
+            StationCard(Icons.Default.Album, "Random\nAlbum", modifier = Modifier.weight(1f)) {
                 onPlayStation(HomeStation.RANDOM_ALBUM, null)
             }
-            StationCard(Icons.Default.DateRange, "Decade\nRadio") { decadePicker = true }
-            StationCard(Icons.Default.Category, "Genres") { genrePicker = true }
-            StationCard(Icons.Default.Explore, "Sonic\nAdventure", onClick = onOpenAdventure)
-            StationCard(Icons.Default.Groups, "Artist Mix\nCreator", onClick = onOpenArtistMix)
+            StationCard(Icons.Default.DateRange, "Decade\nRadio", modifier = Modifier.weight(1f)) { decadePicker = true }
+            StationCard(Icons.Default.Category, "Genres", modifier = Modifier.weight(1f)) { genrePicker = true }
+            StationCard(Icons.Default.Explore, "Sonic\nAdventure", modifier = Modifier.weight(1f), onClick = onOpenAdventure)
+            StationCard(Icons.Default.Groups, "Artist Mix\nCreator", modifier = Modifier.weight(1f), onClick = onOpenArtistMix)
         }
     }
     if (decadePicker) {
@@ -491,10 +491,11 @@ private fun StationsRow(
 private fun StationCard(
     icon: ImageVector,
     label: String,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.size(108.dp).clickable(onClick = onClick),
+        modifier = modifier.height(112.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {

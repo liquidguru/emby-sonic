@@ -1303,6 +1303,17 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   keep-set from Emby's music libraries, with safety aborts). Ran on bee: purged
   2,510, FAISS rebuilt; total 28,553→26,043, skipped 616→494 (genuine broken music).
 
+- **M5.24 — Tester-feedback quick wins (2026-06-25, merged; app v0.1.0-beta.3):**
+  from @trickiegt's beta feedback. (1) Library browse card grid 2 → 3 columns
+  (`LibraryComponents`). (2) Home **Stations** grid cards fill the row evenly at
+  3-per-row (`StationCard` weighted, matches the home card width). (3) **Prefetch
+  buffer is configurable** — Settings → Offline prefetch picker (3/5/10/15, default
+  3) replacing the hard-coded `PREFETCH_AHEAD_COUNT`; `OfflinePrefetchCache.maxTracks`
+  + byte budget scale with it so a larger value isn't self-evicted. (4) Docs:
+  Android-Auto sideload note (enable AA dev mode + unknown sources). Bigger items
+  logged as issues #9 (Docker GPU = CPU-only torch in image), #10 (guided install),
+  #11 (publish prebuilt Docker images). Verified on the Pixel 8 Pro.
+
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
 **M3 verification (liquidHulk / Pixel_3a_API_36, 2026-06-09):**

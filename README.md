@@ -303,8 +303,10 @@ browsing and playback with no network — audiobooks keep durable resume across 
 offline→online boundary; Wi-Fi-only by default; managed under Settings → Downloads);
 per-track **volume normalisation** (levels playback to a consistent loudness using
 the coordinator's measured LUFS — a `GainAudioProcessor` in the audio sink, toggle
-in Settings, on by default); and search across music (tracks/albums/artists),
-audiobooks (books/authors), or everything from Home.
+in Settings, on by default); a **configurable offline prefetch buffer** (Settings →
+Offline prefetch, 3/5/10/15 tracks ahead) to ride through signal drops; and search
+across music (tracks/albums/artists), audiobooks (books/authors), or everything
+from Home.
 
 ### Build
 
