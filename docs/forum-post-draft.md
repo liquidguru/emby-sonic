@@ -75,7 +75,11 @@ important to her — so liquidWave handles books (with durable resume) alongside
 - **Offline buffer** — the next few tracks in your queue are silently pre-cached in
   the background, so brief Wi-Fi blips don't interrupt playback. No manual download
   needed; you'll see "Offline buffer ready" in Now Playing when it's topped up.
-- **Audiobooks** — browse by book/author, durable resume, speed control.
+- **Volume normalisation** — levels playback so a quiet track and a slammed modern
+  master sit at a similar loudness (like Spotify/Tidal do), using loudness the
+  backend measures during analysis. On by default, one toggle to turn off.
+- **Audiobooks** — browse by book/author, durable resume, speed control (kept out of
+  the sonic analysis, so spoken word never pollutes your radios and mixes).
 - **Offline downloads** — download any playlist **or a whole audiobook** (the
   original source files, no transcode) to your phone and browse + play it with **no
   connection at all** — on a plane, underground, wherever. Downloads get their own

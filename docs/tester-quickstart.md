@@ -25,7 +25,8 @@ Then you install the **Android app** and point it at your Emby server + coordina
 
 ## Prerequisites — check before you start
 
-- [ ] An **Emby server you administer** (you can install plugins and restart it).
+- [ ] An **Emby server you administer** (you can install plugins and restart it),
+      **version 4.8 or newer** (the plugin won't load on older servers).
 - [ ] An **Emby API key** — Emby Dashboard → Advanced → **API Keys** → new key.
 - [ ] A machine to run the **coordinator** (Docker, *or* Python 3.11+). A NAS is fine.
 - [ ] A machine to run a **worker** (can be the same box; a GPU makes it ~2× faster).
@@ -55,9 +56,15 @@ play it with no network); search; and the metadata Stations (Library / Random Al
 Decade radios).
 
 **Needs the coordinator (the sonic features):** Sonic Mixes, Track Radio, Similar
-tracks / artists / albums, Sonic Adventure, the Guest DJ, and the Artist Mix Creator.
-Without the backend these simply stay empty — the app degrades gracefully, it doesn't
+tracks / artists / albums, Sonic Adventure, the Guest DJ, the Artist Mix Creator, and
+**volume normalisation** (levels playback loudness across tracks — it uses the loudness
+the backend measures during analysis; toggle in Settings, on by default). Without the
+backend these simply stay empty / inactive — the app degrades gracefully, it doesn't
 break.
+
+> **Audiobooks aren't analysed.** Only your **music** library is scanned for sonic
+> features — audiobooks (a separate Emby library) are left out, so spoken word never
+> turns up in Track Radio or Similar. You still browse and play them as normal.
 
 ---
 
@@ -293,6 +300,10 @@ Once some of your library is analysed:
   Audiobooks) to play with no signal. Audiobooks resume where you left off even
   offline, then sync your position back to Emby when you reconnect. Downloads are
   **Wi-Fi-only by default** (toggle in Settings → Downloads).
+- **Volume normalisation** (Settings → Volume normalisation, on by default) — play a
+  quiet track and a loud one back to back, then toggle it off and replay: with it on
+  they sit at a similar volume; off, the loud one jumps. (Needs the backend, since it
+  uses the loudness measured during analysis.)
 - **Cast** to a Chromecast/Android TV/SHIELD if you have one.
 
 **Please report:** what you tried, what device/Android version, what you expected vs.
