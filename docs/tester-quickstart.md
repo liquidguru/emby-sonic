@@ -209,6 +209,11 @@ prompted.
 > public release will use a dedicated signing key, at which point you'd uninstall and
 > reinstall once.
 
+> **Want Android Auto?** Sideloaded apps are hidden from Android Auto by default.
+> To use liquidWave in the car, enable AA developer mode once on the phone:
+> Android Auto settings → tap **Version** repeatedly to unlock *Developer settings*
+> → enable **Unknown sources**. liquidWave then shows up in the AA app list.
+
 On first launch enter:
 
 - **Emby server URL** + your Emby username/password
