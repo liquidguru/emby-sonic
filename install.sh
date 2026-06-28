@@ -215,7 +215,20 @@ if [ -z "$emby_api_key" ]; then
   exit 1
 fi
 
-worker_secret="$(random_secret)"
+if [ "$include_coordinator" = "1" ]; then
+  # Coordinator and worker share this .env, so a fresh random shared secret is
+  # written to both sides at once.
+  worker_secret="$(random_secret)"
+else
+  # Separate worker rig: the coordinator already exists elsewhere and decides the
+  # secret. Match it here, or leave blank to fall back to EMBY_API_KEY (the
+  # coordinator default). A random value would never match and auth would 401.
+  echo
+  echo "The coordinator decides the worker token. Leave blank to use the Emby"
+  echo "API key (the coordinator's default), or enter the WORKER_SECRET you set"
+  echo "on the coordinator."
+  worker_secret="$(prompt_secret "Coordinator WORKER_SECRET (blank = use Emby API key)")"
+fi
 worker_image="$WORKER_IMAGE_CPU"
 if [ "$use_gpu" = "1" ]; then
   worker_image="$WORKER_IMAGE_CUDA"
