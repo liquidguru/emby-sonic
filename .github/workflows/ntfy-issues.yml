@@ -1,0 +1,58 @@
+name: Notify ntfy on issues
+
+# Pings an ntfy topic when a tester opens an issue or comments, so new reports
+# aren't missed. Endpoint is held in repo secrets (NTFY_URL — full URL incl. the
+# topic; optional NTFY_TOKEN for an authenticated ntfy server) so it isn't exposed
+# in the repo. No-ops cleanly if NTFY_URL isn't set.
+
+on:
+  issues:
+    types: [opened, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    # Don't notify on the owner's own issues/comments.
+    if: github.actor != github.repository_owner
+    steps:
+      - name: Push to ntfy
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          # Untrusted event data goes through env (never inline in run) to avoid
+          # shell script injection from issue/comment text.
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_USER: ${{ github.event.issue.user.login }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+        run: |
+          if [ -z "$NTFY_URL" ]; then
+            echo "NTFY_URL secret not set — skipping notification."
+            exit 0
+          fi
+          if [ "$EVENT" = "issues" ]; then
+            TITLE="New issue #${ISSUE_NUM}: ${ISSUE_TITLE}"
+            BODY="Opened by ${ISSUE_USER}"
+            CLICK="$ISSUE_URL"
+          else
+            TITLE="Comment on #${ISSUE_NUM}: ${ISSUE_TITLE}"
+            BODY="${COMMENT_USER}: ${COMMENT_BODY}"
+            CLICK="$COMMENT_URL"
+          fi
+          curl -fsS \
+            ${NTFY_TOKEN:+-H "Authorization: Bearer ${NTFY_TOKEN}"} \
+            -H "Title: ${TITLE}" \
+            -H "Click: ${CLICK}" \
+            -H "Tags: speech_balloon" \
+            -H "Priority: default" \
+            --data "$BODY" \
+            "$NTFY_URL"
