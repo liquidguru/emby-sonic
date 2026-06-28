@@ -1,6 +1,7 @@
 package guru.liquid.embysonic.domain
 
 import guru.liquid.embysonic.data.emby.EmbyApi
+import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.dto.AuthenticateRequest
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -14,6 +15,7 @@ private const val DEFAULT_COORDINATOR_PORT = 8765
 class AuthRepository @Inject constructor(
     private val embyApi: EmbyApi,
     private val settings: SettingsRepository,
+    private val library: LibraryRepository,
 ) {
     /**
      * Logs into Emby and persists the session. The Emby base URL must be saved
@@ -48,7 +50,10 @@ class AuthRepository @Inject constructor(
         )
     }
 
-    suspend fun logout() = settings.clearSession()
+    suspend fun logout() {
+        library.invalidateBrowseCache()
+        settings.clearSession()
+    }
 
     private fun deriveCoordinatorUrl(serverUrl: String): String {
         val url = serverUrl.toHttpUrlOrNull() ?: return serverUrl
