@@ -342,6 +342,18 @@ adb -s <phone-ip>:<connect-port> install -r android/app/build/outputs/apk/debug/
 On first launch, enter your Emby server URL + credentials and the coordinator URL
 in the login screen. The phone must be on the same LAN as Emby and the coordinator.
 
+### Android Auto (sideloaded build)
+
+Because the app is sideloaded (not from the Play Store), Android Auto hides it by
+default. To use it in the car, enable Android Auto **developer mode** and allow
+unknown sources — once, on the phone:
+
+1. Android Auto settings → tap the **Version** repeatedly to unlock *Developer settings*.
+2. Developer settings → enable **Unknown sources**.
+
+liquidWave then appears in Android Auto's app list. (A future Play Store release
+won't need this.)
+
 ## License
 
 TBD — intended to be open source / community-distributable.

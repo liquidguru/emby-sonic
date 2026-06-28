@@ -103,7 +103,8 @@ internal fun CardGrid(
     Box(modifier = modifier.fillMaxSize()) {
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Fixed(2),
+        // 3-up fills the screen better than 2 when browsing (tester feedback).
+        columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = ScreenPadding,
             end = ScreenPadding + 8.dp,

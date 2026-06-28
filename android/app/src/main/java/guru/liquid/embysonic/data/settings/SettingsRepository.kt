@@ -51,6 +51,7 @@ class SettingsRepository @Inject constructor(
         val EQ_PRESET = intPreferencesKey("eq_preset")
         val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
         val VOLUME_NORMALIZATION = booleanPreferencesKey("volume_normalization")
+        val PREFETCH_COUNT = intPreferencesKey("prefetch_count")
         val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
         val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
         val THEME_CHOICE = stringPreferencesKey("theme_choice")
@@ -182,6 +183,19 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    /**
+     * How many upcoming queue tracks to pre-cache for gap-free playback through
+     * brief connectivity drops. Higher = more resilient to skipping ahead with no
+     * signal, at the cost of more data/storage. One of [PREFETCH_COUNT_OPTIONS].
+     */
+    val prefetchAheadCount: Flow<Int> =
+        context.dataStore.data.map { (it[Keys.PREFETCH_COUNT] ?: DEFAULT_PREFETCH_COUNT).coerceInPrefetch() }
+
+    suspend fun setPrefetchAheadCount(value: Int) {
+        context.dataStore.edit { it[Keys.PREFETCH_COUNT] = value.coerceInPrefetch() }
+        refreshCache()
+    }
+
     suspend fun setGeneratedMixTracks(value: Int) {
         context.dataStore.edit { it[Keys.GENERATED_MIX_TRACKS] = value }
     }
@@ -232,6 +246,7 @@ class SettingsRepository @Inject constructor(
             eqPreset = this[Keys.EQ_PRESET] ?: -1,
             downloadWifiOnly = this[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
             volumeNormalizationEnabled = this[Keys.VOLUME_NORMALIZATION] ?: true,
+            prefetchAheadCount = (this[Keys.PREFETCH_COUNT] ?: DEFAULT_PREFETCH_COUNT).coerceInPrefetch(),
             generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
             audiobookSpeed = (this[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed(),
             themeChoice = ThemeChoice.fromKey(this[Keys.THEME_CHOICE]),
@@ -286,12 +301,18 @@ class SettingsRepository @Inject constructor(
     private fun String.splitCsv(): List<String> =
         split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
-    private companion object {
+    companion object {
         const val DEFAULT_CROSSFADE_MS = 6_000
         const val DEFAULT_GENERATED_MIX_TRACKS = 25
         const val DEFAULT_AUDIOBOOK_SPEED = 1f
+        const val DEFAULT_PREFETCH_COUNT = 3
+        val PREFETCH_COUNT_OPTIONS = listOf(3, 5, 10, 15)
     }
 }
 
 private fun Float.coerceInAudioSpeed(): Float =
     takeIf { it.isFinite() }?.coerceIn(0.75f, 2.0f) ?: 1f
+
+private fun Int.coerceInPrefetch(): Int =
+    SettingsRepository.PREFETCH_COUNT_OPTIONS.minByOrNull { kotlin.math.abs(it - this) }
+        ?: SettingsRepository.DEFAULT_PREFETCH_COUNT
