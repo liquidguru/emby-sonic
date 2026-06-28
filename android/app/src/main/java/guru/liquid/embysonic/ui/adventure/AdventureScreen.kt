@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,6 +31,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,7 +60,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.ui.library.Artwork
-import guru.liquid.embysonic.ui.library.TrackList
 import guru.liquid.embysonic.ui.search.SearchViewModel
 import guru.liquid.embysonic.ui.search.TrackSearchField
 import guru.liquid.embysonic.ui.search.TrackSearchResults
@@ -96,49 +101,23 @@ fun AdventureScreen(
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Text(
-                "A journey that morphs from one track to another.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            )
-
-            EndpointCard("Start", state.start) { pickerTarget = PickTarget.START }
-            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(bottom = 16.dp),
+        ) {
+            item {
+                AdventureControls(
+                    start = state.start,
+                    end = state.end,
+                    length = state.length,
+                    isLoading = state.result is AdventureResult.Loading,
+                    onPickStart = { pickerTarget = PickTarget.START },
+                    onPickEnd = { pickerTarget = PickTarget.END },
+                    onLengthChange = viewModel::setLength,
+                    onGenerate = viewModel::generate,
                 )
             }
-            EndpointCard("End", state.end) { pickerTarget = PickTarget.END }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("Length", style = MaterialTheme.typography.bodyMedium)
-                listOf(10, 15, 20, 25).forEach { n ->
-                    FilterChip(
-                        selected = state.length == n,
-                        onClick = { viewModel.setLength(n) },
-                        label = { Text("$n") },
-                    )
-                }
-            }
-
-            Button(
-                onClick = viewModel::generate,
-                enabled = state.start != null && state.end != null &&
-                    state.result !is AdventureResult.Loading,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            ) {
-                Text("Generate adventure")
-            }
-
-            AdventureResultBody(
+            adventureResultBody(
                 result = state.result,
                 onPlayAll = viewModel::play,
                 onPlayTrack = viewModel::playFrom,
@@ -203,6 +182,60 @@ fun AdventureScreen(
 }
 
 @Composable
+private fun AdventureControls(
+    start: LibraryItem?,
+    end: LibraryItem?,
+    length: Int,
+    isLoading: Boolean,
+    onPickStart: () -> Unit,
+    onPickEnd: () -> Unit,
+    onLengthChange: (Int) -> Unit,
+    onGenerate: () -> Unit,
+) {
+    Column {
+        Text(
+            "A journey that morphs from one track to another.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+
+        EndpointCard("Start", start, onPickStart)
+        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        EndpointCard("End", end, onPickEnd)
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Length", style = MaterialTheme.typography.bodyMedium)
+            listOf(10, 15, 20, 25).forEach { n ->
+                FilterChip(
+                    selected = length == n,
+                    onClick = { onLengthChange(n) },
+                    label = { Text("$n") },
+                )
+            }
+        }
+
+        Button(
+            onClick = onGenerate,
+            enabled = start != null && end != null && !isLoading,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        ) {
+            Text("Generate adventure")
+        }
+    }
+}
+
+@Composable
 private fun EndpointCard(label: String, item: LibraryItem?, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).clickable(onClick = onClick),
@@ -250,8 +283,7 @@ private fun EndpointCard(label: String, item: LibraryItem?, onClick: () -> Unit)
     }
 }
 
-@Composable
-private fun AdventureResultBody(
+private fun LazyListScope.adventureResultBody(
     result: AdventureResult,
     onPlayAll: () -> Unit,
     onPlayTrack: (LibraryItem) -> Unit,
@@ -259,34 +291,69 @@ private fun AdventureResultBody(
 ) {
     when (result) {
         AdventureResult.Idle -> Unit
-        AdventureResult.Loading -> Box(
-            modifier = Modifier.fillMaxWidth().padding(32.dp),
-            contentAlignment = Alignment.Center,
-        ) { CircularProgressIndicator() }
-        is AdventureResult.Error -> Text(
-            result.message,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(20.dp),
-        )
-        is AdventureResult.Data -> Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = onPlayAll) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Text("Play", modifier = Modifier.padding(start = 6.dp))
-                }
-                TextButton(onClick = onSave) {
-                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
-                    Text("Save", modifier = Modifier.padding(start = 6.dp))
-                }
-            }
-            TrackList(
-                items = result.tracks,
-                placeholderBook = false,
-                onTrackClick = onPlayTrack,
+        AdventureResult.Loading -> item {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(32.dp),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator() }
+        }
+        is AdventureResult.Error -> item {
+            Text(
+                result.message,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(20.dp),
             )
         }
+        is AdventureResult.Data -> {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(onClick = onPlayAll) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Text("Play", modifier = Modifier.padding(start = 6.dp))
+                    }
+                    TextButton(onClick = onSave) {
+                        Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+                        Text("Save", modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
+            }
+            items(result.tracks, key = { it.playlistItemId ?: it.id }) { item ->
+                AdventureTrackRow(item = item, onClick = { onPlayTrack(item) })
+            }
+        }
     }
+}
+
+@Composable
+private fun AdventureTrackRow(item: LibraryItem, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        leadingContent = {
+            Artwork(
+                item.imageUrl,
+                item.title,
+                Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)),
+            )
+        },
+        headlineContent = {
+            Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        supportingContent = item.subtitle?.let {
+            { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                item.trailingText?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+                IconButton(onClick = onClick) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Play ${item.title}")
+                }
+            }
+        },
+    )
 }
