@@ -209,9 +209,12 @@ short, **shipped and verified on-device:**
   `tools/backfill_loudness.py`; served by `POST /sonic/tracks/loudness`.
 - Home customization (sections, order, compact cards).
 
-**Next candidates** (see spec "M4 — Remaining"): sonic-similar sidebars on
-Artist/Album detail; wire up or hide the Guest DJ toggle; mini-player dissolve
-polish; coordinator-side dedupe of the adventure walk; offline prefetch buffer.
+**Live backlog:** the **GitHub issue tracker is the working to-do list** — run
+`gh issue list` before starting (e.g. #9 Docker-worker GPU, #12 slow Albums/Artists
+browse, #13 Sonic Adventure scroll layout, #10/#11 install/registry). Coordinate via
+issues + feature-branch PRs (master is the integration branch). Other longer-term
+candidates: sonic-similar sidebars on Artist/Album detail; wire up or hide the Guest
+DJ toggle; mini-player dissolve polish; coordinator-side dedupe of the adventure walk.
 
 **Known constraints:** judge audio/crossfade/EQ on the **real phone** (emulator
 codecs are unreliable for blends). Coordinator must be running on liquidBee for
