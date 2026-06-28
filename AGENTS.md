@@ -163,7 +163,10 @@ There is no other copy; don't rely on a local-only commit.
   500 on `/Users/Me` for a bare `X-Emby-Token`).
 - **Audiobooks** are a separate Emby library and have **no sonic features** and
   **no cover art** on album/author items (resolve covers from a child chapter's
-  Primary image). Music vs audiobooks are scoped by library/ParentId.
+  Primary image). Music vs audiobooks are scoped by library/ParentId — the
+  coordinator scan (`analysis/emby.py fetch_audio_items`) only pulls `music`-type
+  libraries, so audiobooks never enter the sonic index. `tools/purge_audiobooks.py`
+  cleans up any that leaked in from an earlier all-audio scan.
 - **Android nav:** two bottom-nav tabs must not share one parameterized route
   pattern (save/restore-state collides); use distinct route prefixes. Plain
   forward `navigate` for drill-down detail levels is fine.
@@ -199,6 +202,11 @@ short, **shipped and verified on-device:**
   badge, online/offline indicator, Wi-Fi-only setting). Downloaded long-form plays
   from the local file and seeks in-player; `DownloadProgressStore` gives durable
   offline resume with a single resume point per book, synced to Emby on reconnect.
+- **Volume normalisation**: per-track gain from the coordinator's measured LUFS
+  (`GainAudioProcessor` in each player's `DefaultAudioSink`, decoupled from
+  `player.volume` which the crossfade/fade owns; target −14 LUFS clamped −15..+6 dB;
+  Settings toggle, default on). LUFS measured by the worker (`pyloudnorm`) +
+  `tools/backfill_loudness.py`; served by `POST /sonic/tracks/loudness`.
 - Home customization (sections, order, compact cards).
 
 **Next candidates** (see spec "M4 — Remaining"): sonic-similar sidebars on

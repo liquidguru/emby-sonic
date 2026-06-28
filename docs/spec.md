@@ -1243,8 +1243,7 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   very large downloads (currently an app-scoped coroutine) and album/track
   (non-playlist) downloads.
 
-- **M5.19 — Volume normalisation (2026-06-25, built; on branch
-  `feat/volume-normalization`, not yet merged to master):** per-track loudness
+- **M5.19 — Volume normalisation (2026-06-25, merged to master):** per-track loudness
   levelling so a quiet track and a loud master play at a similar perceived volume.
   Emby itself exposes no loudness data on this library (no `LUFS`/`NormalizationGain`
   field, no analysis task in 4.10), so loudness is **measured in our own pipeline**:
@@ -1265,7 +1264,44 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   live. **On-device A/B verified on the Pixel 8 Pro (2026-06-25):** with the toggle
   on a loud master (Mona "Shooting the Moon", −9.8 LUFS) was attenuated and a quiet
   track (Dire Straits "Why Worry", −34 LUFS) boosted; flipping the toggle reversed
-  both, live. Remaining: full-library LUFS backfill (test ran a 200-track batch).
+  both, live. Bundled (not a separate opt-in): LUFS is ~free to compute alongside
+  embeddings, and the Settings toggle is the opt-out. Full-library backfill run on
+  liquidBee post-merge.
+
+- **M5.20 — Windowless analysis worker (2026-06-25, merged to master):** the
+  scheduled-task installer launched `powershell.exe -WindowStyle Hidden`, but
+  Windows 11's default terminal (Windows Terminal) ignores `-WindowStyle Hidden`
+  and popped an empty window every idle cycle. `deploy/worker-install.ps1` now
+  generates a `worker_run.generated.py` launcher run by **`pythonw.exe`** (no
+  console allocated on any machine, any terminal setting); `worker.py` logs to
+  `worker.log` itself (file handler always, console only when attached) since
+  pythonw has no stdout. Verified on liquidHulk.
+
+- **M5.21 — Plugin built against stable Emby SDK (2026-06-25, merged; plugin
+  0.4.2.0→0.4.3.0):** the plugin was compiled against the 4.10.0.14-beta SDK, so
+  .NET's upward-only assembly binding made Emby **silently skip it on older stable
+  servers** (a tester on 4.9.5.0 saw nothing, while other plugins loaded). Rebuilt
+  against the **4.8.11.0** SDK so it loads on 4.8/4.9 stable and 4.10 beta alike.
+  The build-against-oldest rule is documented in `plugin/EmbysonicPlugin.csproj`.
+  Verified loading + functioning on the 4.10 beta (bee) and the tester's 4.9.5.0.
+
+- **M5.22 — Analysis status: skipped vs pending (2026-06-25, merged; plugin
+  0.4.3.0):** `/sonic/status` lumped permanently-failed tracks into `pending`, so
+  it sat forever at <100% / "Pending N" even when no work remained. Now it reports
+  `failed_tracks` separately and measures progress over *analysable* tracks, so it
+  reads **"Analysis complete · N skipped"** once the genuine queue is empty. New
+  `GET /sonic/status/errors` lists each failed track + reason; the plugin config
+  page shows it behind a "Show details" toggle. Verified live on bee.
+
+- **M5.23 — Audiobooks excluded from analysis + index purge (2026-06-25, merged):**
+  the scanner queued every Emby "Audio" item, so audiobooks (a separate
+  `audiobooks`-type library) got embedded and polluted Track Radio / Similar /
+  Adventure / Guest DJ — **2,510 spoken-word tracks** on the dev library.
+  `analysis/emby.py fetch_audio_items` now scopes to `music`-type libraries (scanned
+  by ParentId; falls back to all-audio only if none is typed `music`).
+  `tools/purge_audiobooks.py` removes already-embedded non-music tracks (id-based
+  keep-set from Emby's music libraries, with safety aborts). Ran on bee: purged
+  2,510, FAISS rebuilt; total 28,553→26,043, skipped 616→494 (genuine broken music).
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
