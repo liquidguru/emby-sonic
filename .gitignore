@@ -9,6 +9,7 @@ venv/
 worker.log
 worker_run.generated.ps1
 worker_run.generated.py
+docker-compose.installer.yml
 *.egg-info/
 dist/
 
