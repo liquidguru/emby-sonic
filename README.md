@@ -402,4 +402,11 @@ won't need this.)
 
 ## License
 
-TBD — intended to be open source / community-distributable.
+MIT — see [`LICENSE`](LICENSE). Free to use, modify, and distribute.
+
+## Testing it / private beta
+
+If you run Emby and want to try liquidWave, see the
+[tester quickstart](docs/tester-quickstart.md) — it walks through standing up the
+coordinator, installing the plugin, running a worker to analyse your library, and
+installing the Android app.
