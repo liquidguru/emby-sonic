@@ -1,5 +1,11 @@
 # Emby Sonic Quickstart
 
+> **Private beta note:** the guided installer below pulls prebuilt images from
+> GHCR, which are **not yet public**. Until launch, beta testers should build
+> from source instead — see the Docker section in the
+> [README](../README.md#deploy-on-a-nas-docker) (`docker compose up -d --build`).
+> This guide applies as-is once the images are public.
+
 Start by choosing the setup that matches where Docker will run.
 
 | Scenario | Choose This When | Fast Path |
