@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Query
 
@@ -18,21 +16,6 @@ _WEB_CLIENT_AUTH = (
     'DeviceId="emby-sonic-web", '
     'Version="web-mvp"'
 )
-
-
-def _normalize_url(raw: str) -> str:
-    trimmed = raw.strip().rstrip("/")
-    if not trimmed:
-        raise HTTPException(status_code=400, detail="Emby server URL is required")
-    with_scheme = (
-        trimmed
-        if trimmed.startswith(("http://", "https://"))
-        else f"https://{trimmed}"
-    )
-    parsed = urlparse(with_scheme)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise HTTPException(status_code=400, detail="Invalid Emby server URL")
-    return with_scheme
 
 
 def _emby_headers(token: str | None = None) -> dict[str, str]:
@@ -76,10 +59,12 @@ def _track(item: dict) -> WebTrackOut | None:
 @router.post("/auth/login", response_model=WebLoginResponse)
 async def web_login(body: WebLoginRequest) -> WebLoginResponse:
     """
-    Browser login bootstrap. Proxies Emby's AuthenticateByName so the static app
-    can stay same-origin with the coordinator and avoid browser CORS problems.
+    Browser login bootstrap. Authenticates against the coordinator's *own*
+    configured Emby server (settings.emby_url) — never a client-supplied URL —
+    so it stays same-origin and can't be abused as an open proxy. The browser
+    streams audio from the returned server_url.
     """
-    server_url = _normalize_url(body.server_url)
+    server_url = settings.emby_url.rstrip("/")
     payload = {"Username": body.username, "Pw": body.password}
     async with httpx.AsyncClient(base_url=server_url, timeout=15.0) as client:
         try:

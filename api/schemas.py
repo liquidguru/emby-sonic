@@ -25,7 +25,6 @@ class LoudnessResponse(BaseModel):
 
 
 class WebLoginRequest(BaseModel):
-    server_url: str
     username: str
     password: str
 
