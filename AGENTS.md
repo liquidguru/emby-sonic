@@ -89,7 +89,7 @@ $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 
 The emulator reaches the LAN directly (Emby + coordinator at 192.168.1.9).
 
-### Real device — Kaj's Pixel 8 Pro over wireless ADB (preferred for audio)
+### Real device — the user's Pixel 8 Pro over wireless ADB (preferred for audio)
 
 The **emulator's software audio codecs are unreliable** for crossfade and
 equalizer work (two simultaneous decoders during a blend exhaust them → silent
@@ -101,14 +101,14 @@ the connection port changes). To install a build:
 
 ```powershell
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-& $adb devices    # phone shows as adb-39151FDJG00670-...._adb-tls-connect._tcp when connected
+& $adb devices    # phone shows as adb-<serial>-...._adb-tls-connect._tcp when connected
 & $adb -s "<phone-device-id>" install -r android\app\build\outputs\apk\debug\app-debug.apk
 ```
 
-If it's not connected (sleep / Wi-Fi blip), ask Kaj for the current **IP:port**
+If it's not connected (sleep / Wi-Fi blip), ask the user for the current **IP:port**
 from the phone's *Settings → Developer options → Wireless debugging* screen, then
-`& $adb connect 192.168.1.151:<port>` (no re-pair needed). First pairing only:
-"Pair device with pairing code" → `adb pair 192.168.1.151:<pairport> <code>`.
+`& $adb connect <phone-ip>:<port>` (no re-pair needed). First pairing only:
+"Pair device with pairing code" → `adb pair <phone-ip>:<pairport> <code>`.
 On first launch the app needs login (Emby URL/creds + coordinator URL).
 
 ## Coordinator / workers ops
@@ -176,12 +176,13 @@ There is no other copy; don't rely on a local-only commit.
 
 - `.env` (gitignored) holds `EMBY_API_KEY` for curl testing. `.env.example`
   shows the shape. Never commit real keys or put them in this file.
-- Kaj's Emby UserId: `a356b428d6ae419ea8ef9d7d92bd60ff` (id only, not a secret).
+- The maintainer's Emby UserId is kept in local notes (not committed) — it's an
+  account id, not a secret, but no need to publish it.
 
 ## Current state (2026-06-14)
 
 Phases 1 & 2 complete. Phase 3 (Android "liquidWave") is well advanced and
-running on Kaj's Pixel 8 Pro. `docs/spec.md` has the full milestone list; in
+running on the user's Pixel 8 Pro. `docs/spec.md` has the full milestone list; in
 short, **shipped and verified on-device:**
 
 - Browse (artists/albums/tracks, authors/books), drill-down, A–Z picker.

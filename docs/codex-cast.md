@@ -92,17 +92,16 @@ Verification notes:
   cast-safe URL, `api_key` auth, and mp3 transcode.) The cast shows as a separate
   session you can't drive from the in-app player — expected; that's Phase 1.
 - **NVIDIA SHIELD (Android TV): FIXED.** Initially failed (`idleReason=4` ERROR):
-  the app's `serverUrl` is the remote `https://tv.liquid.guru` route, which for
-  **LAN clients** resolves (local DNS rewrite) to `192.168.1.100:443` = Synology
-  **DSM** (serving the `liquidguru.synology.me` cert), NOT NPM. NPM actually
-  listens on `192.168.1.100:4430` with a valid `*.liquid.guru` cert and proxies
-  `tv.liquid.guru` → `http://192.168.1.9:8096` (Emby on liquidBee). The phone app
-  works because it doesn't enforce hostname verification; the SHIELD does, so TLS
-  failed. **Fix:** cast against the **direct LAN Emby URL** — added a
-  `castServerUrl` setting (Settings → "Cast server URL (LAN)", e.g.
-  `http://192.168.1.9:8096`); `CastManager` uses it (falling back to `serverUrl`)
-  for the stream and rebases artwork onto it too. Cast receivers accept cleartext
-  http on the LAN. Verified on the SHIELD: plays with album art.
+  the app's `serverUrl` is a remote HTTPS route (e.g. `https://media.example.com`)
+  which, for **LAN clients**, can resolve (via a local DNS rewrite) to a different
+  box/port than the reverse proxy — landing on a host that serves a *different*
+  TLS cert than the hostname expects. The phone app works because it doesn't
+  enforce hostname verification; the SHIELD does, so TLS failed. **Fix:** cast
+  against the **direct LAN Emby URL** — added a `castServerUrl` setting
+  (Settings → "Cast server URL (LAN)", e.g. `http://<emby-host>:8096`);
+  `CastManager` uses it (falling back to `serverUrl`) for the stream and rebases
+  artwork onto it too. Cast receivers accept cleartext http on the LAN. Verified
+  on the SHIELD: plays with album art.
 - **Artwork:** `CastManager.castImageUrl()` appends `api_key` and rebases onto
   the cast base. Working.
 
