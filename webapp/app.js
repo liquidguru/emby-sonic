@@ -209,6 +209,14 @@ function duration(ms) {
   return node;
 }
 
+function playSessionId() {
+  // crypto.randomUUID() is secure-context-only (HTTPS / localhost) and is
+  // undefined over plain http on a LAN IP — the MVP's intended deployment.
+  // PlaySessionId only needs to be unique per playback, not cryptographic.
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  return `ps-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 function streamUrl(itemId) {
   const base = state.session.serverUrl.replace(/\/$/, "");
   const params = new URLSearchParams({
@@ -218,7 +226,7 @@ function streamUrl(itemId) {
     AudioCodec: "mp3,aac,flac,vorbis,opus",
     TranscodingContainer: "mp3",
     TranscodingProtocol: "http",
-    PlaySessionId: crypto.randomUUID(),
+    PlaySessionId: playSessionId(),
     api_key: state.session.token,
   });
   return `${base}/Audio/${encodeURIComponent(itemId)}/universal?${params}`;
