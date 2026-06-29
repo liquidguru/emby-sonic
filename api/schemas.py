@@ -24,6 +24,26 @@ class LoudnessResponse(BaseModel):
     loudness: dict[str, float]
 
 
+class WebLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class WebLoginResponse(BaseModel):
+    access_token: str
+    user_id: str
+    user_name: str | None = None
+    server_url: str
+
+
+class WebTrackOut(BaseModel):
+    id: str
+    title: str | None
+    artist: str | None
+    album: str | None
+    duration_ms: int | None
+
+
 class SimilarTrack(BaseModel):
     track: TrackOut
     score: float  # cosine similarity (0–1, higher = more similar)

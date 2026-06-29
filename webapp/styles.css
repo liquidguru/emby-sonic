@@ -1,0 +1,291 @@
+:root {
+  color-scheme: dark;
+  --bg: #111318;
+  --panel: #1b1e24;
+  --panel-strong: #242832;
+  --text: #f3f0e8;
+  --muted: #aaaeb8;
+  --line: #343a46;
+  --accent: #55d6be;
+  --accent-strong: #f06a8a;
+  --button-text: #071311;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  width: min(1120px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.topbar,
+.queue-head,
+.search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 3.6rem;
+  line-height: 0.95;
+}
+
+h2 {
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.auth-panel {
+  width: min(480px, 100%);
+  padding: 20px;
+}
+
+.form-stack {
+  display: grid;
+  gap: 14px;
+}
+
+label span,
+.search-field span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: #0d0f13;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  outline: none;
+}
+
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(85, 214, 190, 0.18);
+}
+
+.primary-button,
+.play-button,
+.icon-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.primary-button {
+  padding: 0 18px;
+  color: var(--button-text);
+  background: var(--accent);
+}
+
+.primary-button.compact {
+  align-self: end;
+}
+
+.icon-button {
+  width: 44px;
+  color: var(--text);
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+}
+
+.play-button {
+  width: 58px;
+  color: var(--button-text);
+  background: var(--accent-strong);
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+
+.search-panel,
+.queue-panel {
+  padding: 16px;
+}
+
+.search-row {
+  align-items: end;
+}
+
+.search-field {
+  flex: 1;
+}
+
+.list,
+.queue-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.queue-list {
+  counter-reset: queue;
+}
+
+.track-row,
+.queue-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.track-row:last-child,
+.queue-row:last-child {
+  border-bottom: 0;
+}
+
+.track-title {
+  display: block;
+  font-weight: 750;
+}
+
+.track-meta,
+.muted {
+  color: var(--muted);
+}
+
+.track-meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.9rem;
+}
+
+.duration {
+  color: var(--muted);
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.artwork {
+  width: 92px;
+  height: 92px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+
+.queue-row {
+  grid-template-columns: 24px 1fr;
+}
+
+.queue-row::before {
+  counter-increment: queue;
+  content: counter(queue);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.queue-row.active .track-title {
+  color: var(--accent);
+}
+
+.status-line {
+  min-height: 22px;
+  color: var(--muted);
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (max-width: 780px) {
+  .app-shell {
+    padding: 18px;
+  }
+
+  h1 {
+    font-size: 2.4rem;
+  }
+
+  .content-grid,
+  .search-row {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .primary-button.compact {
+    width: 100%;
+  }
+
+  .queue-head {
+    align-items: flex-start;
+  }
+
+  .artwork {
+    width: 74px;
+    height: 74px;
+  }
+}
