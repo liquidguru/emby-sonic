@@ -1339,6 +1339,18 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   worker image and emits `gpus: all` in the generated Compose file. Added
   `docs/quickstart.md` as the scenario-first setup guide.
 
+- **M5.27 — Browser app MVP (2026-06-30, PR for issue #19):**
+  added a no-build static web app under `webapp/`, served unauthenticated by the
+  coordinator at `/app` via FastAPI `StaticFiles`. The first vertical slice is
+  login -> track search -> Track Radio -> HTML5 audio playback, with Media
+  Session metadata/next/previous/play/pause controls for browser lock screens.
+  Browser CORS is avoided by thin coordinator proxies for Emby
+  `AuthenticateByName` (`POST /sonic/auth/login`) and track search
+  (`GET /sonic/search/tracks`); audio still streams directly from Emby's
+  `/Audio/{id}/universal` endpoint with the user token as `api_key`.
+  Explicitly deferred: Sonic Adventure, Mixes, Similar, library browse, offline,
+  service-worker/PWA install, TLS, and richer iOS background-audio hardening.
+
 - **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
   session token is now encrypted before being stored in the settings DataStore.
   `SettingsRepository` writes new sessions to a `session_token_ciphertext` value

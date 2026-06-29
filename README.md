@@ -31,6 +31,10 @@ Any LAN machine (e.g. a GPU box)
 Workers can run on the Emby host or on any networked machine. They stream audio
 directly from Emby's HTTP API — no file shares or special network config needed.
 
+The coordinator also serves a minimal browser app at `http://<host>:8765/app`
+for non-Android users. The first slice covers Emby login, track search, Track
+Radio playback, and browser/lock-screen media controls.
+
 ## Phase 1 — Python Analysis Service
 
 New installs should start with the scenario guide:
@@ -254,6 +258,8 @@ All user-facing routes are under `/sonic` and require an `X-Emby-Token` header
 
 | Endpoint | Method | Description |
 |---|---|---|
+| `/sonic/auth/login` | POST | Browser login proxy to Emby's `AuthenticateByName` |
+| `/sonic/search/tracks` | GET | Authenticated browser track-search proxy to Emby |
 | `/sonic/status` | GET | Analysis progress + library stats |
 | `/sonic/tracks/{id}/similar` | GET | Sonically similar tracks |
 | `/sonic/tracks/{id}/radio` | GET | Track radio playlist |

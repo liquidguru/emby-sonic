@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import status, tracks, adventure, mixes, queue, library, artists, albums, worker
+from fastapi.staticfiles import StaticFiles
+from api.routes import status, tracks, adventure, mixes, queue, library, artists, albums, worker, webapp
 from db.database import init_db
 from config import settings
 
@@ -39,6 +41,10 @@ app.include_router(library.router, prefix="/sonic")
 app.include_router(artists.router, prefix="/sonic")
 app.include_router(albums.router, prefix="/sonic")
 app.include_router(worker.router, prefix="/sonic")
+app.include_router(webapp.router, prefix="/sonic")
+
+_webapp_dir = Path(__file__).resolve().parent / "webapp"
+app.mount("/app", StaticFiles(directory=_webapp_dir, html=True), name="webapp")
 
 
 if __name__ == "__main__":
