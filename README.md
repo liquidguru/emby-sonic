@@ -363,6 +363,25 @@ JAVA_HOME="<path-to-jdk17>" ./gradlew :app:assembleDebug
 # APK: android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### Release build
+
+Release builds are R8-minified, resource-shrunk, and signed from local secrets.
+Put these in `~/.gradle/gradle.properties` or export them as environment
+variables; never commit the keystore or passwords:
+
+```properties
+LIQUIDWAVE_RELEASE_STORE_FILE=/absolute/path/to/liquidwave-release.jks
+LIQUIDWAVE_RELEASE_STORE_PASSWORD=...
+LIQUIDWAVE_RELEASE_KEY_ALIAS=...
+LIQUIDWAVE_RELEASE_KEY_PASSWORD=...
+```
+
+```bash
+cd android
+JAVA_HOME="<path-to-jdk17>" ./gradlew :app:assembleRelease
+# APK: android/app/build/outputs/apk/release/app-release.apk
+```
+
 ### Install on a phone (USB or wireless ADB)
 
 The debug APK is fine for real use (debug vs release doesn't affect audio).

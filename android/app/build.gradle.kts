@@ -7,6 +7,9 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+fun releaseSigningValue(name: String): String? =
+    providers.gradleProperty(name).orElse(providers.environmentVariable(name)).orNull
+
 android {
     namespace = "guru.liquid.embysonic"
     compileSdk = 36
@@ -21,9 +24,31 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFilePath = releaseSigningValue("LIQUIDWAVE_RELEASE_STORE_FILE")
+            if (!storeFilePath.isNullOrBlank()) {
+                storeFile = file(storeFilePath)
+                storePassword = releaseSigningValue("LIQUIDWAVE_RELEASE_STORE_PASSWORD")
+                keyAlias = releaseSigningValue("LIQUIDWAVE_RELEASE_KEY_ALIAS")
+                keyPassword = releaseSigningValue("LIQUIDWAVE_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            // Use the release key when the signing secrets are present
+            // (storeFile gets set above only then); otherwise fall back to the
+            // debug signing config so `assembleRelease` still produces an
+            // installable, signed APK for contributors/CI without the keystore —
+            // rather than failing on a half-configured release SigningConfig or
+            // emitting an unsigned APK.
+            signingConfig = signingConfigs.getByName("release")
+                .takeIf { it.storeFile != null }
+                ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

@@ -1165,6 +1165,14 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   dev-pc → SMB to NAS → scp to the Emby host, since coordinator-host has the .NET
   runtime but no SDK).
 
+- **M5.16a — Android release hardening (2026-06-21, built):** release APKs now
+  enable R8 minification plus resource shrinking and use a dedicated release
+  signing config populated from local `LIQUIDWAVE_RELEASE_*` Gradle properties
+  or environment variables. The repo ignores keystore file types/dirs and keeps
+  ProGuard/R8 rules for kotlinx serialization, Hilt, Media3/ExoPlayer, Coil, and
+  Google Cast so the production build keeps the playback/cast/runtime surfaces it
+  needs.
+
 - **M5.16 — Broken-track maintenance tooling (2026-06-21, built):**
   `tools/broken_tracks.py` exports tracks stuck in `analysis_status='error'` to
   CSV (`id,title,artist,album,file_path,error`) and can requeue selected IDs or
