@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111318">
+  <title>Emby Sonic</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="topbar" aria-label="App header">
+      <div>
+        <p class="eyebrow">Emby Sonic</p>
+        <h1>Sonic Radio</h1>
+      </div>
+      <button id="logoutButton" class="icon-button hidden" type="button" aria-label="Log out" title="Log out">&#x21a9;</button>
+    </section>
+
+    <section id="loginView" class="panel auth-panel">
+      <form id="loginForm" class="form-stack">
+        <label>
+          <span>Emby server URL</span>
+          <input id="serverUrlInput" name="serverUrl" type="url" inputmode="url" autocomplete="url" placeholder="http://192.168.1.9:8096" required>
+        </label>
+        <label>
+          <span>Username</span>
+          <input id="usernameInput" name="username" type="text" autocomplete="username" required>
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="passwordInput" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button id="loginButton" class="primary-button" type="submit">Log in</button>
+      </form>
+    </section>
+
+    <section id="mainView" class="content-grid hidden">
+      <section class="panel search-panel" aria-label="Track search">
+        <form id="searchForm" class="search-row">
+          <label class="search-field">
+            <span>Track search</span>
+            <input id="searchInput" type="search" autocomplete="off" placeholder="Search tracks">
+          </label>
+          <button id="searchButton" class="primary-button compact" type="submit">Search</button>
+        </form>
+        <ul id="resultsList" class="list" aria-label="Search results"></ul>
+      </section>
+
+      <section class="panel queue-panel" aria-label="Radio queue">
+        <div class="queue-head">
+          <div>
+            <p class="eyebrow">Now Playing</p>
+            <h2 id="nowTitle">No track loaded</h2>
+            <p id="nowSubtitle" class="muted">No radio queue yet.</p>
+          </div>
+          <img id="artwork" class="artwork hidden" alt="">
+        </div>
+        <div class="controls">
+          <button id="prevButton" class="icon-button" type="button" aria-label="Previous track" title="Previous track">&#x23ee;</button>
+          <button id="playButton" class="play-button" type="button" aria-label="Play" title="Play">&#x25b6;</button>
+          <button id="nextButton" class="icon-button" type="button" aria-label="Next track" title="Next track">&#x23ed;</button>
+        </div>
+        <audio id="audio" preload="metadata"></audio>
+        <ol id="queueList" class="queue-list" aria-label="Radio queue"></ol>
+      </section>
+    </section>
+
+    <p id="message" class="status-line" role="status" aria-live="polite"></p>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
