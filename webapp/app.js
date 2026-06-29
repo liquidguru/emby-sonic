@@ -3,27 +3,66 @@ const STORAGE_KEY = "embySonic.webSession";
 const loginView = document.querySelector("#loginView");
 const mainView = document.querySelector("#mainView");
 const loginForm = document.querySelector("#loginForm");
-const searchForm = document.querySelector("#searchForm");
 const logoutButton = document.querySelector("#logoutButton");
+const tabButtons = [...document.querySelectorAll(".tab-button")];
+const viewPanels = [...document.querySelectorAll(".view-panel")];
+
+const searchForm = document.querySelector("#searchForm");
+const searchInput = document.querySelector("#searchInput");
 const resultsList = document.querySelector("#resultsList");
+const similarPanel = document.querySelector("#similarPanel");
+const similarTitle = document.querySelector("#similarTitle");
+const similarList = document.querySelector("#similarList");
+
+const refreshMixesButton = document.querySelector("#refreshMixesButton");
+const mixesList = document.querySelector("#mixesList");
+const mixDetailPanel = document.querySelector("#mixDetailPanel");
+const mixDetailTitle = document.querySelector("#mixDetailTitle");
+const mixDetailMeta = document.querySelector("#mixDetailMeta");
+const mixTracksList = document.querySelector("#mixTracksList");
+const playMixButton = document.querySelector("#playMixButton");
+const regenerateMixButton = document.querySelector("#regenerateMixButton");
+
+const adventureStartForm = document.querySelector("#adventureStartForm");
+const adventureEndForm = document.querySelector("#adventureEndForm");
+const adventureBuildForm = document.querySelector("#adventureBuildForm");
+const adventureStartInput = document.querySelector("#adventureStartInput");
+const adventureEndInput = document.querySelector("#adventureEndInput");
+const adventureLengthInput = document.querySelector("#adventureLengthInput");
+const adventureStartChoice = document.querySelector("#adventureStartChoice");
+const adventureEndChoice = document.querySelector("#adventureEndChoice");
+const adventureStartResults = document.querySelector("#adventureStartResults");
+const adventureEndResults = document.querySelector("#adventureEndResults");
+
 const queueList = document.querySelector("#queueList");
 const message = document.querySelector("#message");
 const audio = document.querySelector("#audio");
 const playButton = document.querySelector("#playButton");
 const prevButton = document.querySelector("#prevButton");
 const nextButton = document.querySelector("#nextButton");
+const nowSimilarButton = document.querySelector("#nowSimilarButton");
 const nowTitle = document.querySelector("#nowTitle");
 const nowSubtitle = document.querySelector("#nowSubtitle");
 const artwork = document.querySelector("#artwork");
 
 const state = {
   session: loadSession(),
+  activeView: "search",
   queue: [],
   currentIndex: -1,
+  mixes: [],
+  selectedMix: null,
+  adventureFrom: null,
+  adventureTo: null,
 };
 
 renderSession();
+renderView();
 renderPlayer();
+
+tabButtons.forEach((button) => {
+  button.addEventListener("click", () => switchView(button.dataset.view));
+});
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -56,27 +95,58 @@ logoutButton.addEventListener("click", () => {
   state.session = null;
   state.queue = [];
   state.currentIndex = -1;
+  state.mixes = [];
+  state.selectedMix = null;
+  state.adventureFrom = null;
+  state.adventureTo = null;
   audio.pause();
   audio.removeAttribute("src");
   renderSession();
   renderResults([]);
+  renderSimilar(null, []);
+  renderMixes();
+  renderMixDetail(null);
+  renderAdventureChoices();
+  renderQueue();
   renderPlayer();
   setMessage("");
 });
 
 searchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const query = document.querySelector("#searchInput").value.trim();
+  const query = searchInput.value.trim();
   if (!query) {
     renderResults([]);
     return;
   }
   await withBusy("Searching...", async () => {
-    const resp = await authedFetch(`/sonic/search/tracks?q=${encodeURIComponent(query)}`);
-    const tracks = await parseJson(resp);
+    const tracks = await searchTracks(query);
     renderResults(tracks);
     setMessage(tracks.length ? `${tracks.length} tracks found.` : "No tracks found.");
   });
+});
+
+refreshMixesButton.addEventListener("click", () => loadMixes(true));
+playMixButton.addEventListener("click", () => {
+  if (state.selectedMix?.tracks?.length) {
+    loadQueue(state.selectedMix.tracks, `Mix: ${mixName(state.selectedMix.mix)}`, true);
+  }
+});
+regenerateMixButton.addEventListener("click", () => regenerateSelectedMix());
+
+adventureStartForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  searchAdventurePicker("from", adventureStartInput.value.trim());
+});
+
+adventureEndForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  searchAdventurePicker("to", adventureEndInput.value.trim());
+});
+
+adventureBuildForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await buildAdventure();
 });
 
 playButton.addEventListener("click", () => {
@@ -93,6 +163,10 @@ playButton.addEventListener("click", () => {
 
 prevButton.addEventListener("click", () => playIndex(Math.max(0, state.currentIndex - 1)));
 nextButton.addEventListener("click", () => playIndex(Math.min(state.queue.length - 1, state.currentIndex + 1)));
+nowSimilarButton.addEventListener("click", () => {
+  const track = state.queue[state.currentIndex];
+  if (track) showSimilar(track);
+});
 
 audio.addEventListener("play", renderPlayer);
 audio.addEventListener("pause", renderPlayer);
@@ -120,15 +194,42 @@ function renderSession() {
   logoutButton.classList.toggle("hidden", !signedIn);
 }
 
+async function switchView(view) {
+  state.activeView = view;
+  renderView();
+  if (view === "mixes" && !state.mixes.length) {
+    await loadMixes(false);
+  }
+}
+
+function renderView() {
+  tabButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === state.activeView);
+  });
+  viewPanels.forEach((panel) => {
+    panel.classList.toggle("hidden", panel.id !== `${state.activeView}View`);
+  });
+}
+
+async function searchTracks(query, limit = 60) {
+  const resp = await authedFetch(`/sonic/search/tracks?q=${encodeURIComponent(query)}&limit=${limit}`);
+  return parseJson(resp);
+}
+
 function renderResults(tracks) {
   resultsList.replaceChildren(...tracks.map((track) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "track-row";
-    button.addEventListener("click", () => startRadio(track));
-    button.append(trackText(track), duration(track.duration_ms));
     const item = document.createElement("li");
-    item.append(button);
+    item.className = "result-row";
+
+    const main = trackButton(track, () => startRadio(track), "Start radio");
+    const actions = document.createElement("div");
+    actions.className = "action-row";
+    actions.append(
+      actionButton("Radio", () => startRadio(track)),
+      actionButton("Similar", () => showSimilar(track)),
+    );
+
+    item.append(main, actions);
     return item;
   }));
 }
@@ -139,31 +240,229 @@ async function startRadio(seed) {
     const radio = await parseJson(resp);
     const tracks = Array.isArray(radio.tracks) ? radio.tracks : [];
     if (!tracks.length) {
-      state.queue = [];
-      state.currentIndex = -1;
-      renderQueue();
-      renderPlayer();
-      setMessage(`No radio for "${seed.title || "this track"}" — it may not be analysed yet.`);
+      loadQueue([], "No radio queue yet.", false);
+      setMessage(`No radio for "${seed.title || "this track"}" - it may not be analysed yet.`);
       return;
     }
-    // Match the Android app: the radio starts with the seed track itself, then
-    // its sonic neighbours (build_radio returns only the neighbours, not the seed).
-    state.queue = [seed, ...tracks.filter((track) => track.id !== seed.id)];
-    state.currentIndex = 0;
-    renderQueue();
-    setMessage(`Radio: ${state.queue.length} tracks.`);
-    await playIndex(state.currentIndex);
+    // Match the Android app: radio starts with the seed track itself, then the
+    // sonic neighbours returned by build_radio.
+    loadQueue([seed, ...tracks.filter((track) => track.id !== seed.id)], `Radio: ${seed.title || "Untitled track"}`, true);
   });
 }
 
-function renderQueue() {
-  queueList.replaceChildren(...state.queue.map((track, index) => {
-    const row = document.createElement("li");
-    row.className = `queue-row${index === state.currentIndex ? " active" : ""}`;
-    row.addEventListener("click", () => playIndex(index));
-    row.append(trackText(track));
-    return row;
+async function showSimilar(seed) {
+  await switchView("search");
+  await withBusy("Finding similar tracks...", async () => {
+    const resp = await authedFetch(`/sonic/tracks/${encodeURIComponent(seed.id)}/similar?n=25`);
+    const similar = await parseJson(resp);
+    renderSimilar(seed, similar);
+    setMessage(similar.length ? `${similar.length} similar tracks found.` : "No similar tracks found.");
+  });
+}
+
+function renderSimilar(seed, similar) {
+  similarPanel.classList.toggle("hidden", !seed);
+  similarTitle.textContent = seed ? seed.title || "Untitled track" : "No track selected";
+  similarList.replaceChildren(...similar.map((result) => {
+    const item = document.createElement("li");
+    item.className = "result-row";
+    const track = result.track;
+    const main = trackButton(track, () => startRadio(track), "Start radio");
+    const actions = document.createElement("div");
+    actions.className = "action-row";
+    const score = document.createElement("span");
+    score.className = "score";
+    score.textContent = `${Math.round((result.score || 0) * 100)}%`;
+    actions.append(score, actionButton("Radio", () => startRadio(track)));
+    item.append(main, actions);
+    return item;
   }));
+}
+
+async function loadMixes(force) {
+  if (state.mixes.length && !force) return;
+  await withBusy("Loading mixes...", async () => {
+    const resp = await authedFetch("/sonic/mixes");
+    state.mixes = await parseJson(resp);
+    renderMixes();
+    setMessage(state.mixes.length ? `${state.mixes.length} mixes loaded.` : "No mixes yet.");
+  });
+}
+
+function renderMixes() {
+  mixesList.replaceChildren(...state.mixes.map((mix) => {
+    const item = document.createElement("li");
+    item.className = "result-row";
+
+    const cover = document.createElement("img");
+    cover.className = "cover-thumb";
+    cover.alt = "";
+    if (mix.cover_track_id) cover.src = artworkUrl(mix.cover_track_id);
+
+    const main = document.createElement("button");
+    main.type = "button";
+    main.className = "mix-main";
+    main.addEventListener("click", () => openMix(mix.id));
+    main.append(trackText({
+      title: mixName(mix),
+      artist: `${mix.track_count} tracks`,
+      album: mix.cluster_id == null ? null : `Cluster ${mix.cluster_id}`,
+    }));
+
+    const actions = document.createElement("div");
+    actions.className = "action-row";
+    actions.append(
+      actionButton("Open", () => openMix(mix.id)),
+      actionButton("Play", async () => {
+        const detail = await getMix(mix.id);
+        loadQueue(detail.tracks, `Mix: ${mixName(detail.mix)}`, true);
+      }),
+    );
+
+    item.append(cover, main, actions);
+    return item;
+  }));
+}
+
+async function openMix(mixId) {
+  await withBusy("Opening mix...", async () => {
+    const detail = await getMix(mixId);
+    state.selectedMix = detail;
+    renderMixDetail(detail);
+    setMessage(`${mixName(detail.mix)} loaded.`);
+  });
+}
+
+async function getMix(mixId) {
+  const resp = await authedFetch(`/sonic/mixes/${encodeURIComponent(mixId)}`);
+  return parseJson(resp);
+}
+
+function renderMixDetail(detail) {
+  mixDetailPanel.classList.toggle("hidden", !detail);
+  if (!detail) {
+    mixDetailTitle.textContent = "No mix selected";
+    mixDetailMeta.textContent = "";
+    mixTracksList.replaceChildren();
+    return;
+  }
+  mixDetailTitle.textContent = mixName(detail.mix);
+  mixDetailMeta.textContent = `${detail.tracks.length} tracks`;
+  mixTracksList.replaceChildren(...detail.tracks.map((track, index) => queueRow(track, index, () => {
+    loadQueue(detail.tracks, `Mix: ${mixName(detail.mix)}`, false, index);
+    playIndex(index);
+  })));
+}
+
+async function regenerateSelectedMix() {
+  const detail = state.selectedMix;
+  if (!detail) return;
+  await withBusy("Regenerating mix...", async () => {
+    const resp = await authedFetch(`/sonic/mixes/${encodeURIComponent(detail.mix.id)}/regenerate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracks_per_mix: detail.tracks.length || 50 }),
+    });
+    state.selectedMix = await parseJson(resp);
+    renderMixDetail(state.selectedMix);
+    state.mixes = [];
+    await loadMixes(true);
+    setMessage(`${mixName(state.selectedMix.mix)} regenerated.`);
+  });
+}
+
+async function searchAdventurePicker(kind, query) {
+  const list = kind === "from" ? adventureStartResults : adventureEndResults;
+  if (!query) {
+    list.replaceChildren();
+    return;
+  }
+  await withBusy("Searching...", async () => {
+    const tracks = await searchTracks(query, 20);
+    renderAdventureResults(kind, tracks);
+    setMessage(tracks.length ? `${tracks.length} tracks found.` : "No tracks found.");
+  });
+}
+
+function renderAdventureResults(kind, tracks) {
+  const list = kind === "from" ? adventureStartResults : adventureEndResults;
+  list.replaceChildren(...tracks.map((track) => {
+    const item = document.createElement("li");
+    item.className = "result-row";
+    const button = trackButton(track, () => chooseAdventureTrack(kind, track), "Choose track");
+    item.append(button, actionButton("Choose", () => chooseAdventureTrack(kind, track)));
+    return item;
+  }));
+}
+
+function chooseAdventureTrack(kind, track) {
+  if (kind === "from") {
+    state.adventureFrom = track;
+    adventureStartResults.replaceChildren();
+  } else {
+    state.adventureTo = track;
+    adventureEndResults.replaceChildren();
+  }
+  renderAdventureChoices();
+}
+
+function renderAdventureChoices() {
+  adventureStartChoice.textContent = state.adventureFrom
+    ? `Start: ${trackLabel(state.adventureFrom)}`
+    : "No start selected.";
+  adventureEndChoice.textContent = state.adventureTo
+    ? `End: ${trackLabel(state.adventureTo)}`
+    : "No end selected.";
+}
+
+async function buildAdventure() {
+  if (!state.adventureFrom || !state.adventureTo) {
+    setMessage("Choose a start and end track first.");
+    return;
+  }
+  const length = clamp(Number.parseInt(adventureLengthInput.value, 10) || 20, 5, 100);
+  adventureLengthInput.value = String(length);
+  await withBusy("Building adventure...", async () => {
+    const resp = await authedFetch("/sonic/adventure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from_id: state.adventureFrom.id,
+        to_id: state.adventureTo.id,
+        length,
+      }),
+    });
+    const adventure = await parseJson(resp);
+    const tracks = Array.isArray(adventure.tracks) ? adventure.tracks : [];
+    loadQueue(tracks, `Adventure: ${trackLabel(state.adventureFrom)} to ${trackLabel(state.adventureTo)}`, true);
+  });
+}
+
+function loadQueue(tracks, label, autoPlay, startIndex = 0) {
+  state.queue = Array.isArray(tracks) ? tracks : [];
+  state.currentIndex = state.queue.length ? clamp(startIndex, 0, state.queue.length - 1) : -1;
+  if (!state.queue.length) {
+    audio.pause();
+    audio.removeAttribute("src");
+  }
+  renderQueue();
+  renderPlayer();
+  setMessage(state.queue.length ? `${label}: ${state.queue.length} tracks.` : label);
+  if (autoPlay && state.currentIndex >= 0) {
+    playIndex(state.currentIndex);
+  }
+}
+
+function renderQueue() {
+  queueList.replaceChildren(...state.queue.map((track, index) => queueRow(track, index, () => playIndex(index))));
+}
+
+function queueRow(track, index, onClick) {
+  const row = document.createElement("li");
+  row.className = `queue-row${index === state.currentIndex ? " active" : ""}`;
+  row.addEventListener("click", onClick);
+  row.append(trackText(track));
+  return row;
 }
 
 async function playIndex(index) {
@@ -178,8 +477,8 @@ async function playIndex(index) {
     await audio.play();
   } catch (err) {
     // Browsers can reject play() when it follows a network await (the user
-    // gesture has "expired") — the queue is loaded, so prompt to hit play.
-    setMessage("Queue ready — tap ▶ to start playback.");
+    // gesture has "expired") - the queue is loaded, so prompt to hit play.
+    setMessage("Queue ready - tap play to start playback.");
   }
 }
 
@@ -189,6 +488,7 @@ function renderPlayer() {
   playButton.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
   prevButton.disabled = state.currentIndex <= 0;
   nextButton.disabled = state.currentIndex < 0 || state.currentIndex >= state.queue.length - 1;
+  nowSimilarButton.disabled = !track;
   if (!track) {
     nowTitle.textContent = "No track loaded";
     nowSubtitle.textContent = "No radio queue yet.";
@@ -200,6 +500,32 @@ function renderPlayer() {
   nowSubtitle.textContent = [track.artist, track.album].filter(Boolean).join(" - ");
   artwork.src = artworkUrl(track.id);
   artwork.classList.remove("hidden");
+}
+
+function trackButton(track, onClick, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "track-main";
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", onClick);
+  button.append(trackText(track));
+  return button;
+}
+
+function actionButton(text, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary-button";
+  button.textContent = text;
+  button.addEventListener("click", () => {
+    const result = onClick();
+    if (result?.catch) {
+      result.catch((error) => {
+        setMessage(error instanceof Error ? error.message : String(error));
+      });
+    }
+  });
+  return button;
 }
 
 function trackText(track) {
@@ -214,20 +540,21 @@ function trackText(track) {
   return wrap;
 }
 
-function duration(ms) {
-  const node = document.createElement("span");
-  node.className = "duration";
-  if (!ms) return node;
-  const total = Math.round(ms / 1000);
-  const minutes = Math.floor(total / 60);
-  const seconds = String(total % 60).padStart(2, "0");
-  node.textContent = `${minutes}:${seconds}`;
-  return node;
+function trackLabel(track) {
+  return [track.title || "Untitled track", track.artist].filter(Boolean).join(" - ");
+}
+
+function mixName(mix) {
+  return mix?.name || "Untitled mix";
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function playSessionId() {
   // crypto.randomUUID() is secure-context-only (HTTPS / localhost) and is
-  // undefined over plain http on a LAN IP — the MVP's intended deployment.
+  // undefined over plain http on a LAN IP - the MVP's intended deployment.
   // PlaySessionId only needs to be unique per playback, not cryptographic.
   if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
   return `ps-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -303,6 +630,6 @@ function setMessage(text) {
   message.textContent = text;
 }
 
-// TODO(webapp): Sonic Adventure, Mixes, Similar, library browse, offline,
-// service-worker installability, and TLS hardening are intentionally out of
-// this first login -> radio -> playback slice.
+// TODO(webapp): library browse, save-mix-as-Emby-playlist, audiobooks,
+// artist/album-similar screens, service-worker installability, and TLS
+// hardening are intentionally out of this focused sonic-features slice.
