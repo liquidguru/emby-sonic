@@ -1136,11 +1136,10 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   an explicit `http://` URL, and the login screen says so. (2) `allowBackup` is
   now **false** so the Emby session token (in the settings DataStore) is not swept
   into cloud/adb backups; cost is a re-login after a device migration. Deferred
-  (needs its own tested pass): encrypt the token at rest (Keystore; has a device
-  edge-case crash tail), scoped cleartext via network-security-config (can't
-  CIDR-allow private IPs, would break http-LAN self-hosters — rely on the https
-  default instead), R8/release-signing for distribution, and the server-side
-  `WORKER_SECRET` split. See review notes.
+  (needs its own tested pass): scoped cleartext via network-security-config
+  (can't CIDR-allow private IPs, would break http-LAN self-hosters — rely on the
+  https default instead), R8/release-signing for distribution, and the
+  server-side `WORKER_SECRET` split. See review notes.
 
 - **M5.15 — Plugin auto-scan fix (2026-06-20, plugin v0.4.0.0, built):** the
   `ItemAdded` incremental-scan trigger never actually worked — it POSTed
@@ -1339,6 +1338,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   and a separate worker rig, with an NVIDIA GPU option that selects the CUDA
   worker image and emits `gpus: all` in the generated Compose file. Added
   `docs/quickstart.md` as the scenario-first setup guide.
+
+- **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
+  session token is now encrypted before being stored in the settings DataStore.
+  `SettingsRepository` writes new sessions to a `session_token_ciphertext` value
+  using an Android Keystore-backed AES-GCM key, decrypts into the existing
+  in-memory `AppSettings.accessToken` surface for callers, migrates the legacy
+  plaintext `access_token` value on first run, and clears both encrypted and
+  legacy keys on logout. This keeps app code unchanged above the settings layer
+  while removing the plaintext token from DataStore at rest.
 
 - **Deliverable:** APK sideloadable; later: Play Store or F-Droid
 
