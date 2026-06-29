@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Query
 
+from analysis.emby import _music_parent_ids
 from api.deps import AuthToken
 from api.schemas import WebLoginRequest, WebLoginResponse, WebTrackOut
 from config import settings
@@ -105,10 +106,13 @@ async def search_tracks(
     emby_token: str | None = Header(default=None, alias="X-Emby-Token"),
 ) -> list[WebTrackOut]:
     """
-    Thin Emby track-search proxy for the static browser app.
+    Thin Emby track-search proxy for the static browser app, scoped to **music**
+    libraries — it reuses the analysis scan's music-library detection
+    (`_music_parent_ids`), so audiobooks don't show up in the sonic search.
 
-    TODO(webapp): add a music-library scoped search mode once the MVP grows
-    library browsing; this first slice mirrors Android's generic Audio search.
+    TODO(webapp): add an audiobooks search mode (scoped to the audiobook
+    collection type) when the web app grows audiobook playback, mirroring the
+    Android app's music / audiobook / all search scopes.
     """
     term = q.strip()
     if not term:
@@ -118,7 +122,7 @@ async def search_tracks(
     if not emby_token:
         raise HTTPException(status_code=401, detail="X-Emby-Token is required")
 
-    params = {
+    base_params = {
         "UserId": user_id,
         "IncludeItemTypes": "Audio",
         "Recursive": "true",
@@ -129,23 +133,35 @@ async def search_tracks(
         "Limit": limit,
         "SearchTerm": term,
     }
+    items: list[dict] = []
     async with httpx.AsyncClient(base_url=settings.emby_url, timeout=20.0) as client:
         try:
-            resp = await client.get(
-                "/Items",
-                params=params,
-                headers=_emby_headers(emby_token),
+            parent_ids = await _music_parent_ids(client, emby_token)
+            # Search each music library; fall back to an unscoped search only if
+            # no music-typed library exists (matches fetch_audio_items).
+            queries = (
+                [{**base_params, "ParentId": pid} for pid in parent_ids]
+                if parent_ids
+                else [base_params]
             )
+            for params in queries:
+                if len(items) >= limit:
+                    break
+                resp = await client.get(
+                    "/Items",
+                    params=params,
+                    headers=_emby_headers(emby_token),
+                )
+                if resp.status_code == 401:
+                    raise HTTPException(status_code=401, detail="Invalid or expired Emby token")
+                if resp.status_code >= 400:
+                    raise HTTPException(status_code=502, detail=f"Emby search failed ({resp.status_code})")
+                items.extend(resp.json().get("Items", []))
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Emby search request failed: {exc}") from exc
 
-    if resp.status_code == 401:
-        raise HTTPException(status_code=401, detail="Invalid or expired Emby token")
-    if resp.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Emby search failed ({resp.status_code})")
-
     tracks: list[WebTrackOut] = []
-    for item in resp.json().get("Items", []):
+    for item in items[:limit]:
         track = _track(item)
         if track is not None:
             tracks.append(track)
