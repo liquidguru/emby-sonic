@@ -32,8 +32,8 @@ Workers can run on the Emby host or on any networked machine. They stream audio
 directly from Emby's HTTP API — no file shares or special network config needed.
 
 The coordinator also serves a minimal browser app at `http://<host>:8765/app`
-for non-Android users. The first slice covers Emby login, track search, Track
-Radio playback, and browser/lock-screen media controls.
+for non-Android users. It covers Emby login, music search, Track Radio, Similar,
+Sonic Mixes, Sonic Adventure, and browser/lock-screen media controls.
 
 ## Phase 1 — Python Analysis Service
 
