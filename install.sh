@@ -169,6 +169,11 @@ fi
 
 echo "Emby Sonic guided Docker setup"
 echo
+echo "NOTE: this installer pulls prebuilt images from GHCR, which are PRIVATE"
+echo "during the closed beta. If the image pull fails with 'denied', the images"
+echo "are not public yet — build from source instead:"
+echo "  docker compose up -d --build"
+echo
 echo "Choose the setup closest to this machine:"
 echo "  1) NAS + Docker coordinator"
 echo "  2) Single Linux/Windows Docker box"

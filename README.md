@@ -63,27 +63,19 @@ The coordinator is lightweight (no torch/librosa/panns — those live on workers
 so it runs in a small container on any NAS (Synology, QNAP, UGREEN, ...), including
 ARM. Audio analysis runs on separate **workers** on a machine with spare CPU/GPU.
 
-New here? The guided installer is the easiest path — see
-[`docs/quickstart.md`](docs/quickstart.md):
-
 ```bash
-./install.sh
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d --build
 ```
 
-Or bring it up directly with the prebuilt images (pulled from GHCR, no build):
+This builds [`Dockerfile.coordinator`](Dockerfile.coordinator) and starts the
+coordinator on port 8765 with a persistent `emby-sonic-data` volume (SQLite +
+FAISS index). Then point the Emby plugin's **Python Service URL** at
+`http://<nas-host>:8765` and run one or more workers on your GPU/CPU box — they
+stream audio from Emby, so no file shares are needed.
 
-```bash
-EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d
-```
-
-This pulls [`ghcr.io/liquidguru/emby-sonic-coordinator`](https://github.com/liquidguru/emby-sonic/pkgs/container/emby-sonic-coordinator)
-and starts the coordinator on port 8765 with a persistent `emby-sonic-data`
-volume (SQLite + FAISS index). Then point the Emby plugin's **Python Service
-URL** at `http://<nas-host>:8765` and run one or more workers on your GPU/CPU
-box — they stream audio from Emby, so no file shares are needed.
-
-> **Building from source instead?** Uncomment the `build:` blocks in
-> [`docker-compose.yml`](docker-compose.yml) and add `--build`.
+> **Prebuilt images:** at public launch the coordinator/worker images will be
+> pulled from GHCR (set `COORDINATOR_IMAGE` / `WORKER_IMAGE` and drop `--build`).
+> During the private beta the images are not yet public, so build from source.
 
 ### Benchmark before a full scan
 
@@ -183,32 +175,32 @@ at boot, and reads `EMBY_URL` / `EMBY_API_KEY` from the repo `.env`.
 Coordinator-only NAS deploy:
 
 ```bash
-EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d coordinator
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d --build coordinator
 ```
 
 Coordinator plus worker in Compose:
 
 ```bash
-EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d --build
 ```
 
-The Compose `worker` service pulls the prebuilt
-[`ghcr.io/liquidguru/emby-sonic-worker`](https://github.com/liquidguru/emby-sonic/pkgs/container/emby-sonic-worker)
-image, runs `python worker.py`, and stores the CNN14 checkpoint in the named
+The Compose `worker` service builds the full [`Dockerfile`](Dockerfile), runs
+`python worker.py`, and stores the CNN14 checkpoint in the named
 `emby-sonic-panns` volume mounted at `/root/panns_data`, so the ~327 MB model is
 not redownloaded on every container rebuild/restart. Workers stream audio from
 Emby; no music library bind mount is needed.
 
-Worker images are CPU-only by default. For an NVIDIA GPU, point the worker at the
-prebuilt CUDA image instead — no local build needed — and give it GPU access:
+Worker images are CPU-only by default. To build a CUDA-capable worker on an
+x86_64 Linux host with an NVIDIA GPU, set `TORCH_VARIANT=cuda` before building
+and run the worker with GPU access:
 
 ```bash
 # Keep the coordinator running normally.
-EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d coordinator
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> docker compose up -d --build coordinator
 
-# Run the CUDA worker image with the NVIDIA runtime.
-WORKER_IMAGE=ghcr.io/liquidguru/emby-sonic-worker:cuda \
-  EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> \
+# Build a CUDA-capable worker image and run it with the NVIDIA runtime.
+TORCH_VARIANT=cuda docker compose build worker
+EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> \
   docker compose run --rm --gpus all worker
 ```
 
@@ -216,40 +208,42 @@ For a detached GPU worker, uncomment `gpus: all` under the `worker` service in
 [`docker-compose.yml`](docker-compose.yml), then run:
 
 ```bash
-WORKER_IMAGE=ghcr.io/liquidguru/emby-sonic-worker:cuda \
-  EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> \
-  docker compose up -d worker
+TORCH_VARIANT=cuda EMBY_URL=http://<emby-host>:8096 EMBY_API_KEY=<key> \
+  docker compose up -d --build worker
 ```
 
 The startup log is the proof: `docker compose run --rm --gpus all worker` prints
 `[worker <id>] device=cuda` to the terminal. For a detached worker, check
-`docker logs emby-sonic-worker`. If it says `device=cpu`, confirm you set
-`WORKER_IMAGE=…-worker:cuda` and that `nvidia-smi` works inside a test container.
+`docker logs emby-sonic-worker`. If it says `device=cpu`, confirm the image was
+built with `TORCH_VARIANT=cuda` and that `nvidia-smi` works inside a test
+container.
 
-> **Building from source instead?** Uncomment the `build:` blocks in
-> [`docker-compose.yml`](docker-compose.yml); the CPU worker takes
-> `TORCH_VARIANT=cpu|cuda` as a build arg.
+> **Prebuilt images (public launch):** once the GHCR packages are public, set
+> `COORDINATOR_IMAGE` / `WORKER_IMAGE` (e.g. `…-worker:latest` or `:cuda`) and
+> drop `--build` to pull instead of build. They are private during the beta.
 
-Standalone worker container (prebuilt image, no Compose):
+Standalone worker container:
 
 ```bash
+docker build -t emby-sonic-worker .
 docker run -d --name emby-sonic-worker \
   -e COORDINATOR_URL=http://<coordinator-host>:8765 \
   -e EMBY_URL=http://<emby-host>:8096 \
   -e EMBY_API_KEY=<key> \
   -v emby-sonic-panns:/root/panns_data \
-  ghcr.io/liquidguru/emby-sonic-worker:latest python worker.py
+  emby-sonic-worker python worker.py
 ```
 
-Standalone NVIDIA GPU worker (prebuilt CUDA image):
+Standalone NVIDIA GPU worker:
 
 ```bash
+docker build --build-arg TORCH_VARIANT=cuda -t emby-sonic-worker:cuda .
 docker run -d --name emby-sonic-worker-gpu --gpus all \
   -e COORDINATOR_URL=http://<coordinator-host>:8765 \
   -e EMBY_URL=http://<emby-host>:8096 \
   -e EMBY_API_KEY=<key> \
   -v emby-sonic-panns:/root/panns_data \
-  ghcr.io/liquidguru/emby-sonic-worker:cuda python worker.py
+  emby-sonic-worker:cuda python worker.py
 docker logs emby-sonic-worker-gpu | grep 'device='
 ```
 
