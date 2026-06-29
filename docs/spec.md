@@ -1351,6 +1351,19 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   Explicitly deferred: Sonic Adventure, Mixes, Similar, library browse, offline,
   service-worker/PWA install, TLS, and richer iOS background-audio hardening.
 
+- **M5.28 — Browser app sonic features (2026-06-30, PR):**
+  extended the no-build `/app` browser client with the first non-radio sonic
+  feature set while preserving the MVP architecture: vanilla HTML/CSS/ES modules,
+  coordinator-only API calls, and direct Emby audio streams through the shared
+  player. Added Search / Mixes / Adventure tabs, Similar actions on tracks and
+  Now Playing (`GET /sonic/tracks/{id}/similar`), Mixes list/detail/play/
+  regenerate (`GET /sonic/mixes`, `GET/POST /sonic/mixes/{id}`), and Sonic
+  Adventure start/end pickers plus build/playback (`POST /sonic/adventure`).
+  All paths load tracks into the existing queue/player and reuse `streamUrl`,
+  `playSessionId`, artwork URLs, and Media Session metadata. Still deferred:
+  library browse, save-mix-as-Emby-playlist, audiobooks, artist/album-similar
+  screens, PWA service worker, and TLS.
+
 - **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
   session token is now encrypted before being stored in the settings DataStore.
   `SettingsRepository` writes new sessions to a `session_token_ciphertext` value

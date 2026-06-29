@@ -32,34 +32,121 @@
       </form>
     </section>
 
-    <section id="mainView" class="content-grid hidden">
-      <section class="panel search-panel" aria-label="Track search">
-        <form id="searchForm" class="search-row">
-          <label class="search-field">
-            <span>Track search</span>
-            <input id="searchInput" type="search" autocomplete="off" placeholder="Search tracks">
-          </label>
-          <button id="searchButton" class="primary-button compact" type="submit">Search</button>
-        </form>
-        <ul id="resultsList" class="list" aria-label="Search results"></ul>
-      </section>
+    <section id="mainView" class="main-stack hidden">
+      <nav class="tabs" aria-label="Sonic features">
+        <button class="tab-button active" type="button" data-view="search">Search</button>
+        <button class="tab-button" type="button" data-view="mixes">Mixes</button>
+        <button class="tab-button" type="button" data-view="adventure">Adventure</button>
+      </nav>
 
-      <section class="panel queue-panel" aria-label="Radio queue">
-        <div class="queue-head">
-          <div>
-            <p class="eyebrow">Now Playing</p>
-            <h2 id="nowTitle">No track loaded</h2>
-            <p id="nowSubtitle" class="muted">No radio queue yet.</p>
+      <section class="content-grid">
+        <section class="panel feature-panel" aria-live="polite">
+          <section id="searchView" class="view-panel" aria-label="Track search">
+            <form id="searchForm" class="search-row">
+              <label class="search-field">
+                <span>Track search</span>
+                <input id="searchInput" type="search" autocomplete="off" placeholder="Search tracks">
+              </label>
+              <button id="searchButton" class="primary-button compact" type="submit">Search</button>
+            </form>
+            <ul id="resultsList" class="list" aria-label="Search results"></ul>
+            <section id="similarPanel" class="subsection hidden" aria-label="Similar tracks">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Similar</p>
+                  <h2 id="similarTitle">No track selected</h2>
+                </div>
+              </div>
+              <ul id="similarList" class="list" aria-label="Similar tracks"></ul>
+            </section>
+          </section>
+
+          <section id="mixesView" class="view-panel hidden" aria-label="Sonic mixes">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Sonic Mixes</p>
+                <h2>Auto-curated queues</h2>
+              </div>
+              <button id="refreshMixesButton" class="secondary-button" type="button">Refresh</button>
+            </div>
+            <ul id="mixesList" class="list media-list" aria-label="Mixes"></ul>
+            <section id="mixDetailPanel" class="subsection hidden" aria-label="Mix detail">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Mix Detail</p>
+                  <h2 id="mixDetailTitle">No mix selected</h2>
+                  <p id="mixDetailMeta" class="muted"></p>
+                </div>
+                <div class="action-row">
+                  <button id="playMixButton" class="secondary-button" type="button">Play</button>
+                  <button id="regenerateMixButton" class="secondary-button" type="button">Regenerate</button>
+                </div>
+              </div>
+              <ol id="mixTracksList" class="queue-list" aria-label="Mix tracks"></ol>
+            </section>
+          </section>
+
+          <section id="adventureView" class="view-panel hidden" aria-label="Sonic Adventure">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Sonic Adventure</p>
+                <h2>Start to end journey</h2>
+              </div>
+            </div>
+            <div class="adventure-grid">
+              <section class="picker-panel">
+                <form id="adventureStartForm" class="search-row">
+                  <label class="search-field">
+                    <span>Start track</span>
+                    <input id="adventureStartInput" type="search" autocomplete="off" placeholder="Search start">
+                  </label>
+                  <button class="primary-button compact" type="submit">Find</button>
+                </form>
+                <p id="adventureStartChoice" class="choice-line">No start selected.</p>
+                <ul id="adventureStartResults" class="list compact-list" aria-label="Start track results"></ul>
+              </section>
+              <section class="picker-panel">
+                <form id="adventureEndForm" class="search-row">
+                  <label class="search-field">
+                    <span>End track</span>
+                    <input id="adventureEndInput" type="search" autocomplete="off" placeholder="Search end">
+                  </label>
+                  <button class="primary-button compact" type="submit">Find</button>
+                </form>
+                <p id="adventureEndChoice" class="choice-line">No end selected.</p>
+                <ul id="adventureEndResults" class="list compact-list" aria-label="End track results"></ul>
+              </section>
+            </div>
+            <form id="adventureBuildForm" class="build-row">
+              <label>
+                <span>Length</span>
+                <input id="adventureLengthInput" type="number" min="5" max="100" step="1" value="20">
+              </label>
+              <button id="buildAdventureButton" class="primary-button compact" type="submit">Build</button>
+            </form>
+          </section>
+        </section>
+
+        <section class="panel queue-panel" aria-label="Player queue">
+          <div class="queue-head">
+            <div>
+              <p class="eyebrow">Now Playing</p>
+              <h2 id="nowTitle">No track loaded</h2>
+              <p id="nowSubtitle" class="muted">No radio queue yet.</p>
+            </div>
+            <img id="artwork" class="artwork hidden" alt="">
           </div>
-          <img id="artwork" class="artwork hidden" alt="">
-        </div>
-        <div class="controls">
-          <button id="prevButton" class="icon-button" type="button" aria-label="Previous track" title="Previous track">&#x23ee;</button>
-          <button id="playButton" class="play-button" type="button" aria-label="Play" title="Play">&#x25b6;</button>
-          <button id="nextButton" class="icon-button" type="button" aria-label="Next track" title="Next track">&#x23ed;</button>
-        </div>
-        <audio id="audio" preload="metadata"></audio>
-        <ol id="queueList" class="queue-list" aria-label="Radio queue"></ol>
+          <div class="controls">
+            <button id="prevButton" class="icon-button" type="button" aria-label="Previous track" title="Previous track">&#x23ee;</button>
+            <button id="playButton" class="play-button" type="button" aria-label="Play" title="Play">&#x25b6;</button>
+            <button id="nextButton" class="icon-button" type="button" aria-label="Next track" title="Next track">&#x23ed;</button>
+          </div>
+          <div class="action-row center-actions">
+            <button id="nowSimilarButton" class="secondary-button" type="button">Similar</button>
+          </div>
+          <audio id="audio" preload="metadata"></audio>
+          <ol id="queueList" class="queue-list" aria-label="Playback queue"></ol>
+        </section>
       </section>
     </section>
 
