@@ -146,11 +146,12 @@ async function startRadio(seed) {
       setMessage(`No radio for "${seed.title || "this track"}" — it may not be analysed yet.`);
       return;
     }
-    state.queue = tracks;
-    state.currentIndex = state.queue.findIndex((track) => track.id === seed.id);
-    if (state.currentIndex < 0) state.currentIndex = 0;
+    // Match the Android app: the radio starts with the seed track itself, then
+    // its sonic neighbours (build_radio returns only the neighbours, not the seed).
+    state.queue = [seed, ...tracks.filter((track) => track.id !== seed.id)];
+    state.currentIndex = 0;
     renderQueue();
-    setMessage(`Radio: ${tracks.length} tracks.`);
+    setMessage(`Radio: ${state.queue.length} tracks.`);
     await playIndex(state.currentIndex);
   });
 }
