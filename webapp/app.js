@@ -137,10 +137,20 @@ async function startRadio(seed) {
   await withBusy("Building radio...", async () => {
     const resp = await authedFetch(`/sonic/tracks/${encodeURIComponent(seed.id)}/radio`);
     const radio = await parseJson(resp);
-    state.queue = Array.isArray(radio.tracks) ? radio.tracks : [];
+    const tracks = Array.isArray(radio.tracks) ? radio.tracks : [];
+    if (!tracks.length) {
+      state.queue = [];
+      state.currentIndex = -1;
+      renderQueue();
+      renderPlayer();
+      setMessage(`No radio for "${seed.title || "this track"}" — it may not be analysed yet.`);
+      return;
+    }
+    state.queue = tracks;
     state.currentIndex = state.queue.findIndex((track) => track.id === seed.id);
     if (state.currentIndex < 0) state.currentIndex = 0;
     renderQueue();
+    setMessage(`Radio: ${tracks.length} tracks.`);
     await playIndex(state.currentIndex);
   });
 }
@@ -163,7 +173,13 @@ async function playIndex(index) {
   renderQueue();
   renderPlayer();
   updateMediaSession(track);
-  await audio.play();
+  try {
+    await audio.play();
+  } catch (err) {
+    // Browsers can reject play() when it follows a network await (the user
+    // gesture has "expired") — the queue is loaded, so prompt to hit play.
+    setMessage("Queue ready — tap ▶ to start playback.");
+  }
 }
 
 function renderPlayer() {
