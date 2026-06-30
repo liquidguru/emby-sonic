@@ -430,21 +430,30 @@ class LibraryRepository @Inject constructor(
     suspend fun searchAuthors(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
         searchItems(query, "MusicArtist", parentId, limit) { it.toCollectionItem() }
 
-    /**
+    /** 
      * Enhanced artist search that includes all tracks by the found artists.
      * This addresses the issue where searching for "311" would find the album/artist
      * but not songs by that artist in albums with other titles.
+     * Also includes tracks that match the search string directly.
      */
     suspend fun searchArtistsWithTracks(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> {
         // First perform regular search to get matching artists
         val artists = searchArtists(query, parentId, limit)
         
+        // Get tracks that match the query directly
+        val directTracks = searchTracks(query, parentId, limit)
+        
         // If we found artists, get all their tracks from all albums they appear on
-        if (artists.isNotEmpty()) {
-            return getArtistTracks(artists, parentId, limit)
+        val artistTracks = if (artists.isNotEmpty()) {
+            getArtistTracks(artists, parentId, limit)
+        } else {
+            emptyList()
         }
         
-        return emptyList()
+        // Combine artist tracks with direct track matches and remove duplicates by ID
+        val combinedResults = (artistTracks + directTracks).distinctBy { it.id }
+        
+        return combinedResults
     }
 
     private suspend fun getArtistTracks(artists: List<LibraryItem>, parentId: String?, limit: Int): List<LibraryItem> {
