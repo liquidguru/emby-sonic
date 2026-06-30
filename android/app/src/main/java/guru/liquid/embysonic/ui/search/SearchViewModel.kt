@@ -100,7 +100,10 @@ class SearchViewModel @Inject constructor(
     private suspend fun search(q: String, scope: SearchScope): List<LibraryItem> {
         val parentId = parentIdFor(scope)
         return when (scope) {
-            SearchScope.TRACKS -> repository.searchTracks(q, parentId)
+            SearchScope.TRACKS -> {
+                // For artists search, we use the enhanced method to include tracks
+                repository.searchArtistsWithTracks(q, parentId)
+            }
             SearchScope.ALBUMS -> repository.searchAlbums(q, parentId)
             SearchScope.ARTISTS -> repository.searchArtists(q, parentId)
             SearchScope.BOOKS -> repository.searchBooks(q, parentId)

@@ -430,6 +430,37 @@ class LibraryRepository @Inject constructor(
     suspend fun searchAuthors(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
         searchItems(query, "MusicArtist", parentId, limit) { it.toCollectionItem() }
 
+    /**
+     * Enhanced artist search that includes all tracks by the found artists.
+     * This addresses the issue where searching for "311" would find the album/artist
+     * but not songs by that artist in albums with other titles.
+     */
+    suspend fun searchArtistsWithTracks(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> {
+        // First perform regular search to get matching artists
+        val artists = searchArtists(query, parentId, limit)
+        
+        // If we found artists, get all their tracks from all albums they appear on
+        if (artists.isNotEmpty()) {
+            return getArtistTracks(artists, parentId, limit)
+        }
+        
+        return emptyList()
+    }
+
+    private suspend fun getArtistTracks(artists: List<LibraryItem>, parentId: String?, limit: Int): List<LibraryItem> {
+        val allArtistIds = artists.map { it.id }.joinToString(",")
+        val tracks = embyApi.getItems(
+            userId = userId(),
+            includeItemTypes = "Audio",
+            parentId = parentId,
+            albumArtistIds = allArtistIds,
+            sortBy = "Album,ParentIndexNumber,IndexNumber",
+            limit = limit
+        ).items.map { it.toTrackItem(ContentKind.MUSIC) }
+        
+        return tracks
+    }
+
     private suspend fun searchItems(
         query: String,
         includeItemTypes: String,
