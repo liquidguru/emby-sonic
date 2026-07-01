@@ -422,6 +422,18 @@ class LibraryRepository @Inject constructor(
     suspend fun searchArtists(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
         searchItems(query, "MusicArtist", parentId, limit) { it.toCollectionItem() }
 
+    /** All tracks by the given artist IDs (comma-joined), scoped to [parentId]. */
+    suspend fun tracksByArtistIds(artistIds: List<String>, parentId: String? = null): List<LibraryItem> {
+        if (artistIds.isEmpty()) return emptyList()
+        return embyApi.getItems(
+            userId = userId(),
+            includeItemTypes = "Audio",
+            parentId = parentId,
+            albumArtistIds = artistIds.joinToString(","),
+            limit = SEARCH_LIMIT,
+        ).items.map { it.toTrackItem(ContentKind.MUSIC) }
+    }
+
     /** Free-text book search (audiobook MusicAlbums; [parentId] = audiobooks library). */
     suspend fun searchBooks(query: String, parentId: String? = null, limit: Int = SEARCH_LIMIT): List<LibraryItem> =
         searchItems(query, "MusicAlbum", parentId, limit) { it.toCollectionItem() }

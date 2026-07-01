@@ -12,7 +12,9 @@ import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -100,13 +102,25 @@ class SearchViewModel @Inject constructor(
     private suspend fun search(q: String, scope: SearchScope): List<LibraryItem> {
         val parentId = parentIdFor(scope)
         return when (scope) {
-            SearchScope.TRACKS -> repository.searchTracks(q, parentId)
+            SearchScope.TRACKS -> searchTracksExpanded(q, parentId)
             SearchScope.ALBUMS -> repository.searchAlbums(q, parentId)
             SearchScope.ARTISTS -> repository.searchArtists(q, parentId)
             SearchScope.BOOKS -> repository.searchBooks(q, parentId)
             SearchScope.AUTHORS -> repository.searchAuthors(q, parentId)
         }
     }
+
+    // Direct track matches + all tracks by any artist whose name matches, deduped.
+    private suspend fun searchTracksExpanded(q: String, parentId: String?): List<LibraryItem> =
+        coroutineScope {
+            val directDeferred = async { repository.searchTracks(q, parentId) }
+            val artistsDeferred = async { repository.searchArtists(q, parentId) }
+            val direct = directDeferred.await()
+            val artistIds = artistsDeferred.await().map { it.id }
+            val byArtist = repository.tracksByArtistIds(artistIds, parentId)
+            val seen = HashSet<String>(direct.size + byArtist.size)
+            (direct + byArtist).filter { seen.add(it.id) }
+        }
 
     private suspend fun parentIdFor(scope: SearchScope): String? {
         val libs = libraries
