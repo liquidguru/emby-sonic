@@ -556,7 +556,6 @@ input:focus {
   height: 100%;
   width: 0%;
   background: var(--accent);
-  transition: width 0.5s linear;
 }
 
 .mini-inner {
