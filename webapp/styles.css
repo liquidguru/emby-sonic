@@ -151,9 +151,15 @@ img { display: block; }
   overflow-x: auto;
   padding: 0 20px 4px;
   scrollbar-width: none;
+  cursor: grab;
+  user-select: none;
 }
 
 .shelf-scroll::-webkit-scrollbar { display: none; }
+
+.shelf-scroll.dragging {
+  cursor: grabbing;
+}
 
 /* ── STATION CARDS ──────────────────────────────────────── */
 

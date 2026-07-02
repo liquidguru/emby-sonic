@@ -836,3 +836,41 @@ async function withBusy(text, task) {
   try { await task(); }
   catch (err) { setMessage(err instanceof Error ? err.message : String(err)); }
 }
+
+// ── Drag-to-scroll for horizontal shelves ─────────────────
+
+function makeDraggable(el) {
+  let startX = 0;
+  let startScroll = 0;
+  let active = false;
+  let moved = false;
+
+  el.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    active = true;
+    moved = false;
+    startX = e.pageX;
+    startScroll = el.scrollLeft;
+    el.classList.add("dragging");
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!active) return;
+    const delta = e.pageX - startX;
+    if (Math.abs(delta) > 4) moved = true;
+    if (moved) el.scrollLeft = startScroll - delta;
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (!active) return;
+    active = false;
+    el.classList.remove("dragging");
+  });
+
+  // Suppress click on child elements if we dragged
+  el.addEventListener("click", (e) => {
+    if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+  }, true);
+}
+
+document.querySelectorAll(".shelf-scroll").forEach(makeDraggable);
