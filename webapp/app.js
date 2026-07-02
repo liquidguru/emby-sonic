@@ -40,6 +40,11 @@ const audio = document.querySelector("#audio");
 const playButton = document.querySelector("#playButton");
 const prevButton = document.querySelector("#prevButton");
 const nextButton = document.querySelector("#nextButton");
+const shuffleButton = document.querySelector("#shuffleButton");
+const repeatButton = document.querySelector("#repeatButton");
+const seekBar = document.querySelector("#seekBar");
+const timeElapsed = document.querySelector("#timeElapsed");
+const timeDuration = document.querySelector("#timeDuration");
 const nowSimilarButton = document.querySelector("#nowSimilarButton");
 const nowTitle = document.querySelector("#nowTitle");
 const nowSubtitle = document.querySelector("#nowSubtitle");
@@ -49,7 +54,10 @@ const state = {
   session: loadSession(),
   activeView: "search",
   queue: [],
+  originalQueue: [],
   currentIndex: -1,
+  shuffle: false,
+  repeat: "none", // "none" | "one" | "all"
   mixes: [],
   selectedMix: null,
   adventureFrom: null,
@@ -59,6 +67,8 @@ const state = {
 renderSession();
 renderView();
 renderPlayer();
+renderShuffle();
+renderRepeat();
 
 tabButtons.forEach((button) => {
   button.addEventListener("click", () => switchView(button.dataset.view));
@@ -94,7 +104,10 @@ logoutButton.addEventListener("click", () => {
   localStorage.removeItem(STORAGE_KEY);
   state.session = null;
   state.queue = [];
+  state.originalQueue = [];
   state.currentIndex = -1;
+  state.shuffle = false;
+  state.repeat = "none";
   state.mixes = [];
   state.selectedMix = null;
   state.adventureFrom = null;
@@ -109,6 +122,8 @@ logoutButton.addEventListener("click", () => {
   renderAdventureChoices();
   renderQueue();
   renderPlayer();
+  renderShuffle();
+  renderRepeat();
   setMessage("");
 });
 
@@ -168,14 +183,74 @@ nowSimilarButton.addEventListener("click", () => {
   if (track) showSimilar(track);
 });
 
+shuffleButton.addEventListener("click", () => {
+  state.shuffle = !state.shuffle;
+  if (state.queue.length) {
+    if (state.shuffle) {
+      const current = state.queue[state.currentIndex];
+      const rest = state.queue.filter((_, i) => i !== state.currentIndex);
+      const shuffled = shuffleArray(rest);
+      state.queue = current ? [current, ...shuffled] : shuffled;
+      state.currentIndex = current ? 0 : -1;
+    } else {
+      const currentId = state.queue[state.currentIndex]?.id;
+      state.queue = [...state.originalQueue];
+      state.currentIndex = currentId != null
+        ? state.queue.findIndex((t) => t.id === currentId)
+        : -1;
+    }
+    renderQueue();
+  }
+  renderShuffle();
+});
+
+repeatButton.addEventListener("click", () => {
+  const modes = ["none", "one", "all"];
+  state.repeat = modes[(modes.indexOf(state.repeat) + 1) % modes.length];
+  renderRepeat();
+});
+
 audio.addEventListener("play", renderPlayer);
 audio.addEventListener("pause", renderPlayer);
+
+audio.addEventListener("timeupdate", () => {
+  if (!audio.duration || audio.seeking) return;
+  seekBar.value = String((audio.currentTime / audio.duration) * 100);
+  timeElapsed.textContent = formatTime(audio.currentTime);
+});
+
+audio.addEventListener("loadedmetadata", () => {
+  seekBar.value = "0";
+  timeElapsed.textContent = "0:00";
+  timeDuration.textContent = formatTime(audio.duration);
+});
+
+audio.addEventListener("durationchange", () => {
+  timeDuration.textContent = formatTime(audio.duration);
+});
+
+audio.addEventListener("waiting", () => playButton.classList.add("buffering"));
+audio.addEventListener("canplay", () => playButton.classList.remove("buffering"));
+
 audio.addEventListener("ended", () => {
+  if (state.repeat === "one") {
+    audio.currentTime = 0;
+    audio.play();
+    return;
+  }
   if (state.currentIndex < state.queue.length - 1) {
     playIndex(state.currentIndex + 1);
+  } else if (state.repeat === "all" && state.queue.length) {
+    playIndex(0);
   } else {
     renderPlayer();
   }
+});
+
+seekBar.addEventListener("input", () => {
+  if (!audio.duration) return;
+  audio.currentTime = (Number(seekBar.value) / 100) * audio.duration;
+  timeElapsed.textContent = formatTime(audio.currentTime);
 });
 
 function loadSession() {
@@ -217,6 +292,10 @@ async function searchTracks(query, limit = 60) {
 }
 
 function renderResults(tracks) {
+  if (!tracks.length) {
+    resultsList.replaceChildren();
+    return;
+  }
   resultsList.replaceChildren(...tracks.map((track) => {
     const item = document.createElement("li");
     item.className = "result-row";
@@ -263,6 +342,10 @@ async function showSimilar(seed) {
 function renderSimilar(seed, similar) {
   similarPanel.classList.toggle("hidden", !seed);
   similarTitle.textContent = seed ? seed.title || "Untitled track" : "No track selected";
+  if (!similar.length) {
+    similarList.replaceChildren(emptyState("No similar tracks found"));
+    return;
+  }
   similarList.replaceChildren(...similar.map((result) => {
     const item = document.createElement("li");
     item.className = "result-row";
@@ -290,6 +373,10 @@ async function loadMixes(force) {
 }
 
 function renderMixes() {
+  if (!state.mixes.length) {
+    mixesList.replaceChildren(emptyState("No mixes yet — run the worker to analyse your library"));
+    return;
+  }
   mixesList.replaceChildren(...state.mixes.map((mix) => {
     const item = document.createElement("li");
     item.className = "result-row";
@@ -439,7 +526,8 @@ async function buildAdventure() {
 }
 
 function loadQueue(tracks, label, autoPlay, startIndex = 0) {
-  state.queue = Array.isArray(tracks) ? tracks : [];
+  state.originalQueue = Array.isArray(tracks) ? [...tracks] : [];
+  state.queue = state.shuffle ? shuffleArray(state.originalQueue) : [...state.originalQueue];
   state.currentIndex = state.queue.length ? clamp(startIndex, 0, state.queue.length - 1) : -1;
   if (!state.queue.length) {
     audio.pause();
@@ -470,6 +558,9 @@ async function playIndex(index) {
   state.currentIndex = index;
   const track = state.queue[index];
   audio.src = streamUrl(track.id);
+  seekBar.value = "0";
+  timeElapsed.textContent = "0:00";
+  timeDuration.textContent = "0:00";
   renderQueue();
   renderPlayer();
   updateMediaSession(track);
@@ -484,7 +575,7 @@ async function playIndex(index) {
 
 function renderPlayer() {
   const track = state.queue[state.currentIndex];
-  playButton.textContent = audio.paused ? "\u25b6" : "\u23f8";
+  playButton.textContent = audio.paused ? "▶" : "⏸";
   playButton.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
   prevButton.disabled = state.currentIndex <= 0;
   nextButton.disabled = state.currentIndex < 0 || state.currentIndex >= state.queue.length - 1;
@@ -494,12 +585,29 @@ function renderPlayer() {
     nowSubtitle.textContent = "No radio queue yet.";
     artwork.classList.add("hidden");
     artwork.removeAttribute("src");
+    seekBar.value = "0";
+    timeElapsed.textContent = "0:00";
+    timeDuration.textContent = "0:00";
     return;
   }
   nowTitle.textContent = track.title || "Untitled track";
   nowSubtitle.textContent = [track.artist, track.album].filter(Boolean).join(" - ");
   artwork.src = artworkUrl(track.id);
   artwork.classList.remove("hidden");
+}
+
+function renderShuffle() {
+  shuffleButton.classList.toggle("active", state.shuffle);
+  shuffleButton.setAttribute("aria-label", state.shuffle ? "Shuffle on" : "Shuffle off");
+  shuffleButton.title = state.shuffle ? "Shuffle on" : "Shuffle off";
+}
+
+function renderRepeat() {
+  repeatButton.classList.toggle("active", state.repeat !== "none");
+  repeatButton.textContent = state.repeat === "one" ? "↻\xb9" : "↻";
+  const labels = { none: "Repeat off", one: "Repeat one", all: "Repeat all" };
+  repeatButton.setAttribute("aria-label", labels[state.repeat]);
+  repeatButton.title = labels[state.repeat];
 }
 
 function trackButton(track, onClick, label) {
@@ -535,9 +643,33 @@ function trackText(track) {
   title.textContent = track.title || "Untitled track";
   const meta = document.createElement("span");
   meta.className = "track-meta";
-  meta.textContent = [track.artist, track.album].filter(Boolean).join(" - ");
+  const dur = track.duration_ms ? formatTime(track.duration_ms / 1000) : null;
+  meta.textContent = [track.artist, track.album, dur].filter(Boolean).join(" · ");
   wrap.append(title, meta);
   return wrap;
+}
+
+function emptyState(text) {
+  const li = document.createElement("li");
+  li.className = "empty-state";
+  li.textContent = text;
+  return li;
+}
+
+function formatTime(seconds) {
+  if (!seconds || !isFinite(seconds)) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }
 
 function trackLabel(track) {
@@ -595,6 +727,11 @@ function updateMediaSession(track) {
   navigator.mediaSession.setActionHandler("pause", () => audio.pause());
   navigator.mediaSession.setActionHandler("previoustrack", () => playIndex(Math.max(0, state.currentIndex - 1)));
   navigator.mediaSession.setActionHandler("nexttrack", () => playIndex(Math.min(state.queue.length - 1, state.currentIndex + 1)));
+  navigator.mediaSession.setActionHandler("seekto", (details) => {
+    if (details.seekTime != null) {
+      audio.currentTime = details.seekTime;
+    }
+  });
 }
 
 async function authedFetch(url, options = {}) {
