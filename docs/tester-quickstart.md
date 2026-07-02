@@ -116,8 +116,17 @@ WORKER_SECRET=<any-long-random-string>     # shared secret for workers (see Secu
 
 **Docker (easiest — great on a NAS):**
 
+Run the guided installer — it detects your GPU and CUDA version, pulls the right prebuilt images, and starts everything:
+
 ```bash
-docker compose up -d --build coordinator
+chmod +x ./install.sh
+./install.sh
+```
+
+Or pull and start manually:
+
+```bash
+docker compose up -d coordinator
 ```
 
 **Or native Python (3.11+):**
@@ -197,17 +206,15 @@ wait for 100 %. For hands-off operation later, install the worker as a service
 
 ## 5. Install the Android app (liquidWave)
 
-Grab `app-debug.apk` from the
+Grab `liquidWave-<version>.apk` from the
 [Releases page](https://github.com/liquidguru/emby-sonic/releases) (or the link I
 send you), or build it yourself — see
 [README → Phase 3](../README.md#phase-3--android-app-liquidwave). To install: copy
 the APK to your phone, tap it, and allow "install from unknown sources" when
 prompted.
 
-> It's a **debug-signed** build (Android's standard debug key) — it installs and runs
-> exactly like any app; debug vs. release makes no difference to playback. A future
-> public release will use a dedicated signing key, at which point you'd uninstall and
-> reinstall once.
+> The APK is **release-signed and R8-minified** — identical to a Play Store build
+> in everything that matters for playback and security.
 
 > **Want Android Auto?** Sideloaded apps are hidden from Android Auto by default.
 > To use liquidWave in the car, enable AA developer mode once on the phone:
@@ -273,14 +280,11 @@ about your library, listening, or credentials is sent to me or any third party.
   (a plain-HTTP LAN server still works if you type an explicit `http://` URL).
 - **`allowBackup=false`** — your Emby session token is not swept into cloud or `adb`
   backups.
-- The beta APK is **debug-signed** for easy sideloading; a hardened release build
-  (dedicated signing key + R8 shrink/obfuscate) is a planned pre-public-launch step.
+- The APK is **release-signed and R8-minified** — identical to a Play Store build in everything that matters.
 
 **Honest beta caveats (transparency):**
 
-- The Emby token is stored in **app-private storage** on the phone but is **not yet
-  encrypted at rest** — fine on a device you control; full Keystore encryption is a
-  planned follow-up.
+- The Emby token is stored in **app-private storage on the phone, encrypted at rest** using Android Keystore.
 - The coordinator's CORS policy is currently permissive — harmless for a LAN-only
   service, and another reason not to expose `:8765` to the internet.
 
@@ -319,6 +323,5 @@ notes are exactly what I'm after.
 
 - **Android only** for now (iOS is a later phase).
 - First-time library analysis is slow (see Prerequisites). It's a one-time cost.
-- Token-at-rest encryption on the phone is still on the to-do list (see above).
 
 Thanks again — your feedback shapes what ships. 🌊
