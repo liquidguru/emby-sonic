@@ -51,12 +51,14 @@ const adventureStartResults = document.querySelector("#adventureStartResults");
 const adventureEndResults   = document.querySelector("#adventureEndResults");
 
 // Artist Mix Creator
-const artistSearchForm       = document.querySelector("#artistSearchForm");
-const artistSearchInput      = document.querySelector("#artistSearchInput");
-const artistResultsList      = document.querySelector("#artistResultsList");
-const selectedArtistsWrap    = document.querySelector("#selectedArtistsWrap");
-const selectedArtistChips    = document.querySelector("#selectedArtistChips");
-const buildArtistMixButton   = document.querySelector("#buildArtistMixButton");
+const artistSearchForm        = document.querySelector("#artistSearchForm");
+const artistSearchInput       = document.querySelector("#artistSearchInput");
+const artistResultsList       = document.querySelector("#artistResultsList");
+const suggestedArtistsPanel   = document.querySelector("#suggestedArtistsPanel");
+const suggestedArtistsList    = document.querySelector("#suggestedArtistsList");
+const selectedArtistsWrap     = document.querySelector("#selectedArtistsWrap");
+const selectedArtistChips     = document.querySelector("#selectedArtistChips");
+const buildArtistMixButton    = document.querySelector("#buildArtistMixButton");
 
 // Mini player
 const miniPlayer         = document.querySelector("#miniPlayer");
@@ -107,6 +109,7 @@ const state = {
   selectedArtists: [],  // for artist mix creator: [{ id, name }]
   genresLoaded: false,
   activeMixId: null,
+  pendingMixDetail: null,
 };
 
 // ── Boot ─────────────────────────────────────────────────
@@ -356,8 +359,8 @@ function renderMixRow() {
     id: mix.cover_track_id,
     title: mixName(mix),
     sub: `${mix.track_count} tracks`,
-    onPlay: () => playMixById(mix.id),
-    onClick: () => openMixDetail(mix),
+    onPlay: () => openMixDetailFromHome(mix),
+    onClick: () => openMixDetailFromHome(mix),
   })));
   makeDraggable(mixesRow);
 }
@@ -437,11 +440,24 @@ function makePlaceholder() {
 
 // ── Mixes view (tab) ──────────────────────────────────────
 
+function openMixDetailFromHome(mix) {
+  state.pendingMixDetail = mix;
+  switchView("mixes");
+}
+
 async function loadMixesView() {
   if (!state.session) return;
-  mixDetailPanel.classList.add("hidden");
   if (!state.mixes.length) await loadMixes(false);
-  renderMixesList();
+  if (state.pendingMixDetail) {
+    const mix = state.pendingMixDetail;
+    state.pendingMixDetail = null;
+    mixesList.classList.add("hidden");
+    await openMixDetail(mix);
+  } else {
+    mixDetailPanel.classList.add("hidden");
+    mixesList.classList.remove("hidden");
+    renderMixesList();
+  }
 }
 
 function renderMixesList() {
@@ -620,7 +636,76 @@ function addArtistToMix(artist) {
     return;
   }
   state.selectedArtists.push(artist);
+  artistResultsList.replaceChildren();
+  artistSearchInput.value = "";
   renderArtistChips();
+  discoverSimilarArtists(artist).catch(() => {});
+}
+
+async function discoverSimilarArtists(artist) {
+  // Grab one track by this artist to seed the similarity search
+  const tracks = await fetchEmbyItems({
+    ArtistIds: artist.id,
+    IncludeItemTypes: "Audio",
+    Recursive: true,
+    SortBy: "Random",
+    Limit: 1,
+  });
+  if (!tracks.length) return;
+
+  const similar = await parseJson(
+    await authedFetch(`/sonic/tracks/${encodeURIComponent(tracks[0].id)}/similar?n=60`)
+  );
+
+  // Collect unique artist names not already in the mix
+  const selectedNames = new Set(state.selectedArtists.map((a) => a.name.toLowerCase()));
+  const seen = new Set();
+  const suggestions = [];
+  for (const r of (similar || [])) {
+    const name = r.track?.artist;
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (selectedNames.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    suggestions.push(name);
+    if (suggestions.length >= 12) break;
+  }
+
+  showSuggestedArtists(suggestions);
+}
+
+function showSuggestedArtists(names) {
+  if (!names.length) { suggestedArtistsPanel.classList.add("hidden"); return; }
+  suggestedArtistsPanel.classList.remove("hidden");
+  suggestedArtistsList.replaceChildren(...names.map((name) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "suggested-artist-btn";
+    btn.textContent = `+ ${name}`;
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      // Look up the artist ID in Emby so we can fetch their tracks later
+      const found = await findArtistByName(name);
+      if (found) addArtistToMix(found);
+      else setMessage(`Couldn't find "${name}" in your library.`);
+    });
+    return btn;
+  }));
+}
+
+async function findArtistByName(name) {
+  const base = state.session.serverUrl.replace(/\/$/, "");
+  const qs = new URLSearchParams({
+    SearchTerm: name,
+    IncludeItemTypes: "MusicArtist",
+    Recursive: true,
+    Limit: 3,
+    api_key: state.session.token,
+  });
+  const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items?${qs}`);
+  const data = await parseJson(resp);
+  const items = Array.isArray(data.Items) ? data.Items : [];
+  return items.length ? { id: items[0].Id, name: items[0].Name } : null;
 }
 
 function removeArtistFromMix(artistId) {
@@ -667,6 +752,8 @@ buildArtistMixButton.addEventListener("click", async () => {
     state.selectedArtists = [];
     renderArtistChips();
     artistResultsList.replaceChildren();
+    suggestedArtistsPanel.classList.add("hidden");
+    suggestedArtistsList.replaceChildren();
     artistSearchInput.value = "";
     switchView("home");
   });

@@ -570,6 +570,30 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   line-height: 1;
 }
 
+/* ── Artist suggestions ──────────────────────────────────── */
+.suggested-artists-panel { padding: 12px 20px 16px; border-top: 1px solid var(--line); }
+.suggested-artists-panel.hidden { display: none; }
+.suggested-label {
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 10px;
+}
+.suggested-artists-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.suggested-artist-btn {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: .82rem;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.suggested-artist-btn:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
 /* ── Mini player ─────────────────────────────────────────── */
 .mini-player {
   background: var(--panel);
