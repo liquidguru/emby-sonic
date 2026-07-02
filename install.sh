@@ -7,6 +7,7 @@ COMPOSE_FILE="$ROOT_DIR/docker-compose.installer.yml"
 
 COORDINATOR_IMAGE="ghcr.io/liquidguru/emby-sonic-coordinator:latest"
 WORKER_IMAGE_CPU="ghcr.io/liquidguru/emby-sonic-worker:latest"
+WORKER_IMAGE_CU124="ghcr.io/liquidguru/emby-sonic-worker:cu124"
 WORKER_IMAGE_CUDA="ghcr.io/liquidguru/emby-sonic-worker:cuda"
 
 need_cmd() {
@@ -161,6 +162,47 @@ volumes:
 EOF_COMPOSE
 }
 
+# Detects GPU and CUDA version; sets use_gpu (0/1) and worker_variant (cpu|cu124|cuda).
+probe_gpu() {
+  use_gpu=0
+  worker_variant=cpu
+
+  if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi >/dev/null 2>&1; then
+    echo "  No NVIDIA GPU detected."
+    return
+  fi
+
+  local cuda_ver major minor
+  cuda_ver=$(nvidia-smi 2>/dev/null | awk '/CUDA Version:/ {print $NF}')
+  major=$(printf '%s' "$cuda_ver" | cut -d. -f1)
+  minor=$(printf '%s' "$cuda_ver" | cut -d. -f2)
+
+  if [ -z "$cuda_ver" ]; then
+    echo "  GPU found but could not detect CUDA version — defaulting to cu124 image."
+    worker_variant=cu124
+  elif [ "$major" -gt 12 ] || { [ "$major" -eq 12 ] && [ "$minor" -ge 8 ]; }; then
+    echo "  GPU detected: CUDA $cuda_ver → will use :cuda image."
+    worker_variant=cuda
+  elif [ "$major" -eq 12 ] && [ "$minor" -ge 4 ]; then
+    echo "  GPU detected: CUDA $cuda_ver → will use :cu124 image."
+    worker_variant=cu124
+  else
+    echo "  GPU found but CUDA $cuda_ver is too old for PyTorch GPU support. Using CPU worker."
+    return
+  fi
+
+  if ! command -v nvidia-container-cli >/dev/null 2>&1 && \
+     ! docker info 2>/dev/null | grep -qi "nvidia"; then
+    echo "  Warning: NVIDIA Container Toolkit not detected."
+    echo "  Install it first: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"
+    echo "  Falling back to CPU worker."
+    worker_variant=cpu
+    return
+  fi
+
+  use_gpu=1
+}
+
 need_cmd docker
 if ! docker compose version >/dev/null 2>&1; then
   echo "Docker Compose v2 is required. Install Docker Desktop or the Docker Compose plugin." >&2
@@ -196,15 +238,37 @@ case "$scenario" in
   2)
     include_coordinator=1
     include_worker=1
-    if yes_no "Use an NVIDIA GPU for the worker on this machine?" "n"; then
-      use_gpu=1
+    echo "Checking for GPU..."
+    probe_gpu
+    if [ "$use_gpu" = "1" ]; then
+      if ! yes_no "Use GPU worker ($worker_variant image)?" "y"; then
+        use_gpu=0
+        worker_variant=cpu
+      fi
+    else
+      if yes_no "Use an NVIDIA GPU for the worker? (none detected — proceed anyway?)" "n"; then
+        use_gpu=1
+        worker_variant=cuda
+        echo "  Note: GPU/toolkit must be configured manually for this to work."
+      fi
     fi
     ;;
   3)
     include_worker=1
     coordinator_url="$(prompt "Coordinator URL" "http://<coordinator-host>:8765")"
-    if yes_no "Use an NVIDIA GPU for this worker?" "y"; then
-      use_gpu=1
+    echo "Checking for GPU..."
+    probe_gpu
+    if [ "$use_gpu" = "1" ]; then
+      if ! yes_no "Use GPU worker ($worker_variant image)?" "y"; then
+        use_gpu=0
+        worker_variant=cpu
+      fi
+    else
+      if yes_no "Use an NVIDIA GPU for this worker? (none detected — proceed anyway?)" "n"; then
+        use_gpu=1
+        worker_variant=cuda
+        echo "  Note: GPU/toolkit must be configured manually for this to work."
+      fi
     fi
     ;;
   *)
@@ -234,10 +298,11 @@ else
   echo "on the coordinator."
   worker_secret="$(prompt_secret "Coordinator WORKER_SECRET (blank = use Emby API key)")"
 fi
-worker_image="$WORKER_IMAGE_CPU"
-if [ "$use_gpu" = "1" ]; then
-  worker_image="$WORKER_IMAGE_CUDA"
-fi
+case "${worker_variant:-cpu}" in
+  cu124) worker_image="$WORKER_IMAGE_CU124" ;;
+  cuda)  worker_image="$WORKER_IMAGE_CUDA" ;;
+  *)     worker_image="$WORKER_IMAGE_CPU" ;;
+esac
 
 export EMBY_URL="$emby_url"
 export EMBY_API_KEY="$emby_api_key"
@@ -277,9 +342,8 @@ if [ "$include_coordinator" = "1" ]; then
 fi
 if [ "$include_worker" = "1" ]; then
   echo "Worker logs: docker logs -f emby-sonic-worker"
-  if [ "$use_gpu" = "1" ]; then
-    echo "Expected worker proof: [worker docker-worker] device=cuda"
-  else
-    echo "Expected worker proof: [worker docker-worker] device=cpu"
-  fi
+  case "${worker_variant:-cpu}" in
+    cuda|cu124) echo "Expected worker proof: [worker docker-worker] device=cuda" ;;
+    *)          echo "Expected worker proof: [worker docker-worker] device=cpu" ;;
+  esac
 fi

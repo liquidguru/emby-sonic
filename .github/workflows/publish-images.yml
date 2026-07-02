@@ -1,0 +1,64 @@
+name: Publish Docker images
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  coordinator:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.coordinator
+          push: true
+          cache-from: type=gha,scope=coordinator
+          cache-to: type=gha,mode=max,scope=coordinator
+          tags: |
+            ghcr.io/liquidguru/emby-sonic-coordinator:latest
+            ghcr.io/liquidguru/emby-sonic-coordinator:${{ github.ref_name }}
+
+  worker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - variant: cpu
+            tag: latest
+          - variant: cu124
+            tag: cu124
+          - variant: cuda
+            tag: cuda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          build-args: TORCH_VARIANT=${{ matrix.variant }}
+          push: true
+          cache-from: type=gha,scope=worker-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=worker-${{ matrix.variant }}
+          tags: |
+            ghcr.io/liquidguru/emby-sonic-worker:${{ matrix.tag }}
+            ghcr.io/liquidguru/emby-sonic-worker:${{ matrix.tag }}-${{ github.ref_name }}
