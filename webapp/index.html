@@ -226,6 +226,10 @@
           <div id="selectedArtistsWrap" class="selected-artists hidden">
             <h3 class="selected-artists-label">Selected artists</h3>
             <div id="selectedArtistChips" class="artist-chips"></div>
+            <label class="mix-count-field">
+              <span>Number of tracks</span>
+              <input id="artistMixCountInput" type="number" min="5" max="200" step="5" value="30" inputmode="numeric">
+            </label>
             <button id="buildArtistMixButton" class="primary-btn" type="button">Build Mix</button>
           </div>
         </section>
@@ -249,6 +253,7 @@
             <button id="miniPrevButton" class="mini-ctrl" type="button" aria-label="Previous">⏮</button>
             <button id="miniPlayButton" class="mini-ctrl mini-play" type="button" aria-label="Play">▶</button>
             <button id="miniNextButton" class="mini-ctrl" type="button" aria-label="Next">⏭</button>
+            <button id="miniStopButton" class="mini-ctrl" type="button" aria-label="Stop">⏹</button>
           </div>
         </div>
       </div>
@@ -276,7 +281,10 @@
             <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
           </button>
           <span class="eyebrow">Now Playing</span>
-          <button id="nowSimilarButton" class="secondary-btn" type="button">Similar</button>
+          <div class="np-header-actions">
+            <button id="savePlaylistButton" class="secondary-btn" type="button">Save</button>
+            <button id="nowSimilarButton" class="secondary-btn" type="button">Similar</button>
+          </div>
         </div>
         <div class="np-body">
           <div class="np-artwork-wrap">

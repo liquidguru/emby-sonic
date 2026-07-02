@@ -549,6 +549,26 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
 .selected-artists.hidden { display: none; }
 .selected-artists-label { font-size: .85rem; font-weight: 600; margin-bottom: 10px; }
 .artist-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.mix-count-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  font-size: .85rem;
+  font-weight: 600;
+}
+.mix-count-field input {
+  width: 84px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: .95rem;
+  text-align: center;
+}
+.mix-count-field input:focus { outline: none; border-color: var(--accent); }
 .artist-chip {
   display: inline-flex;
   align-items: center;
@@ -727,6 +747,7 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
 }
 .np-close:hover { color: var(--text); background: var(--panel); }
 .np-header .eyebrow { color: var(--muted); }
+.np-header-actions { display: flex; align-items: center; gap: 8px; }
 
 .np-body { padding: 0 24px 40px; }
 

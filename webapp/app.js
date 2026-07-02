@@ -58,6 +58,7 @@ const suggestedArtistsPanel   = document.querySelector("#suggestedArtistsPanel")
 const suggestedArtistsList    = document.querySelector("#suggestedArtistsList");
 const selectedArtistsWrap     = document.querySelector("#selectedArtistsWrap");
 const selectedArtistChips     = document.querySelector("#selectedArtistChips");
+const artistMixCountInput     = document.querySelector("#artistMixCountInput");
 const buildArtistMixButton    = document.querySelector("#buildArtistMixButton");
 
 // Mini player
@@ -69,6 +70,7 @@ const miniArtist         = document.querySelector("#miniArtist");
 const miniPrevButton     = document.querySelector("#miniPrevButton");
 const miniPlayButton     = document.querySelector("#miniPlayButton");
 const miniNextButton     = document.querySelector("#miniNextButton");
+const miniStopButton     = document.querySelector("#miniStopButton");
 const miniProgressFill   = document.querySelector("#miniProgressFill");
 const miniProgressTrack  = document.querySelector(".mini-progress-track");
 
@@ -87,6 +89,7 @@ const playButton       = document.querySelector("#playButton");
 const nextButton       = document.querySelector("#nextButton");
 const repeatButton     = document.querySelector("#repeatButton");
 const nowSimilarButton = document.querySelector("#nowSimilarButton");
+const savePlaylistButton = document.querySelector("#savePlaylistButton");
 const queueList        = document.querySelector("#queueList");
 
 const audio      = document.querySelector("#audio");
@@ -106,6 +109,7 @@ const state = {
   adventureFrom: null,
   adventureTo: null,
   nowPlayingOpen: false,
+  queueLabel: "",       // human label of the current queue (for Save as playlist)
   selectedArtists: [],  // for artist mix creator: [{ id, name }]
   genresLoaded: false,
   activeMixId: null,
@@ -529,7 +533,13 @@ playMixButton.addEventListener("click", () => {
 regenerateMixButton.addEventListener("click", async () => {
   if (!state.activeMixId) return;
   await withBusy("Regenerating mix…", async () => {
-    await authedFetch(`/sonic/mixes/${encodeURIComponent(state.activeMixId)}/regenerate`, { method: "POST" });
+    // The endpoint expects a JSON body — a bodyless POST 422s (which used to be
+    // swallowed silently, so Regenerate appeared to do nothing).
+    await parseJson(await authedFetch(`/sonic/mixes/${encodeURIComponent(state.activeMixId)}/regenerate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracks_per_mix: 50 }),
+    }));
     const detail = await parseJson(await authedFetch(`/sonic/mixes/${encodeURIComponent(state.activeMixId)}`));
     renderDetailTrackList(mixTracksList, detail.tracks || []);
     setMessage("Mix regenerated.");
@@ -732,7 +742,13 @@ function renderArtistChips() {
 
 buildArtistMixButton.addEventListener("click", async () => {
   if (!state.selectedArtists.length) return;
+  const total = clamp(Number.parseInt(artistMixCountInput.value, 10) || 30, 5, 200);
+  artistMixCountInput.value = String(total);
   await withBusy("Building artist mix…", async () => {
+    // Draw an even-ish share from each artist so no single one dominates, then
+    // pool + shuffle + cap at the requested total. Fetch a small buffer per
+    // artist so we can still reach `total` if some artists are light.
+    const perArtist = Math.ceil(total / state.selectedArtists.length);
     const allTracks = [];
     for (const artist of state.selectedArtists) {
       const tracks = await fetchEmbyItems({
@@ -740,13 +756,13 @@ buildArtistMixButton.addEventListener("click", async () => {
         IncludeItemTypes: "Audio",
         Recursive: true,
         SortBy: "Random",
-        Limit: 40,
+        Limit: perArtist + 5,
         Fields: "RunTimeTicks",
       });
       allTracks.push(...tracks);
     }
     if (!allTracks.length) { setMessage("No tracks found for selected artists."); return; }
-    const shuffled = shuffleArray(allTracks);
+    const shuffled = shuffleArray(allTracks).slice(0, total);
     const label = state.selectedArtists.map((a) => a.name).join(", ");
     loadQueue(shuffled, `Artist Mix: ${label}`, true);
     state.selectedArtists = [];
@@ -883,6 +899,7 @@ async function buildAdventure() {
 // ── Queue + playback ─────────────────────────────────────
 
 function loadQueue(tracks, label, autoPlay, startIndex = 0) {
+  state.queueLabel = label || "";
   state.originalQueue = Array.isArray(tracks) ? [...tracks] : [];
   state.queue = state.shuffle ? shuffleArray(state.originalQueue) : [...state.originalQueue];
   state.currentIndex = state.queue.length ? clamp(startIndex, 0, state.queue.length - 1) : -1;
@@ -964,6 +981,23 @@ miniProgressTrack.addEventListener("click", (e) => {
 miniPrevButton.addEventListener("click", () => playIndex(Math.max(0, state.currentIndex - 1)));
 miniNextButton.addEventListener("click", () => playIndex(Math.min(state.queue.length - 1, state.currentIndex + 1)));
 miniPlayButton.addEventListener("click", togglePlay);
+miniStopButton.addEventListener("click", stopPlayback);
+
+// Stop: halt playback and clear the queue, so the mini player dismisses. (Pause
+// keeps the track loaded for resume; stop tears the session down entirely.)
+function stopPlayback() {
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+  state.queue = [];
+  state.originalQueue = [];
+  state.currentIndex = -1;
+  state.queueLabel = "";
+  if (state.nowPlayingOpen) closeNP();
+  renderMini();
+  renderNowPlaying();
+  renderQueue();
+}
 
 // ── Now Playing overlay ──────────────────────────────────
 
@@ -986,6 +1020,36 @@ nowSimilarButton.addEventListener("click", () => {
   const track = state.queue[state.currentIndex];
   if (track) { closeNP(); showSimilar(track); }
 });
+
+savePlaylistButton.addEventListener("click", async () => {
+  if (!state.queue.length) { setMessage("Nothing in the queue to save."); return; }
+  const suggested = (state.queueLabel || "Emby Sonic mix").replace(/^[^:]+:\s*/, "");
+  const name = window.prompt("Save queue as playlist named:", suggested);
+  if (name == null) return;               // cancelled
+  const trimmed = name.trim();
+  if (!trimmed) { setMessage("Playlist name can't be empty."); return; }
+  await withBusy("Saving playlist…", async () => {
+    const count = await createEmbyPlaylist(trimmed, state.queue.map((t) => t.id));
+    setMessage(`Saved "${trimmed}" (${count} tracks) to your Emby playlists.`);
+  });
+});
+
+// Create a server-side Emby playlist from the current queue. Mirrors the Android
+// app's POST /Playlists?Name=&Ids=&UserId=&MediaType=Audio — persists in Emby and
+// shows up in every client. Hits Emby directly (same as fetchEmbyItems), not the
+// coordinator, which has no playlist route.
+async function createEmbyPlaylist(name, ids) {
+  const base = state.session.serverUrl.replace(/\/$/, "");
+  const qs = new URLSearchParams({
+    Name: name,
+    Ids: ids.join(","),
+    UserId: state.session.userId,
+    MediaType: "Audio",
+    api_key: state.session.token,
+  });
+  const data = await parseJson(await fetch(`${base}/Playlists?${qs}`, { method: "POST" }));
+  return typeof data.ItemAddedCount === "number" ? data.ItemAddedCount : ids.length;
+}
 
 function renderNowPlaying() {
   const track = state.queue[state.currentIndex];
