@@ -11,12 +11,12 @@
 <body>
   <div class="app">
 
-    <!-- ── LOGIN ─────────────────────────────────────────── -->
+    <!-- ── LOGIN ──────────────────────────────────────────── -->
     <section id="loginView" class="login-view">
       <div class="login-brand">
         <p class="eyebrow">Emby Sonic</p>
         <h1 class="wordmark">liquidWave</h1>
-        <p class="login-tagline">Sonic radio for your Emby library</p>
+        <p class="login-tagline">Browse, queue, and keep the music moving.</p>
       </div>
       <form id="loginForm" class="login-form">
         <label>
@@ -31,38 +31,63 @@
       </form>
     </section>
 
-    <!-- ── MAIN APP ───────────────────────────────────────── -->
-    <div id="appView" class="app-view hidden">
+    <!-- ── APP SHELL ──────────────────────────────────────── -->
+    <div id="appShell" class="app-shell hidden">
 
+      <!-- Top bar -->
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Emby Sonic</p>
+        <div class="topbar-left">
+          <p class="greeting" id="greeting">Hi there</p>
           <h1 class="wordmark">liquidWave</h1>
         </div>
         <button id="logoutButton" class="ghost-btn" type="button" aria-label="Log out" title="Log out">↩</button>
       </header>
 
-      <div class="page-content">
+      <!-- Scrollable page content -->
+      <div class="page-content" id="pageContent">
 
-        <!-- HOME ─────────────────────────────────────────── -->
+        <!-- HOME ───────────────────────────────────────────── -->
         <section id="homeView" class="view">
 
+          <p class="home-tagline">Browse, queue, and keep the music moving.</p>
+
+          <!-- Recent Plays -->
+          <section class="shelf" id="recentShelf">
+            <h2 class="shelf-title">Recent plays</h2>
+            <div class="shelf-scroll" id="recentRow"></div>
+          </section>
+
+          <!-- Stations 2×3 grid -->
           <section class="shelf">
             <h2 class="shelf-title">Stations</h2>
-            <div class="shelf-scroll">
-              <button class="station-card station-library" type="button" data-station="library">
-                <span class="station-name">Library Radio</span>
-                <span class="station-hint">Random from your library</span>
+            <div class="stations-grid">
+              <button class="station-card" type="button" data-station="library">
+                <svg class="station-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                <span>Library Radio</span>
               </button>
-              <button class="station-card station-album" type="button" data-station="album">
-                <span class="station-name">Random Album</span>
-                <span class="station-hint">Play a full album</span>
+              <button class="station-card" type="button" data-station="album">
+                <svg class="station-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/></svg>
+                <span>Random Album</span>
               </button>
-              <button class="station-card station-decade" type="button" data-station="decade">
-                <span class="station-name">Decade Radio</span>
-                <span class="station-hint">Pick an era</span>
+              <button class="station-card" type="button" data-station="decade">
+                <svg class="station-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z"/></svg>
+                <span>Decade Radio</span>
+              </button>
+              <button class="station-card" type="button" data-station="genres">
+                <svg class="station-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                <span>Genres</span>
+              </button>
+              <button class="station-card" type="button" data-station="adventure">
+                <svg class="station-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
+                <span>Sonic Adventure</span>
+              </button>
+              <button class="station-card" type="button" data-station="artistmix">
+                <svg class="station-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                <span>Artist Mix Creator</span>
               </button>
             </div>
+
+            <!-- Decade picker (inline expand) -->
             <div id="decadePicker" class="decade-picker hidden">
               <button class="decade-btn" type="button" data-decade="1960">60s</button>
               <button class="decade-btn" type="button" data-decade="1970">70s</button>
@@ -72,24 +97,26 @@
               <button class="decade-btn" type="button" data-decade="2010">10s</button>
               <button class="decade-btn" type="button" data-decade="2020">20s</button>
             </div>
+
+            <!-- Genre picker (inline expand) -->
+            <div id="genrePicker" class="genre-picker hidden">
+              <p class="picker-loading" id="genreLoading">Loading genres…</p>
+              <div class="genre-grid" id="genreGrid"></div>
+            </div>
           </section>
 
+          <!-- Sonic Mixes -->
           <section class="shelf">
             <div class="shelf-head">
-              <h2 class="shelf-title">Sonic Mixes</h2>
+              <h2 class="shelf-title">Sonic mixes</h2>
               <button id="refreshMixesButton" class="text-btn" type="button">Refresh</button>
             </div>
             <div class="shelf-scroll" id="mixesRow"></div>
           </section>
 
-          <section class="shelf">
-            <h2 class="shelf-title">Recent Plays</h2>
-            <div class="shelf-scroll" id="recentRow"></div>
-          </section>
+        </section><!-- /homeView -->
 
-        </section>
-
-        <!-- SEARCH ───────────────────────────────────────── -->
+        <!-- SEARCH ─────────────────────────────────────────── -->
         <section id="searchView" class="view hidden">
           <form id="searchForm" class="search-bar-form">
             <input id="searchInput" type="search" autocomplete="off" placeholder="Search tracks, artists…">
@@ -105,11 +132,46 @@
           </section>
         </section>
 
-        <!-- ADVENTURE ────────────────────────────────────── -->
-        <section id="adventureView" class="view hidden">
+        <!-- MIXES ──────────────────────────────────────────── -->
+        <section id="mixesView" class="view hidden">
           <div class="view-header">
-            <p class="eyebrow">Sonic Adventure</p>
-            <h2>Start to end journey</h2>
+            <p class="eyebrow">Sonic</p>
+            <h2>Mixes</h2>
+          </div>
+          <ul id="mixesList" class="track-list" aria-label="All mixes"></ul>
+          <section id="mixDetailPanel" class="mix-detail hidden">
+            <div class="mix-detail-head">
+              <button id="closeMixDetail" class="back-btn" type="button">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                All mixes
+              </button>
+            </div>
+            <div class="mix-detail-art-wrap">
+              <img id="mixDetailArt" class="mix-detail-art" alt="">
+            </div>
+            <div class="mix-detail-meta">
+              <h2 id="mixDetailTitle"></h2>
+              <p id="mixDetailCount" class="muted-text"></p>
+            </div>
+            <div class="mix-detail-actions">
+              <button id="playMixButton" class="primary-btn" type="button">Play</button>
+              <button id="regenerateMixButton" class="secondary-btn" type="button">Regenerate</button>
+            </div>
+            <ol id="mixTracksList" class="track-list numbered-list" aria-label="Mix tracks"></ol>
+          </section>
+        </section>
+
+        <!-- ADVENTURE ──────────────────────────────────────── -->
+        <section id="adventureView" class="view hidden">
+          <div class="view-header back-header">
+            <button class="back-btn" type="button" data-back="home">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+              Home
+            </button>
+            <div>
+              <p class="eyebrow">Sonic</p>
+              <h2>Adventure</h2>
+            </div>
           </div>
           <div class="adventure-pickers">
             <div class="picker-block">
@@ -118,15 +180,15 @@
                 <button class="primary-btn compact-btn" type="submit">Find</button>
               </form>
               <p id="adventureStartChoice" class="choice-line">No start selected.</p>
-              <ul id="adventureStartResults" class="track-list compact-list" aria-label="Start options"></ul>
+              <ul id="adventureStartResults" class="track-list compact-list"></ul>
             </div>
-            <div class="picker-block">
+            <div class="picker-block picker-block-border">
               <form id="adventureEndForm" class="search-bar-form">
                 <input id="adventureEndInput" type="search" autocomplete="off" placeholder="Search end track">
                 <button class="primary-btn compact-btn" type="submit">Find</button>
               </form>
               <p id="adventureEndChoice" class="choice-line">No end selected.</p>
-              <ul id="adventureEndResults" class="track-list compact-list" aria-label="End options"></ul>
+              <ul id="adventureEndResults" class="track-list compact-list"></ul>
             </div>
           </div>
           <form id="adventureBuildForm" class="build-bar">
@@ -138,9 +200,35 @@
           </form>
         </section>
 
+        <!-- ARTIST MIX CREATOR ─────────────────────────────── -->
+        <section id="artistMixView" class="view hidden">
+          <div class="view-header back-header">
+            <button class="back-btn" type="button" data-back="home">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+              Home
+            </button>
+            <div>
+              <p class="eyebrow">Sonic</p>
+              <h2>Artist Mix Creator</h2>
+            </div>
+          </div>
+          <div class="artist-mix-search">
+            <form id="artistSearchForm" class="search-bar-form">
+              <input id="artistSearchInput" type="search" autocomplete="off" placeholder="Search for an artist…">
+              <button class="primary-btn compact-btn" type="submit">Find</button>
+            </form>
+            <ul id="artistResultsList" class="track-list" aria-label="Artist results"></ul>
+          </div>
+          <div id="selectedArtistsWrap" class="selected-artists hidden">
+            <h3 class="selected-artists-label">Selected artists</h3>
+            <div id="selectedArtistChips" class="artist-chips"></div>
+            <button id="buildArtistMixButton" class="primary-btn" type="button">Build Mix</button>
+          </div>
+        </section>
+
       </div><!-- /page-content -->
 
-      <!-- ── MINI PLAYER ────────────────────────────────── -->
+      <!-- ── MINI PLAYER (in flow) ───────────────────────── -->
       <div id="miniPlayer" class="mini-player hidden">
         <div class="mini-progress-track">
           <div id="miniProgressFill" class="mini-progress-fill"></div>
@@ -161,74 +249,61 @@
         </div>
       </div>
 
-      <!-- ── BOTTOM NAV ─────────────────────────────────── -->
+      <!-- ── BOTTOM NAV (in flow) ────────────────────────── -->
       <nav class="bottom-nav" aria-label="Main navigation">
         <button class="nav-btn active" type="button" data-view="home">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-          </svg>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
           <span class="nav-label">Home</span>
         </button>
         <button class="nav-btn" type="button" data-view="search">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-          </svg>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
           <span class="nav-label">Search</span>
         </button>
-        <button class="nav-btn" type="button" data-view="adventure">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/>
-          </svg>
-          <span class="nav-label">Adventure</span>
+        <button class="nav-btn" type="button" data-view="mixes">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
+          <span class="nav-label">Mixes</span>
         </button>
       </nav>
 
-    </div><!-- /app-view -->
-
-    <!-- ── NOW PLAYING OVERLAY ────────────────────────────── -->
-    <div id="nowPlayingOverlay" class="np-overlay hidden" role="dialog" aria-modal="true" aria-label="Now Playing">
-      <div class="np-header">
-        <button id="closeNowPlaying" class="np-close" type="button" aria-label="Close">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
-            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
-          </svg>
-        </button>
-        <span class="eyebrow">Now Playing</span>
-        <button id="nowSimilarButton" class="secondary-btn" type="button">Similar</button>
-      </div>
-
-      <div class="np-body">
-        <div class="np-artwork-wrap">
-          <img id="npArtwork" class="np-artwork" alt="">
+      <!-- ── NOW PLAYING OVERLAY (absolute within shell) ─── -->
+      <div id="nowPlayingOverlay" class="np-overlay hidden" role="dialog" aria-modal="true" aria-label="Now Playing">
+        <div class="np-header">
+          <button id="closeNowPlaying" class="np-close" type="button" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+          </button>
+          <span class="eyebrow">Now Playing</span>
+          <button id="nowSimilarButton" class="secondary-btn" type="button">Similar</button>
         </div>
-
-        <div class="np-meta">
-          <h2 id="npTitle" class="np-title">No track loaded</h2>
-          <p id="npSubtitle" class="np-subtitle"></p>
-        </div>
-
-        <div class="np-seek">
-          <input id="seekBar" type="range" min="0" max="100" value="0" step="0.1" class="seek-bar" aria-label="Seek">
-          <div class="np-times">
-            <span id="timeElapsed" class="time-label">0:00</span>
-            <span id="timeDuration" class="time-label">0:00</span>
+        <div class="np-body">
+          <div class="np-artwork-wrap">
+            <img id="npArtwork" class="np-artwork" alt="">
+          </div>
+          <div class="np-meta">
+            <h2 id="npTitle" class="np-title">No track loaded</h2>
+            <p id="npSubtitle" class="np-subtitle"></p>
+          </div>
+          <div class="np-seek">
+            <input id="seekBar" type="range" min="0" max="100" value="0" step="0.1" class="seek-bar" aria-label="Seek">
+            <div class="np-times">
+              <span id="timeElapsed" class="time-label">0:00</span>
+              <span id="timeDuration" class="time-label">0:00</span>
+            </div>
+          </div>
+          <div class="np-controls">
+            <button id="shuffleButton" class="np-icon-btn" type="button" aria-label="Shuffle off" title="Shuffle">⇄</button>
+            <button id="prevButton" class="np-icon-btn" type="button" aria-label="Previous">⏮</button>
+            <button id="playButton" class="np-play-btn" type="button" aria-label="Play">▶</button>
+            <button id="nextButton" class="np-icon-btn" type="button" aria-label="Next">⏭</button>
+            <button id="repeatButton" class="np-icon-btn" type="button" aria-label="Repeat off" title="Repeat off">↻</button>
+          </div>
+          <div class="np-queue-section">
+            <h3 class="np-queue-label">Queue</h3>
+            <ol id="queueList" class="queue-list"></ol>
           </div>
         </div>
-
-        <div class="np-controls">
-          <button id="shuffleButton" class="np-icon-btn" type="button" aria-label="Shuffle off" title="Shuffle">⇄</button>
-          <button id="prevButton" class="np-icon-btn" type="button" aria-label="Previous">⏮</button>
-          <button id="playButton" class="np-play-btn" type="button" aria-label="Play">▶</button>
-          <button id="nextButton" class="np-icon-btn" type="button" aria-label="Next">⏭</button>
-          <button id="repeatButton" class="np-icon-btn" type="button" aria-label="Repeat off" title="Repeat off">↻</button>
-        </div>
-
-        <div class="np-queue-section">
-          <h3 class="np-queue-label">Queue</h3>
-          <ol id="queueList" class="queue-list"></ol>
-        </div>
       </div>
-    </div>
+
+    </div><!-- /app-shell -->
 
   </div><!-- /app -->
 
