@@ -4,22 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111318">
-  <title>Emby Sonic</title>
+  <title>liquidWave</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <main class="app-shell">
-    <section class="topbar" aria-label="App header">
-      <div>
-        <p class="eyebrow">Emby Sonic</p>
-        <h1>Sonic Radio</h1>
-      </div>
-      <button id="logoutButton" class="icon-button hidden" type="button" aria-label="Log out" title="Log out">&#x21a9;</button>
-    </section>
+  <div class="app">
 
-    <section id="loginView" class="panel auth-panel">
-      <form id="loginForm" class="form-stack">
+    <!-- ── LOGIN ─────────────────────────────────────────── -->
+    <section id="loginView" class="login-view">
+      <div class="login-brand">
+        <p class="eyebrow">Emby Sonic</p>
+        <h1 class="wordmark">liquidWave</h1>
+        <p class="login-tagline">Sonic radio for your Emby library</p>
+      </div>
+      <form id="loginForm" class="login-form">
         <label>
           <span>Username</span>
           <input id="usernameInput" name="username" type="text" autocomplete="username" required>
@@ -28,138 +27,213 @@
           <span>Password</span>
           <input id="passwordInput" name="password" type="password" autocomplete="current-password" required>
         </label>
-        <button id="loginButton" class="primary-button" type="submit">Log in</button>
+        <button class="primary-btn" type="submit">Log in</button>
       </form>
     </section>
 
-    <section id="mainView" class="main-stack hidden">
-      <nav class="tabs" aria-label="Sonic features">
-        <button class="tab-button active" type="button" data-view="search">Search</button>
-        <button class="tab-button" type="button" data-view="mixes">Mixes</button>
-        <button class="tab-button" type="button" data-view="adventure">Adventure</button>
+    <!-- ── MAIN APP ───────────────────────────────────────── -->
+    <div id="appView" class="app-view hidden">
+
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Emby Sonic</p>
+          <h1 class="wordmark">liquidWave</h1>
+        </div>
+        <button id="logoutButton" class="ghost-btn" type="button" aria-label="Log out" title="Log out">↩</button>
+      </header>
+
+      <div class="page-content">
+
+        <!-- HOME ─────────────────────────────────────────── -->
+        <section id="homeView" class="view">
+
+          <section class="shelf">
+            <h2 class="shelf-title">Stations</h2>
+            <div class="shelf-scroll">
+              <button class="station-card station-library" type="button" data-station="library">
+                <span class="station-name">Library Radio</span>
+                <span class="station-hint">Random from your library</span>
+              </button>
+              <button class="station-card station-album" type="button" data-station="album">
+                <span class="station-name">Random Album</span>
+                <span class="station-hint">Play a full album</span>
+              </button>
+              <button class="station-card station-decade" type="button" data-station="decade">
+                <span class="station-name">Decade Radio</span>
+                <span class="station-hint">Pick an era</span>
+              </button>
+            </div>
+            <div id="decadePicker" class="decade-picker hidden">
+              <button class="decade-btn" type="button" data-decade="1960">60s</button>
+              <button class="decade-btn" type="button" data-decade="1970">70s</button>
+              <button class="decade-btn" type="button" data-decade="1980">80s</button>
+              <button class="decade-btn" type="button" data-decade="1990">90s</button>
+              <button class="decade-btn" type="button" data-decade="2000">00s</button>
+              <button class="decade-btn" type="button" data-decade="2010">10s</button>
+              <button class="decade-btn" type="button" data-decade="2020">20s</button>
+            </div>
+          </section>
+
+          <section class="shelf">
+            <div class="shelf-head">
+              <h2 class="shelf-title">Sonic Mixes</h2>
+              <button id="refreshMixesButton" class="text-btn" type="button">Refresh</button>
+            </div>
+            <div class="shelf-scroll" id="mixesRow"></div>
+          </section>
+
+          <section class="shelf">
+            <h2 class="shelf-title">Recent Plays</h2>
+            <div class="shelf-scroll" id="recentRow"></div>
+          </section>
+
+        </section>
+
+        <!-- SEARCH ───────────────────────────────────────── -->
+        <section id="searchView" class="view hidden">
+          <form id="searchForm" class="search-bar-form">
+            <input id="searchInput" type="search" autocomplete="off" placeholder="Search tracks, artists…">
+            <button class="primary-btn compact-btn" type="submit">Search</button>
+          </form>
+          <ul id="resultsList" class="track-list" aria-label="Search results"></ul>
+          <section id="similarPanel" class="similar-section hidden">
+            <div class="section-label">
+              <p class="eyebrow">Similar to</p>
+              <h3 id="similarTitle"></h3>
+            </div>
+            <ul id="similarList" class="track-list" aria-label="Similar tracks"></ul>
+          </section>
+        </section>
+
+        <!-- ADVENTURE ────────────────────────────────────── -->
+        <section id="adventureView" class="view hidden">
+          <div class="view-header">
+            <p class="eyebrow">Sonic Adventure</p>
+            <h2>Start to end journey</h2>
+          </div>
+          <div class="adventure-pickers">
+            <div class="picker-block">
+              <form id="adventureStartForm" class="search-bar-form">
+                <input id="adventureStartInput" type="search" autocomplete="off" placeholder="Search start track">
+                <button class="primary-btn compact-btn" type="submit">Find</button>
+              </form>
+              <p id="adventureStartChoice" class="choice-line">No start selected.</p>
+              <ul id="adventureStartResults" class="track-list compact-list" aria-label="Start options"></ul>
+            </div>
+            <div class="picker-block">
+              <form id="adventureEndForm" class="search-bar-form">
+                <input id="adventureEndInput" type="search" autocomplete="off" placeholder="Search end track">
+                <button class="primary-btn compact-btn" type="submit">Find</button>
+              </form>
+              <p id="adventureEndChoice" class="choice-line">No end selected.</p>
+              <ul id="adventureEndResults" class="track-list compact-list" aria-label="End options"></ul>
+            </div>
+          </div>
+          <form id="adventureBuildForm" class="build-bar">
+            <label class="build-length">
+              <span>Length</span>
+              <input id="adventureLengthInput" type="number" min="5" max="100" step="1" value="20">
+            </label>
+            <button class="primary-btn compact-btn" type="submit">Build Adventure</button>
+          </form>
+        </section>
+
+      </div><!-- /page-content -->
+
+      <!-- ── MINI PLAYER ────────────────────────────────── -->
+      <div id="miniPlayer" class="mini-player hidden">
+        <div class="mini-progress-track">
+          <div id="miniProgressFill" class="mini-progress-fill"></div>
+        </div>
+        <div class="mini-inner">
+          <button id="miniOpenNowPlaying" class="mini-info" type="button" aria-label="Open Now Playing">
+            <img id="miniArtwork" class="mini-artwork" alt="">
+            <div class="mini-text">
+              <span id="miniTitle" class="mini-title">No track</span>
+              <span id="miniArtist" class="mini-artist"></span>
+            </div>
+          </button>
+          <div class="mini-controls">
+            <button id="miniPrevButton" class="mini-ctrl" type="button" aria-label="Previous">⏮</button>
+            <button id="miniPlayButton" class="mini-ctrl mini-play" type="button" aria-label="Play">▶</button>
+            <button id="miniNextButton" class="mini-ctrl" type="button" aria-label="Next">⏭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BOTTOM NAV ─────────────────────────────────── -->
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <button class="nav-btn active" type="button" data-view="home">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+          </svg>
+          <span class="nav-label">Home</span>
+        </button>
+        <button class="nav-btn" type="button" data-view="search">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+          <span class="nav-label">Search</span>
+        </button>
+        <button class="nav-btn" type="button" data-view="adventure">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/>
+          </svg>
+          <span class="nav-label">Adventure</span>
+        </button>
       </nav>
 
-      <section class="content-grid">
-        <section class="panel feature-panel" aria-live="polite">
-          <section id="searchView" class="view-panel" aria-label="Track search">
-            <form id="searchForm" class="search-row">
-              <label class="search-field">
-                <span>Track search</span>
-                <input id="searchInput" type="search" autocomplete="off" placeholder="Search tracks">
-              </label>
-              <button id="searchButton" class="primary-button compact" type="submit">Search</button>
-            </form>
-            <ul id="resultsList" class="list" aria-label="Search results"></ul>
-            <section id="similarPanel" class="subsection hidden" aria-label="Similar tracks">
-              <div class="section-head">
-                <div>
-                  <p class="eyebrow">Similar</p>
-                  <h2 id="similarTitle">No track selected</h2>
-                </div>
-              </div>
-              <ul id="similarList" class="list" aria-label="Similar tracks"></ul>
-            </section>
-          </section>
+    </div><!-- /app-view -->
 
-          <section id="mixesView" class="view-panel hidden" aria-label="Sonic mixes">
-            <div class="section-head">
-              <div>
-                <p class="eyebrow">Sonic Mixes</p>
-                <h2>Auto-curated queues</h2>
-              </div>
-              <button id="refreshMixesButton" class="secondary-button" type="button">Refresh</button>
-            </div>
-            <ul id="mixesList" class="list media-list" aria-label="Mixes"></ul>
-            <section id="mixDetailPanel" class="subsection hidden" aria-label="Mix detail">
-              <div class="section-head">
-                <div>
-                  <p class="eyebrow">Mix Detail</p>
-                  <h2 id="mixDetailTitle">No mix selected</h2>
-                  <p id="mixDetailMeta" class="muted"></p>
-                </div>
-                <div class="action-row">
-                  <button id="playMixButton" class="secondary-button" type="button">Play</button>
-                  <button id="regenerateMixButton" class="secondary-button" type="button">Regenerate</button>
-                </div>
-              </div>
-              <ol id="mixTracksList" class="queue-list" aria-label="Mix tracks"></ol>
-            </section>
-          </section>
+    <!-- ── NOW PLAYING OVERLAY ────────────────────────────── -->
+    <div id="nowPlayingOverlay" class="np-overlay hidden" role="dialog" aria-modal="true" aria-label="Now Playing">
+      <div class="np-header">
+        <button id="closeNowPlaying" class="np-close" type="button" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
+          </svg>
+        </button>
+        <span class="eyebrow">Now Playing</span>
+        <button id="nowSimilarButton" class="secondary-btn" type="button">Similar</button>
+      </div>
 
-          <section id="adventureView" class="view-panel hidden" aria-label="Sonic Adventure">
-            <div class="section-head">
-              <div>
-                <p class="eyebrow">Sonic Adventure</p>
-                <h2>Start to end journey</h2>
-              </div>
-            </div>
-            <div class="adventure-grid">
-              <section class="picker-panel">
-                <form id="adventureStartForm" class="search-row">
-                  <label class="search-field">
-                    <span>Start track</span>
-                    <input id="adventureStartInput" type="search" autocomplete="off" placeholder="Search start">
-                  </label>
-                  <button class="primary-button compact" type="submit">Find</button>
-                </form>
-                <p id="adventureStartChoice" class="choice-line">No start selected.</p>
-                <ul id="adventureStartResults" class="list compact-list" aria-label="Start track results"></ul>
-              </section>
-              <section class="picker-panel">
-                <form id="adventureEndForm" class="search-row">
-                  <label class="search-field">
-                    <span>End track</span>
-                    <input id="adventureEndInput" type="search" autocomplete="off" placeholder="Search end">
-                  </label>
-                  <button class="primary-button compact" type="submit">Find</button>
-                </form>
-                <p id="adventureEndChoice" class="choice-line">No end selected.</p>
-                <ul id="adventureEndResults" class="list compact-list" aria-label="End track results"></ul>
-              </section>
-            </div>
-            <form id="adventureBuildForm" class="build-row">
-              <label>
-                <span>Length</span>
-                <input id="adventureLengthInput" type="number" min="5" max="100" step="1" value="20">
-              </label>
-              <button id="buildAdventureButton" class="primary-button compact" type="submit">Build</button>
-            </form>
-          </section>
-        </section>
+      <div class="np-body">
+        <div class="np-artwork-wrap">
+          <img id="npArtwork" class="np-artwork" alt="">
+        </div>
 
-        <section class="panel queue-panel" aria-label="Player queue">
-          <div class="queue-head">
-            <div>
-              <p class="eyebrow">Now Playing</p>
-              <h2 id="nowTitle">No track loaded</h2>
-              <p id="nowSubtitle" class="muted">No radio queue yet.</p>
-            </div>
-            <img id="artwork" class="artwork hidden" alt="">
-          </div>
-          <div class="controls">
-            <button id="shuffleButton" class="icon-button" type="button" aria-label="Shuffle off" title="Shuffle">&#x21c4;</button>
-            <button id="prevButton" class="icon-button" type="button" aria-label="Previous track" title="Previous track">&#x23ee;</button>
-            <button id="playButton" class="play-button" type="button" aria-label="Play" title="Play">&#x25b6;</button>
-            <button id="nextButton" class="icon-button" type="button" aria-label="Next track" title="Next track">&#x23ed;</button>
-            <button id="repeatButton" class="icon-button" type="button" aria-label="Repeat off" title="Repeat off">&#x21bb;</button>
-          </div>
-          <div class="progress-wrap">
+        <div class="np-meta">
+          <h2 id="npTitle" class="np-title">No track loaded</h2>
+          <p id="npSubtitle" class="np-subtitle"></p>
+        </div>
+
+        <div class="np-seek">
+          <input id="seekBar" type="range" min="0" max="100" value="0" step="0.1" class="seek-bar" aria-label="Seek">
+          <div class="np-times">
             <span id="timeElapsed" class="time-label">0:00</span>
-            <input id="seekBar" type="range" min="0" max="100" value="0" step="0.1" class="seek-bar" aria-label="Seek">
             <span id="timeDuration" class="time-label">0:00</span>
           </div>
-          <div class="action-row center-actions">
-            <button id="nowSimilarButton" class="secondary-button" type="button">Similar</button>
-          </div>
-          <audio id="audio" preload="metadata"></audio>
-          <ol id="queueList" class="queue-list" aria-label="Playback queue"></ol>
-        </section>
-      </section>
-    </section>
+        </div>
 
-    <p id="message" class="status-line" role="status" aria-live="polite"></p>
-  </main>
+        <div class="np-controls">
+          <button id="shuffleButton" class="np-icon-btn" type="button" aria-label="Shuffle off" title="Shuffle">⇄</button>
+          <button id="prevButton" class="np-icon-btn" type="button" aria-label="Previous">⏮</button>
+          <button id="playButton" class="np-play-btn" type="button" aria-label="Play">▶</button>
+          <button id="nextButton" class="np-icon-btn" type="button" aria-label="Next">⏭</button>
+          <button id="repeatButton" class="np-icon-btn" type="button" aria-label="Repeat off" title="Repeat off">↻</button>
+        </div>
 
+        <div class="np-queue-section">
+          <h3 class="np-queue-label">Queue</h3>
+          <ol id="queueList" class="queue-list"></ol>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /app -->
+
+  <div id="message" class="toast hidden" role="status" aria-live="polite"></div>
+  <audio id="audio" preload="metadata"></audio>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

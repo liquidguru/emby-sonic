@@ -1,90 +1,102 @@
 const STORAGE_KEY = "embySonic.webSession";
 
-const loginView = document.querySelector("#loginView");
-const mainView = document.querySelector("#mainView");
-const loginForm = document.querySelector("#loginForm");
-const logoutButton = document.querySelector("#logoutButton");
-const tabButtons = [...document.querySelectorAll(".tab-button")];
-const viewPanels = [...document.querySelectorAll(".view-panel")];
+// ── DOM refs ─────────────────────────────────────────────
 
-const searchForm = document.querySelector("#searchForm");
-const searchInput = document.querySelector("#searchInput");
-const resultsList = document.querySelector("#resultsList");
-const similarPanel = document.querySelector("#similarPanel");
-const similarTitle = document.querySelector("#similarTitle");
-const similarList = document.querySelector("#similarList");
+const loginView       = document.querySelector("#loginView");
+const loginForm       = document.querySelector("#loginForm");
+const appView         = document.querySelector("#appView");
+const logoutButton    = document.querySelector("#logoutButton");
+const navButtons      = [...document.querySelectorAll(".nav-btn")];
 
+// Home
+const mixesRow        = document.querySelector("#mixesRow");
+const recentRow       = document.querySelector("#recentRow");
 const refreshMixesButton = document.querySelector("#refreshMixesButton");
-const mixesList = document.querySelector("#mixesList");
-const mixDetailPanel = document.querySelector("#mixDetailPanel");
-const mixDetailTitle = document.querySelector("#mixDetailTitle");
-const mixDetailMeta = document.querySelector("#mixDetailMeta");
-const mixTracksList = document.querySelector("#mixTracksList");
-const playMixButton = document.querySelector("#playMixButton");
-const regenerateMixButton = document.querySelector("#regenerateMixButton");
+const decadePicker    = document.querySelector("#decadePicker");
 
-const adventureStartForm = document.querySelector("#adventureStartForm");
-const adventureEndForm = document.querySelector("#adventureEndForm");
-const adventureBuildForm = document.querySelector("#adventureBuildForm");
-const adventureStartInput = document.querySelector("#adventureStartInput");
-const adventureEndInput = document.querySelector("#adventureEndInput");
-const adventureLengthInput = document.querySelector("#adventureLengthInput");
-const adventureStartChoice = document.querySelector("#adventureStartChoice");
-const adventureEndChoice = document.querySelector("#adventureEndChoice");
+// Search
+const searchForm      = document.querySelector("#searchForm");
+const searchInput     = document.querySelector("#searchInput");
+const resultsList     = document.querySelector("#resultsList");
+const similarPanel    = document.querySelector("#similarPanel");
+const similarTitle    = document.querySelector("#similarTitle");
+const similarList     = document.querySelector("#similarList");
+
+// Adventure
+const adventureStartForm    = document.querySelector("#adventureStartForm");
+const adventureEndForm      = document.querySelector("#adventureEndForm");
+const adventureBuildForm    = document.querySelector("#adventureBuildForm");
+const adventureStartInput   = document.querySelector("#adventureStartInput");
+const adventureEndInput     = document.querySelector("#adventureEndInput");
+const adventureLengthInput  = document.querySelector("#adventureLengthInput");
+const adventureStartChoice  = document.querySelector("#adventureStartChoice");
+const adventureEndChoice    = document.querySelector("#adventureEndChoice");
 const adventureStartResults = document.querySelector("#adventureStartResults");
-const adventureEndResults = document.querySelector("#adventureEndResults");
+const adventureEndResults   = document.querySelector("#adventureEndResults");
 
-const queueList = document.querySelector("#queueList");
-const message = document.querySelector("#message");
-const audio = document.querySelector("#audio");
-const playButton = document.querySelector("#playButton");
-const prevButton = document.querySelector("#prevButton");
-const nextButton = document.querySelector("#nextButton");
-const shuffleButton = document.querySelector("#shuffleButton");
-const repeatButton = document.querySelector("#repeatButton");
-const seekBar = document.querySelector("#seekBar");
-const timeElapsed = document.querySelector("#timeElapsed");
-const timeDuration = document.querySelector("#timeDuration");
+// Mini player
+const miniPlayer      = document.querySelector("#miniPlayer");
+const miniOpenNowPlaying = document.querySelector("#miniOpenNowPlaying");
+const miniArtwork     = document.querySelector("#miniArtwork");
+const miniTitle       = document.querySelector("#miniTitle");
+const miniArtist      = document.querySelector("#miniArtist");
+const miniPrevButton  = document.querySelector("#miniPrevButton");
+const miniPlayButton  = document.querySelector("#miniPlayButton");
+const miniNextButton  = document.querySelector("#miniNextButton");
+const miniProgressFill = document.querySelector("#miniProgressFill");
+
+// Now Playing overlay
+const npOverlay       = document.querySelector("#nowPlayingOverlay");
+const closeNowPlaying = document.querySelector("#closeNowPlaying");
+const npArtwork       = document.querySelector("#npArtwork");
+const npTitle         = document.querySelector("#npTitle");
+const npSubtitle      = document.querySelector("#npSubtitle");
+const seekBar         = document.querySelector("#seekBar");
+const timeElapsed     = document.querySelector("#timeElapsed");
+const timeDuration    = document.querySelector("#timeDuration");
+const shuffleButton   = document.querySelector("#shuffleButton");
+const prevButton      = document.querySelector("#prevButton");
+const playButton      = document.querySelector("#playButton");
+const nextButton      = document.querySelector("#nextButton");
+const repeatButton    = document.querySelector("#repeatButton");
 const nowSimilarButton = document.querySelector("#nowSimilarButton");
-const nowTitle = document.querySelector("#nowTitle");
-const nowSubtitle = document.querySelector("#nowSubtitle");
-const artwork = document.querySelector("#artwork");
+const queueList       = document.querySelector("#queueList");
+
+const audio           = document.querySelector("#audio");
+const messageEl       = document.querySelector("#message");
+
+// ── State ────────────────────────────────────────────────
 
 const state = {
   session: loadSession(),
-  activeView: "search",
+  activeView: "home",
   queue: [],
   originalQueue: [],
   currentIndex: -1,
   shuffle: false,
-  repeat: "none", // "none" | "one" | "all"
+  repeat: "none",   // "none" | "one" | "all"
   mixes: [],
-  selectedMix: null,
   adventureFrom: null,
   adventureTo: null,
+  nowPlayingOpen: false,
 };
 
+// ── Boot ─────────────────────────────────────────────────
+
 renderSession();
-renderView();
-renderPlayer();
 renderShuffle();
 renderRepeat();
 
-tabButtons.forEach((button) => {
-  button.addEventListener("click", () => switchView(button.dataset.view));
-});
+// ── Auth ─────────────────────────────────────────────────
 
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
   const form = new FormData(loginForm);
-  await withBusy("Logging in...", async () => {
+  await withBusy("Logging in…", async () => {
     const resp = await fetch("/sonic/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: form.get("username"),
-        password: form.get("password"),
-      }),
+      body: JSON.stringify({ username: form.get("username"), password: form.get("password") }),
     });
     const data = await parseJson(resp);
     state.session = {
@@ -96,108 +108,450 @@ loginForm.addEventListener("submit", async (event) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.session));
     loginForm.reset();
     renderSession();
-    setMessage(`Signed in${state.session.userName ? ` as ${state.session.userName}` : ""}.`);
+    setMessage(`Signed in as ${state.session.userName || "user"}.`);
   });
 });
 
 logoutButton.addEventListener("click", () => {
   localStorage.removeItem(STORAGE_KEY);
-  state.session = null;
-  state.queue = [];
-  state.originalQueue = [];
-  state.currentIndex = -1;
-  state.shuffle = false;
-  state.repeat = "none";
-  state.mixes = [];
-  state.selectedMix = null;
-  state.adventureFrom = null;
-  state.adventureTo = null;
+  Object.assign(state, {
+    session: null,
+    queue: [], originalQueue: [], currentIndex: -1,
+    shuffle: false, repeat: "none",
+    mixes: [], adventureFrom: null, adventureTo: null,
+  });
   audio.pause();
   audio.removeAttribute("src");
   renderSession();
-  renderResults([]);
-  renderSimilar(null, []);
-  renderMixes();
-  renderMixDetail(null);
-  renderAdventureChoices();
-  renderQueue();
-  renderPlayer();
+  renderMini();
+  renderNowPlaying();
   renderShuffle();
   renderRepeat();
   setMessage("");
 });
 
-searchForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const query = searchInput.value.trim();
-  if (!query) {
-    renderResults([]);
-    return;
-  }
-  await withBusy("Searching...", async () => {
-    const tracks = await searchTracks(query);
-    renderResults(tracks);
-    setMessage(tracks.length ? `${tracks.length} tracks found.` : "No tracks found.");
+// ── Navigation ───────────────────────────────────────────
+
+navButtons.forEach((btn) => {
+  btn.addEventListener("click", () => switchView(btn.dataset.view));
+});
+
+async function switchView(view) {
+  state.activeView = view;
+  navButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hidden", v.id !== `${view}View`));
+  if (view === "home") loadHomeData();
+}
+
+// ── Home ─────────────────────────────────────────────────
+
+async function loadHomeData() {
+  if (!state.session) return;
+  loadMixes(false);
+  loadRecentPlays();
+}
+
+// Station cards
+document.querySelectorAll(".station-card").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const station = btn.dataset.station;
+    if (station === "decade") {
+      decadePicker.classList.toggle("hidden");
+    } else {
+      playStation(station);
+    }
+  });
+});
+
+document.querySelectorAll(".decade-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    decadePicker.classList.add("hidden");
+    playDecadeRadio(Number(btn.dataset.decade));
   });
 });
 
 refreshMixesButton.addEventListener("click", () => loadMixes(true));
-playMixButton.addEventListener("click", () => {
-  if (state.selectedMix?.tracks?.length) {
-    loadQueue(state.selectedMix.tracks, `Mix: ${mixName(state.selectedMix.mix)}`, true);
+
+async function playStation(type) {
+  if (type === "library") {
+    await withBusy("Picking a track…", async () => {
+      const items = await fetchEmbyItems({
+        SortBy: "Random", Limit: 1,
+        IncludeItemTypes: "Audio", Recursive: true,
+      });
+      if (!items.length) { setMessage("No audio found in your library."); return; }
+      await startRadio(items[0]);
+    });
+  } else if (type === "album") {
+    await withBusy("Picking an album…", async () => {
+      const albums = await fetchEmbyItems({
+        SortBy: "Random", Limit: 1,
+        IncludeItemTypes: "MusicAlbum", Recursive: true,
+      });
+      if (!albums.length) { setMessage("No albums found."); return; }
+      const album = albums[0];
+      const tracks = await fetchEmbyItems({
+        ParentId: album.id,
+        IncludeItemTypes: "Audio",
+        SortBy: "ParentIndexNumber,IndexNumber",
+        Fields: "RunTimeTicks",
+      });
+      if (!tracks.length) { setMessage("Album has no tracks."); return; }
+      loadQueue(tracks, `Album: ${album.title}`, true);
+    });
   }
-});
-regenerateMixButton.addEventListener("click", () => regenerateSelectedMix());
+}
 
-adventureStartForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  searchAdventurePicker("from", adventureStartInput.value.trim());
-});
+async function playDecadeRadio(decade) {
+  const years = Array.from({ length: 10 }, (_, i) => decade + i).join(",");
+  await withBusy(`Loading ${decade}s radio…`, async () => {
+    const tracks = await fetchEmbyItems({
+      Years: years, SortBy: "Random", Limit: 50,
+      IncludeItemTypes: "Audio", Recursive: true,
+      Fields: "RunTimeTicks",
+    });
+    if (!tracks.length) { setMessage(`No tracks from the ${decade}s found.`); return; }
+    const seed = tracks[Math.floor(Math.random() * tracks.length)];
+    const resp = await authedFetch(`/sonic/tracks/${encodeURIComponent(seed.id)}/radio`);
+    const radio = await parseJson(resp);
+    const radioTracks = Array.isArray(radio.tracks) ? radio.tracks : [];
+    if (radioTracks.length) {
+      loadQueue([seed, ...radioTracks.filter((t) => t.id !== seed.id)], `${decade}s Radio`, true);
+    } else {
+      loadQueue(tracks, `${decade}s Radio`, true);
+    }
+  });
+}
 
-adventureEndForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  searchAdventurePicker("to", adventureEndInput.value.trim());
-});
+// ── Mixes ────────────────────────────────────────────────
 
-adventureBuildForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  await buildAdventure();
-});
+async function loadMixes(force) {
+  if (state.mixes.length && !force) { renderMixRow(); return; }
+  await withBusy("Loading mixes…", async () => {
+    const resp = await authedFetch("/sonic/mixes");
+    state.mixes = await parseJson(resp);
+    renderMixRow();
+    if (!state.mixes.length) setMessage("No mixes yet — run a worker to analyse your library.");
+  });
+}
 
-playButton.addEventListener("click", () => {
-  if (!audio.src && state.queue.length) {
-    playIndex(Math.max(0, state.currentIndex));
+function renderMixRow() {
+  if (!state.mixes.length) {
+    mixesRow.replaceChildren(emptyMsg("No mixes yet"));
     return;
   }
-  if (audio.paused) {
-    audio.play();
-  } else {
-    audio.pause();
+  mixesRow.replaceChildren(...state.mixes.map((mix) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mix-card";
+
+    const art = document.createElement("img");
+    art.className = "mix-card-art";
+    art.alt = "";
+    if (mix.cover_track_id) art.src = artworkUrl(mix.cover_track_id);
+
+    const name = document.createElement("span");
+    name.className = "mix-card-name";
+    name.textContent = mixName(mix);
+
+    const meta = document.createElement("span");
+    meta.className = "mix-card-meta";
+    meta.textContent = `${mix.track_count} tracks`;
+
+    btn.append(art, name, meta);
+    btn.addEventListener("click", async () => {
+      await withBusy(`Loading ${mixName(mix)}…`, async () => {
+        const detail = await parseJson(await authedFetch(`/sonic/mixes/${encodeURIComponent(mix.id)}`));
+        loadQueue(detail.tracks, `Mix: ${mixName(detail.mix)}`, true);
+      });
+    });
+    return btn;
+  }));
+}
+
+// ── Recent Plays ─────────────────────────────────────────
+
+async function loadRecentPlays() {
+  const tracks = await fetchEmbyItems({
+    SortBy: "DatePlayed", SortOrder: "Descending",
+    Filters: "IsPlayed", IncludeItemTypes: "Audio",
+    Recursive: true, Limit: 20, Fields: "RunTimeTicks",
+  }).catch(() => []);
+
+  if (!tracks.length) {
+    recentRow.replaceChildren(emptyMsg("No recent plays yet"));
+    return;
   }
+  recentRow.replaceChildren(...tracks.map((track) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "recent-card";
+
+    const art = document.createElement("img");
+    art.className = "recent-card-art";
+    art.alt = "";
+    art.src = artworkUrl(track.id);
+
+    const title = document.createElement("span");
+    title.className = "recent-card-title";
+    title.textContent = track.title;
+
+    const artist = document.createElement("span");
+    artist.className = "recent-card-artist";
+    artist.textContent = track.artist || "";
+
+    btn.append(art, title, artist);
+    btn.addEventListener("click", () => startRadio(track));
+    return btn;
+  }));
+}
+
+// ── Search ───────────────────────────────────────────────
+
+searchForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const query = searchInput.value.trim();
+  if (!query) { resultsList.replaceChildren(); return; }
+  await withBusy("Searching…", async () => {
+    const tracks = await searchTracks(query);
+    renderTrackList(resultsList, tracks, (t) => startRadio(t), true, true);
+    setMessage(tracks.length ? `${tracks.length} tracks found.` : "No tracks found.");
+  });
 });
 
-prevButton.addEventListener("click", () => playIndex(Math.max(0, state.currentIndex - 1)));
-nextButton.addEventListener("click", () => playIndex(Math.min(state.queue.length - 1, state.currentIndex + 1)));
+async function searchTracks(query, limit = 60) {
+  return parseJson(await authedFetch(`/sonic/search/tracks?q=${encodeURIComponent(query)}&limit=${limit}`));
+}
+
+async function startRadio(seed) {
+  await withBusy("Building radio…", async () => {
+    const radio = await parseJson(await authedFetch(`/sonic/tracks/${encodeURIComponent(seed.id)}/radio`));
+    const tracks = Array.isArray(radio.tracks) ? radio.tracks : [];
+    if (!tracks.length) {
+      loadQueue([seed], `Radio: ${seed.title || "track"}`, true);
+      setMessage(`"${seed.title}" isn't analysed yet — playing the track on its own.`);
+      return;
+    }
+    loadQueue([seed, ...tracks.filter((t) => t.id !== seed.id)], `Radio: ${seed.title || "track"}`, true);
+  });
+}
+
+async function showSimilar(seed) {
+  await switchView("search");
+  await withBusy("Finding similar tracks…", async () => {
+    const similar = await parseJson(await authedFetch(`/sonic/tracks/${encodeURIComponent(seed.id)}/similar?n=25`));
+    similarTitle.textContent = seed.title || "track";
+    similarPanel.classList.toggle("hidden", !similar.length);
+    renderSimilarList(similar);
+    setMessage(similar.length ? `${similar.length} similar tracks.` : "No similar tracks found.");
+  });
+}
+
+function renderSimilarList(results) {
+  if (!results.length) {
+    similarList.replaceChildren(emptyMsg("No similar tracks found", "li"));
+    return;
+  }
+  similarList.replaceChildren(...results.map((r) => {
+    const track = r.track;
+    const item = document.createElement("li");
+    item.className = "track-item";
+
+    const art = document.createElement("img");
+    art.className = "track-art";
+    art.alt = "";
+    art.src = artworkUrl(track.id);
+
+    const body = document.createElement("button");
+    body.type = "button";
+    body.className = "track-body";
+    body.addEventListener("click", () => startRadio(track));
+    body.append(nameEl(track.title), subEl([track.artist, track.album, formatTime(track.duration_ms / 1000)].filter(Boolean).join(" · ")));
+
+    const score = document.createElement("span");
+    score.className = "score-badge";
+    score.textContent = `${Math.round((r.score || 0) * 100)}%`;
+
+    const similar = smallBtn("Similar", () => showSimilar(track));
+
+    item.append(art, body, score, similar);
+    return item;
+  }));
+}
+
+// ── Adventure ────────────────────────────────────────────
+
+adventureStartForm.addEventListener("submit", (e) => { e.preventDefault(); searchPicker("from", adventureStartInput.value.trim()); });
+adventureEndForm.addEventListener("submit", (e) => { e.preventDefault(); searchPicker("to", adventureEndInput.value.trim()); });
+adventureBuildForm.addEventListener("submit", async (e) => { e.preventDefault(); await buildAdventure(); });
+
+async function searchPicker(kind, query) {
+  const list = kind === "from" ? adventureStartResults : adventureEndResults;
+  if (!query) { list.replaceChildren(); return; }
+  await withBusy("Searching…", async () => {
+    const tracks = await searchTracks(query, 20);
+    renderTrackList(list, tracks, (t) => choosePicker(kind, t), false);
+  });
+}
+
+function choosePicker(kind, track) {
+  if (kind === "from") { state.adventureFrom = track; adventureStartResults.replaceChildren(); }
+  else { state.adventureTo = track; adventureEndResults.replaceChildren(); }
+  adventureStartChoice.textContent = state.adventureFrom
+    ? `Start: ${state.adventureFrom.title}` : "No start selected.";
+  adventureEndChoice.textContent = state.adventureTo
+    ? `End: ${state.adventureTo.title}` : "No end selected.";
+}
+
+async function buildAdventure() {
+  if (!state.adventureFrom || !state.adventureTo) { setMessage("Choose a start and end track first."); return; }
+  const length = clamp(Number.parseInt(adventureLengthInput.value, 10) || 20, 5, 100);
+  adventureLengthInput.value = String(length);
+  await withBusy("Building adventure…", async () => {
+    const adventure = await parseJson(await authedFetch("/sonic/adventure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from_id: state.adventureFrom.id, to_id: state.adventureTo.id, length }),
+    }));
+    const tracks = Array.isArray(adventure.tracks) ? adventure.tracks : [];
+    loadQueue(tracks, `Adventure: ${state.adventureFrom.title} → ${state.adventureTo.title}`, true);
+  });
+}
+
+// ── Queue + playback ─────────────────────────────────────
+
+function loadQueue(tracks, label, autoPlay, startIndex = 0) {
+  state.originalQueue = Array.isArray(tracks) ? [...tracks] : [];
+  state.queue = state.shuffle ? shuffleArray(state.originalQueue) : [...state.originalQueue];
+  state.currentIndex = state.queue.length ? clamp(startIndex, 0, state.queue.length - 1) : -1;
+  if (!state.queue.length) { audio.pause(); audio.removeAttribute("src"); }
+  renderMini();
+  renderNowPlaying();
+  renderQueue();
+  setMessage(state.queue.length ? `${label}: ${state.queue.length} tracks.` : label);
+  if (autoPlay && state.currentIndex >= 0) playIndex(state.currentIndex);
+}
+
+async function playIndex(index) {
+  if (!state.queue[index]) return;
+  state.currentIndex = index;
+  const track = state.queue[index];
+  audio.src = streamUrl(track.id);
+  seekBar.value = "0";
+  timeElapsed.textContent = "0:00";
+  timeDuration.textContent = "0:00";
+  renderMini();
+  renderNowPlaying();
+  renderQueue();
+  updateMediaSession(track);
+  try { await audio.play(); }
+  catch { setMessage("Queue ready — tap play to start."); }
+}
+
+function renderQueue() {
+  queueList.replaceChildren(...state.queue.map((track, i) => {
+    const row = document.createElement("li");
+    row.className = `queue-row${i === state.currentIndex ? " active" : ""}`;
+    row.addEventListener("click", () => playIndex(i));
+
+    const name = document.createElement("span");
+    name.className = "queue-track-name";
+    name.textContent = track.title || "Untitled";
+
+    const sub = document.createElement("span");
+    sub.className = "queue-track-sub";
+    sub.textContent = [track.artist, formatTime((track.duration_ms || 0) / 1000)].filter(Boolean).join(" · ");
+
+    row.append(name, sub);
+    return row;
+  }));
+}
+
+// ── Mini player ──────────────────────────────────────────
+
+function renderMini() {
+  const track = state.queue[state.currentIndex];
+  miniPlayer.classList.toggle("hidden", !track);
+  if (!track) return;
+  miniTitle.textContent = track.title || "Untitled";
+  miniArtist.textContent = [track.artist, track.album].filter(Boolean).join(" · ");
+  miniArtwork.src = artworkUrl(track.id);
+  miniPlayButton.textContent = audio.paused ? "▶" : "⏸";
+  miniPlayButton.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
+  miniPrevButton.disabled = state.currentIndex <= 0;
+  miniNextButton.disabled = state.currentIndex >= state.queue.length - 1;
+}
+
+function renderMiniProgress() {
+  if (!audio.duration) { miniProgressFill.style.width = "0%"; return; }
+  miniProgressFill.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
+}
+
+miniOpenNowPlaying.addEventListener("click", openNowPlaying);
+miniPrevButton.addEventListener("click", () => playIndex(Math.max(0, state.currentIndex - 1)));
+miniNextButton.addEventListener("click", () => playIndex(Math.min(state.queue.length - 1, state.currentIndex + 1)));
+miniPlayButton.addEventListener("click", togglePlay);
+
+// ── Now Playing overlay ──────────────────────────────────
+
+function openNowPlaying() {
+  state.nowPlayingOpen = true;
+  npOverlay.classList.remove("hidden");
+  requestAnimationFrame(() => npOverlay.classList.add("open"));
+  renderNowPlaying();
+  renderQueue();
+}
+
+function closeNP() {
+  state.nowPlayingOpen = false;
+  npOverlay.classList.remove("open");
+  npOverlay.addEventListener("transitionend", () => npOverlay.classList.add("hidden"), { once: true });
+}
+
+closeNowPlaying.addEventListener("click", closeNP);
 nowSimilarButton.addEventListener("click", () => {
   const track = state.queue[state.currentIndex];
-  if (track) showSimilar(track);
+  if (track) { closeNP(); showSimilar(track); }
 });
+
+function renderNowPlaying() {
+  const track = state.queue[state.currentIndex];
+  playButton.textContent = audio.paused ? "▶" : "⏸";
+  playButton.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
+  prevButton.disabled = state.currentIndex <= 0;
+  nextButton.disabled = state.currentIndex >= state.queue.length - 1;
+  nowSimilarButton.disabled = !track;
+  if (!track) {
+    npTitle.textContent = "No track loaded";
+    npSubtitle.textContent = "";
+    npArtwork.removeAttribute("src");
+    seekBar.value = "0";
+    timeElapsed.textContent = "0:00";
+    timeDuration.textContent = "0:00";
+    return;
+  }
+  npTitle.textContent = track.title || "Untitled";
+  npSubtitle.textContent = [track.artist, track.album].filter(Boolean).join(" · ");
+  npArtwork.src = artworkUrl(track.id);
+}
+
+// Player controls
+prevButton.addEventListener("click", () => playIndex(Math.max(0, state.currentIndex - 1)));
+nextButton.addEventListener("click", () => playIndex(Math.min(state.queue.length - 1, state.currentIndex + 1)));
+playButton.addEventListener("click", togglePlay);
 
 shuffleButton.addEventListener("click", () => {
   state.shuffle = !state.shuffle;
   if (state.queue.length) {
     if (state.shuffle) {
       const current = state.queue[state.currentIndex];
-      const rest = state.queue.filter((_, i) => i !== state.currentIndex);
-      const shuffled = shuffleArray(rest);
-      state.queue = current ? [current, ...shuffled] : shuffled;
+      const rest = shuffleArray(state.queue.filter((_, i) => i !== state.currentIndex));
+      state.queue = current ? [current, ...rest] : rest;
       state.currentIndex = current ? 0 : -1;
     } else {
       const currentId = state.queue[state.currentIndex]?.id;
       state.queue = [...state.originalQueue];
-      state.currentIndex = currentId != null
-        ? state.queue.findIndex((t) => t.id === currentId)
-        : -1;
+      state.currentIndex = currentId != null ? state.queue.findIndex((t) => t.id === currentId) : -1;
     }
     renderQueue();
   }
@@ -210,13 +564,42 @@ repeatButton.addEventListener("click", () => {
   renderRepeat();
 });
 
-audio.addEventListener("play", renderPlayer);
-audio.addEventListener("pause", renderPlayer);
+seekBar.addEventListener("input", () => {
+  if (!audio.duration) return;
+  audio.currentTime = (Number(seekBar.value) / 100) * audio.duration;
+  timeElapsed.textContent = formatTime(audio.currentTime);
+});
+
+function renderShuffle() {
+  shuffleButton.classList.toggle("active", state.shuffle);
+  shuffleButton.setAttribute("aria-label", state.shuffle ? "Shuffle on" : "Shuffle off");
+  shuffleButton.title = state.shuffle ? "Shuffle on" : "Shuffle off";
+}
+
+function renderRepeat() {
+  repeatButton.classList.toggle("active", state.repeat !== "none");
+  repeatButton.textContent = state.repeat === "one" ? "↻¹" : "↻";
+  const labels = { none: "Repeat off", one: "Repeat one", all: "Repeat all" };
+  repeatButton.setAttribute("aria-label", labels[state.repeat]);
+  repeatButton.title = labels[state.repeat];
+}
+
+function togglePlay() {
+  if (!audio.src && state.queue.length) { playIndex(Math.max(0, state.currentIndex)); return; }
+  audio.paused ? audio.play() : audio.pause();
+}
+
+// ── Audio events ─────────────────────────────────────────
+
+audio.addEventListener("play", () => { renderMini(); renderNowPlaying(); });
+audio.addEventListener("pause", () => { renderMini(); renderNowPlaying(); });
 
 audio.addEventListener("timeupdate", () => {
   if (!audio.duration || audio.seeking) return;
-  seekBar.value = String((audio.currentTime / audio.duration) * 100);
+  const pct = (audio.currentTime / audio.duration) * 100;
+  seekBar.value = String(pct);
   timeElapsed.textContent = formatTime(audio.currentTime);
+  renderMiniProgress();
 });
 
 audio.addEventListener("loadedmetadata", () => {
@@ -233,464 +616,136 @@ audio.addEventListener("waiting", () => playButton.classList.add("buffering"));
 audio.addEventListener("canplay", () => playButton.classList.remove("buffering"));
 
 audio.addEventListener("ended", () => {
-  if (state.repeat === "one") {
-    audio.currentTime = 0;
-    audio.play();
-    return;
-  }
+  if (state.repeat === "one") { audio.currentTime = 0; audio.play(); return; }
   if (state.currentIndex < state.queue.length - 1) {
     playIndex(state.currentIndex + 1);
   } else if (state.repeat === "all" && state.queue.length) {
     playIndex(0);
   } else {
-    renderPlayer();
+    renderMini();
+    renderNowPlaying();
   }
 });
 
-seekBar.addEventListener("input", () => {
-  if (!audio.duration) return;
-  audio.currentTime = (Number(seekBar.value) / 100) * audio.duration;
-  timeElapsed.textContent = formatTime(audio.currentTime);
-});
-
-function loadSession() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
+// ── Session ──────────────────────────────────────────────
 
 function renderSession() {
   const signedIn = Boolean(state.session?.token);
   loginView.classList.toggle("hidden", signedIn);
-  mainView.classList.toggle("hidden", !signedIn);
-  logoutButton.classList.toggle("hidden", !signedIn);
-}
-
-async function switchView(view) {
-  state.activeView = view;
-  renderView();
-  if (view === "mixes" && !state.mixes.length) {
-    await loadMixes(false);
+  appView.classList.toggle("hidden", !signedIn);
+  if (signedIn) {
+    switchView("home");
   }
 }
 
-function renderView() {
-  tabButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === state.activeView);
+// ── Emby direct API ──────────────────────────────────────
+
+async function fetchEmbyItems(params) {
+  if (!state.session) return [];
+  const base = state.session.serverUrl.replace(/\/$/, "");
+  const userId = state.session.userId;
+  const qs = new URLSearchParams({
+    ...params,
+    api_key: state.session.token,
+    Fields: params.Fields || "RunTimeTicks",
   });
-  viewPanels.forEach((panel) => {
-    panel.classList.toggle("hidden", panel.id !== `${state.activeView}View`);
-  });
+  const resp = await fetch(`${base}/Users/${encodeURIComponent(userId)}/Items?${qs}`);
+  const data = await parseJson(resp);
+  const items = Array.isArray(data.Items) ? data.Items : [];
+  return items.map(embyItemToTrack);
 }
 
-async function searchTracks(query, limit = 60) {
-  const resp = await authedFetch(`/sonic/search/tracks?q=${encodeURIComponent(query)}&limit=${limit}`);
-  return parseJson(resp);
+function embyItemToTrack(item) {
+  return {
+    id: item.Id,
+    title: item.Name || "Untitled",
+    artist: item.AlbumArtist || (item.Artists && item.Artists[0]) || null,
+    album: item.Album || null,
+    duration_ms: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 10000) : null,
+  };
 }
 
-function renderResults(tracks) {
-  if (!tracks.length) {
-    resultsList.replaceChildren();
-    return;
-  }
-  resultsList.replaceChildren(...tracks.map((track) => {
+// ── Render helpers ───────────────────────────────────────
+
+function renderTrackList(container, tracks, onPlay, showSimilarBtn, asList = false) {
+  if (!tracks.length) { container.replaceChildren(emptyMsg("No results", asList ? "li" : "div")); return; }
+  container.replaceChildren(...tracks.map((track) => {
     const item = document.createElement("li");
-    item.className = "result-row";
+    item.className = "track-item";
 
-    const main = trackButton(track, () => startRadio(track), "Start radio");
-    const actions = document.createElement("div");
-    actions.className = "action-row";
-    actions.append(
-      actionButton("Radio", () => startRadio(track)),
-      actionButton("Similar", () => showSimilar(track)),
+    const art = document.createElement("img");
+    art.className = "track-art";
+    art.alt = "";
+    art.src = artworkUrl(track.id);
+
+    const body = document.createElement("button");
+    body.type = "button";
+    body.className = "track-body";
+    body.addEventListener("click", () => onPlay(track));
+    const dur = track.duration_ms ? formatTime(track.duration_ms / 1000) : null;
+    body.append(
+      nameEl(track.title),
+      subEl([track.artist, track.album, dur].filter(Boolean).join(" · ")),
     );
 
-    item.append(main, actions);
-    return item;
-  }));
-}
-
-async function startRadio(seed) {
-  await withBusy("Building radio...", async () => {
-    const resp = await authedFetch(`/sonic/tracks/${encodeURIComponent(seed.id)}/radio`);
-    const radio = await parseJson(resp);
-    const tracks = Array.isArray(radio.tracks) ? radio.tracks : [];
-    if (!tracks.length) {
-      loadQueue([], "No radio queue yet.", false);
-      setMessage(`No radio for "${seed.title || "this track"}" - it may not be analysed yet.`);
-      return;
-    }
-    // Match the Android app: radio starts with the seed track itself, then the
-    // sonic neighbours returned by build_radio.
-    loadQueue([seed, ...tracks.filter((track) => track.id !== seed.id)], `Radio: ${seed.title || "Untitled track"}`, true);
-  });
-}
-
-async function showSimilar(seed) {
-  await switchView("search");
-  await withBusy("Finding similar tracks...", async () => {
-    const resp = await authedFetch(`/sonic/tracks/${encodeURIComponent(seed.id)}/similar?n=25`);
-    const similar = await parseJson(resp);
-    renderSimilar(seed, similar);
-    setMessage(similar.length ? `${similar.length} similar tracks found.` : "No similar tracks found.");
-  });
-}
-
-function renderSimilar(seed, similar) {
-  similarPanel.classList.toggle("hidden", !seed);
-  similarTitle.textContent = seed ? seed.title || "Untitled track" : "No track selected";
-  if (!similar.length) {
-    similarList.replaceChildren(emptyState("No similar tracks found"));
-    return;
-  }
-  similarList.replaceChildren(...similar.map((result) => {
-    const item = document.createElement("li");
-    item.className = "result-row";
-    const track = result.track;
-    const main = trackButton(track, () => startRadio(track), "Start radio");
     const actions = document.createElement("div");
-    actions.className = "action-row";
-    const score = document.createElement("span");
-    score.className = "score";
-    score.textContent = `${Math.round((result.score || 0) * 100)}%`;
-    actions.append(score, actionButton("Radio", () => startRadio(track)));
-    item.append(main, actions);
+    actions.className = "track-actions";
+    actions.append(smallBtn("Radio", () => startRadio(track)));
+    if (showSimilarBtn) actions.append(smallBtn("Similar", () => showSimilar(track)));
+
+    item.append(art, body, actions);
     return item;
   }));
 }
 
-async function loadMixes(force) {
-  if (state.mixes.length && !force) return;
-  await withBusy("Loading mixes...", async () => {
-    const resp = await authedFetch("/sonic/mixes");
-    state.mixes = await parseJson(resp);
-    renderMixes();
-    setMessage(state.mixes.length ? `${state.mixes.length} mixes loaded.` : "No mixes yet.");
-  });
+function nameEl(text) {
+  const el = document.createElement("span");
+  el.className = "track-name";
+  el.textContent = text || "Untitled";
+  return el;
 }
 
-function renderMixes() {
-  if (!state.mixes.length) {
-    mixesList.replaceChildren(emptyState("No mixes yet — run the worker to analyse your library"));
-    return;
-  }
-  mixesList.replaceChildren(...state.mixes.map((mix) => {
-    const item = document.createElement("li");
-    item.className = "result-row";
-
-    const cover = document.createElement("img");
-    cover.className = "cover-thumb";
-    cover.alt = "";
-    if (mix.cover_track_id) cover.src = artworkUrl(mix.cover_track_id);
-
-    const main = document.createElement("button");
-    main.type = "button";
-    main.className = "mix-main";
-    main.addEventListener("click", () => openMix(mix.id));
-    main.append(trackText({
-      title: mixName(mix),
-      artist: `${mix.track_count} tracks`,
-      album: mix.cluster_id == null ? null : `Cluster ${mix.cluster_id}`,
-    }));
-
-    const actions = document.createElement("div");
-    actions.className = "action-row";
-    actions.append(
-      actionButton("Open", () => openMix(mix.id)),
-      actionButton("Play", async () => {
-        const detail = await getMix(mix.id);
-        loadQueue(detail.tracks, `Mix: ${mixName(detail.mix)}`, true);
-      }),
-    );
-
-    item.append(cover, main, actions);
-    return item;
-  }));
+function subEl(text) {
+  const el = document.createElement("span");
+  el.className = "track-sub";
+  el.textContent = text;
+  return el;
 }
 
-async function openMix(mixId) {
-  await withBusy("Opening mix...", async () => {
-    const detail = await getMix(mixId);
-    state.selectedMix = detail;
-    renderMixDetail(detail);
-    setMessage(`${mixName(detail.mix)} loaded.`);
-  });
-}
-
-async function getMix(mixId) {
-  const resp = await authedFetch(`/sonic/mixes/${encodeURIComponent(mixId)}`);
-  return parseJson(resp);
-}
-
-function renderMixDetail(detail) {
-  mixDetailPanel.classList.toggle("hidden", !detail);
-  if (!detail) {
-    mixDetailTitle.textContent = "No mix selected";
-    mixDetailMeta.textContent = "";
-    mixTracksList.replaceChildren();
-    return;
-  }
-  mixDetailTitle.textContent = mixName(detail.mix);
-  mixDetailMeta.textContent = `${detail.tracks.length} tracks`;
-  mixTracksList.replaceChildren(...detail.tracks.map((track, index) => queueRow(track, index, () => {
-    loadQueue(detail.tracks, `Mix: ${mixName(detail.mix)}`, false, index);
-    playIndex(index);
-  })));
-}
-
-async function regenerateSelectedMix() {
-  const detail = state.selectedMix;
-  if (!detail) return;
-  await withBusy("Regenerating mix...", async () => {
-    const resp = await authedFetch(`/sonic/mixes/${encodeURIComponent(detail.mix.id)}/regenerate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tracks_per_mix: detail.tracks.length || 50 }),
-    });
-    state.selectedMix = await parseJson(resp);
-    renderMixDetail(state.selectedMix);
-    state.mixes = [];
-    await loadMixes(true);
-    setMessage(`${mixName(state.selectedMix.mix)} regenerated.`);
-  });
-}
-
-async function searchAdventurePicker(kind, query) {
-  const list = kind === "from" ? adventureStartResults : adventureEndResults;
-  if (!query) {
-    list.replaceChildren();
-    return;
-  }
-  await withBusy("Searching...", async () => {
-    const tracks = await searchTracks(query, 20);
-    renderAdventureResults(kind, tracks);
-    setMessage(tracks.length ? `${tracks.length} tracks found.` : "No tracks found.");
-  });
-}
-
-function renderAdventureResults(kind, tracks) {
-  const list = kind === "from" ? adventureStartResults : adventureEndResults;
-  list.replaceChildren(...tracks.map((track) => {
-    const item = document.createElement("li");
-    item.className = "result-row";
-    const button = trackButton(track, () => chooseAdventureTrack(kind, track), "Choose track");
-    item.append(button, actionButton("Choose", () => chooseAdventureTrack(kind, track)));
-    return item;
-  }));
-}
-
-function chooseAdventureTrack(kind, track) {
-  if (kind === "from") {
-    state.adventureFrom = track;
-    adventureStartResults.replaceChildren();
-  } else {
-    state.adventureTo = track;
-    adventureEndResults.replaceChildren();
-  }
-  renderAdventureChoices();
-}
-
-function renderAdventureChoices() {
-  adventureStartChoice.textContent = state.adventureFrom
-    ? `Start: ${trackLabel(state.adventureFrom)}`
-    : "No start selected.";
-  adventureEndChoice.textContent = state.adventureTo
-    ? `End: ${trackLabel(state.adventureTo)}`
-    : "No end selected.";
-}
-
-async function buildAdventure() {
-  if (!state.adventureFrom || !state.adventureTo) {
-    setMessage("Choose a start and end track first.");
-    return;
-  }
-  const length = clamp(Number.parseInt(adventureLengthInput.value, 10) || 20, 5, 100);
-  adventureLengthInput.value = String(length);
-  await withBusy("Building adventure...", async () => {
-    const resp = await authedFetch("/sonic/adventure", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from_id: state.adventureFrom.id,
-        to_id: state.adventureTo.id,
-        length,
-      }),
-    });
-    const adventure = await parseJson(resp);
-    const tracks = Array.isArray(adventure.tracks) ? adventure.tracks : [];
-    loadQueue(tracks, `Adventure: ${trackLabel(state.adventureFrom)} to ${trackLabel(state.adventureTo)}`, true);
-  });
-}
-
-function loadQueue(tracks, label, autoPlay, startIndex = 0) {
-  state.originalQueue = Array.isArray(tracks) ? [...tracks] : [];
-  state.queue = state.shuffle ? shuffleArray(state.originalQueue) : [...state.originalQueue];
-  state.currentIndex = state.queue.length ? clamp(startIndex, 0, state.queue.length - 1) : -1;
-  if (!state.queue.length) {
-    audio.pause();
-    audio.removeAttribute("src");
-  }
-  renderQueue();
-  renderPlayer();
-  setMessage(state.queue.length ? `${label}: ${state.queue.length} tracks.` : label);
-  if (autoPlay && state.currentIndex >= 0) {
-    playIndex(state.currentIndex);
-  }
-}
-
-function renderQueue() {
-  queueList.replaceChildren(...state.queue.map((track, index) => queueRow(track, index, () => playIndex(index))));
-}
-
-function queueRow(track, index, onClick) {
-  const row = document.createElement("li");
-  row.className = `queue-row${index === state.currentIndex ? " active" : ""}`;
-  row.addEventListener("click", onClick);
-  row.append(trackText(track));
-  return row;
-}
-
-async function playIndex(index) {
-  if (!state.queue[index]) return;
-  state.currentIndex = index;
-  const track = state.queue[index];
-  audio.src = streamUrl(track.id);
-  seekBar.value = "0";
-  timeElapsed.textContent = "0:00";
-  timeDuration.textContent = "0:00";
-  renderQueue();
-  renderPlayer();
-  updateMediaSession(track);
-  try {
-    await audio.play();
-  } catch (err) {
-    // Browsers can reject play() when it follows a network await (the user
-    // gesture has "expired") - the queue is loaded, so prompt to hit play.
-    setMessage("Queue ready - tap play to start playback.");
-  }
-}
-
-function renderPlayer() {
-  const track = state.queue[state.currentIndex];
-  playButton.textContent = audio.paused ? "▶" : "⏸";
-  playButton.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
-  prevButton.disabled = state.currentIndex <= 0;
-  nextButton.disabled = state.currentIndex < 0 || state.currentIndex >= state.queue.length - 1;
-  nowSimilarButton.disabled = !track;
-  if (!track) {
-    nowTitle.textContent = "No track loaded";
-    nowSubtitle.textContent = "No radio queue yet.";
-    artwork.classList.add("hidden");
-    artwork.removeAttribute("src");
-    seekBar.value = "0";
-    timeElapsed.textContent = "0:00";
-    timeDuration.textContent = "0:00";
-    return;
-  }
-  nowTitle.textContent = track.title || "Untitled track";
-  nowSubtitle.textContent = [track.artist, track.album].filter(Boolean).join(" - ");
-  artwork.src = artworkUrl(track.id);
-  artwork.classList.remove("hidden");
-}
-
-function renderShuffle() {
-  shuffleButton.classList.toggle("active", state.shuffle);
-  shuffleButton.setAttribute("aria-label", state.shuffle ? "Shuffle on" : "Shuffle off");
-  shuffleButton.title = state.shuffle ? "Shuffle on" : "Shuffle off";
-}
-
-function renderRepeat() {
-  repeatButton.classList.toggle("active", state.repeat !== "none");
-  repeatButton.textContent = state.repeat === "one" ? "↻\xb9" : "↻";
-  const labels = { none: "Repeat off", one: "Repeat one", all: "Repeat all" };
-  repeatButton.setAttribute("aria-label", labels[state.repeat]);
-  repeatButton.title = labels[state.repeat];
-}
-
-function trackButton(track, onClick, label) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "track-main";
-  button.setAttribute("aria-label", label);
-  button.addEventListener("click", onClick);
-  button.append(trackText(track));
-  return button;
-}
-
-function actionButton(text, onClick) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "secondary-button";
-  button.textContent = text;
-  button.addEventListener("click", () => {
+function smallBtn(text, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "secondary-btn";
+  btn.textContent = text;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
     const result = onClick();
-    if (result?.catch) {
-      result.catch((error) => {
-        setMessage(error instanceof Error ? error.message : String(error));
-      });
-    }
+    if (result?.catch) result.catch((err) => setMessage(err instanceof Error ? err.message : String(err)));
   });
-  return button;
+  return btn;
 }
 
-function trackText(track) {
-  const wrap = document.createElement("span");
-  const title = document.createElement("span");
-  title.className = "track-title";
-  title.textContent = track.title || "Untitled track";
-  const meta = document.createElement("span");
-  meta.className = "track-meta";
-  const dur = track.duration_ms ? formatTime(track.duration_ms / 1000) : null;
-  meta.textContent = [track.artist, track.album, dur].filter(Boolean).join(" · ");
-  wrap.append(title, meta);
-  return wrap;
+function emptyMsg(text, tag = "div") {
+  const el = document.createElement(tag);
+  el.className = "empty-msg";
+  el.textContent = text;
+  return el;
 }
 
-function emptyState(text) {
-  const li = document.createElement("li");
-  li.className = "empty-state";
-  li.textContent = text;
-  return li;
+function mixName(mix) { return mix?.name || "Untitled mix"; }
+
+// ── Toast message ────────────────────────────────────────
+
+let toastTimer = null;
+function setMessage(text) {
+  if (!text) { messageEl.classList.add("hidden"); return; }
+  messageEl.textContent = text;
+  messageEl.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => messageEl.classList.add("hidden"), 4000);
 }
 
-function formatTime(seconds) {
-  if (!seconds || !isFinite(seconds)) return "0:00";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function shuffleArray(arr) {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-function trackLabel(track) {
-  return [track.title || "Untitled track", track.artist].filter(Boolean).join(" - ");
-}
-
-function mixName(mix) {
-  return mix?.name || "Untitled mix";
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function playSessionId() {
-  // crypto.randomUUID() is secure-context-only (HTTPS / localhost) and is
-  // undefined over plain http on a LAN IP - the MVP's intended deployment.
-  // PlaySessionId only needs to be unique per playback, not cryptographic.
-  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
-  return `ps-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
+// ── URLs ─────────────────────────────────────────────────
 
 function streamUrl(itemId) {
   const base = state.session.serverUrl.replace(/\/$/, "");
@@ -709,30 +764,54 @@ function streamUrl(itemId) {
 
 function artworkUrl(itemId) {
   const base = state.session.serverUrl.replace(/\/$/, "");
-  const params = new URLSearchParams({ api_key: state.session.token });
-  return `${base}/Items/${encodeURIComponent(itemId)}/Images/Primary?${params}`;
+  return `${base}/Items/${encodeURIComponent(itemId)}/Images/Primary?api_key=${state.session.token}`;
 }
+
+// ── Media Session ─────────────────────────────────────────
 
 function updateMediaSession(track) {
   if (!("mediaSession" in navigator) || !track) return;
   navigator.mediaSession.metadata = new MediaMetadata({
-    title: track.title || "Untitled track",
+    title: track.title || "Untitled",
     artist: track.artist || "",
     album: track.album || "",
-    artwork: [
-      { src: artworkUrl(track.id), sizes: "512x512", type: "image/jpeg" },
-    ],
+    artwork: [{ src: artworkUrl(track.id), sizes: "512x512", type: "image/jpeg" }],
   });
   navigator.mediaSession.setActionHandler("play", () => audio.play());
   navigator.mediaSession.setActionHandler("pause", () => audio.pause());
   navigator.mediaSession.setActionHandler("previoustrack", () => playIndex(Math.max(0, state.currentIndex - 1)));
   navigator.mediaSession.setActionHandler("nexttrack", () => playIndex(Math.min(state.queue.length - 1, state.currentIndex + 1)));
-  navigator.mediaSession.setActionHandler("seekto", (details) => {
-    if (details.seekTime != null) {
-      audio.currentTime = details.seekTime;
-    }
-  });
+  navigator.mediaSession.setActionHandler("seekto", (d) => { if (d.seekTime != null) audio.currentTime = d.seekTime; });
 }
+
+// ── Utils ─────────────────────────────────────────────────
+
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
+}
+
+function playSessionId() {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  return `ps-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function formatTime(seconds) {
+  if (!seconds || !isFinite(seconds)) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
 async function authedFetch(url, options = {}) {
   if (!state.session?.token) throw new Error("Not signed in");
@@ -748,25 +827,12 @@ async function authedFetch(url, options = {}) {
 
 async function parseJson(resp) {
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    throw new Error(data.detail || `Request failed (${resp.status})`);
-  }
+  if (!resp.ok) throw new Error(data.detail || `Request failed (${resp.status})`);
   return data;
 }
 
 async function withBusy(text, task) {
   setMessage(text);
-  try {
-    await task();
-  } catch (error) {
-    setMessage(error instanceof Error ? error.message : String(error));
-  }
+  try { await task(); }
+  catch (err) { setMessage(err instanceof Error ? err.message : String(err)); }
 }
-
-function setMessage(text) {
-  message.textContent = text;
-}
-
-// TODO(webapp): library browse, save-mix-as-Emby-playlist, audiobooks,
-// artist/album-similar screens, service-worker installability, and TLS
-// hardening are intentionally out of this focused sonic-features slice.
