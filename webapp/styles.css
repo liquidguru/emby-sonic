@@ -150,10 +150,19 @@ input:focus {
   border: 1px solid var(--line);
 }
 
+.icon-button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .play-button {
   width: 58px;
   color: var(--button-text);
   background: var(--accent-strong);
+}
+
+.play-button.buffering {
+  opacity: 0.55;
 }
 
 .secondary-button {
@@ -229,10 +238,18 @@ input:focus {
   list-style: none;
   margin: 16px 0 0;
   padding: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.list {
+  max-height: 420px;
 }
 
 .queue-list {
   counter-reset: queue;
+  max-height: 290px;
 }
 
 .result-row,
@@ -240,7 +257,7 @@ input:focus {
   display: grid;
   gap: 12px;
   width: 100%;
-  padding: 12px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -280,8 +297,8 @@ input:focus {
 
 .track-meta {
   display: block;
-  margin-top: 3px;
-  font-size: 0.9rem;
+  margin-top: 2px;
+  font-size: 0.86rem;
 }
 
 .score {
@@ -310,7 +327,40 @@ input:focus {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin: 18px 0 8px;
+  margin: 18px 0 0;
+}
+
+.progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.seek-bar {
+  flex: 1;
+  height: 4px;
+  padding: 0;
+  background: var(--line);
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  /* override the default input min-height */
+  min-height: 0;
+}
+
+.time-label {
+  flex: 0 0 auto;
+  min-width: 34px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.time-label:last-child {
+  text-align: right;
 }
 
 .center-actions {
@@ -345,6 +395,13 @@ input:focus {
   background: var(--panel-strong);
 }
 
+.empty-state {
+  padding: 20px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 .adventure-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -368,7 +425,7 @@ input:focus {
 
 .compact-list .result-row {
   grid-template-columns: 1fr auto;
-  padding: 10px 0;
+  padding: 8px 0;
 }
 
 .build-row {

@@ -137,9 +137,16 @@
             <img id="artwork" class="artwork hidden" alt="">
           </div>
           <div class="controls">
+            <button id="shuffleButton" class="icon-button" type="button" aria-label="Shuffle off" title="Shuffle">&#x21c4;</button>
             <button id="prevButton" class="icon-button" type="button" aria-label="Previous track" title="Previous track">&#x23ee;</button>
             <button id="playButton" class="play-button" type="button" aria-label="Play" title="Play">&#x25b6;</button>
             <button id="nextButton" class="icon-button" type="button" aria-label="Next track" title="Next track">&#x23ed;</button>
+            <button id="repeatButton" class="icon-button" type="button" aria-label="Repeat off" title="Repeat off">&#x21bb;</button>
+          </div>
+          <div class="progress-wrap">
+            <span id="timeElapsed" class="time-label">0:00</span>
+            <input id="seekBar" type="range" min="0" max="100" value="0" step="0.1" class="seek-bar" aria-label="Seek">
+            <span id="timeDuration" class="time-label">0:00</span>
           </div>
           <div class="action-row center-actions">
             <button id="nowSimilarButton" class="secondary-button" type="button">Similar</button>
