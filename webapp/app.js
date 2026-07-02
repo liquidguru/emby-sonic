@@ -43,7 +43,8 @@ const miniArtist      = document.querySelector("#miniArtist");
 const miniPrevButton  = document.querySelector("#miniPrevButton");
 const miniPlayButton  = document.querySelector("#miniPlayButton");
 const miniNextButton  = document.querySelector("#miniNextButton");
-const miniProgressFill = document.querySelector("#miniProgressFill");
+const miniProgressFill  = document.querySelector("#miniProgressFill");
+const miniProgressTrack = document.querySelector(".mini-progress-track");
 
 // Now Playing overlay
 const npOverlay       = document.querySelector("#nowPlayingOverlay");
@@ -488,6 +489,11 @@ function renderMiniProgress() {
 }
 
 miniOpenNowPlaying.addEventListener("click", openNowPlaying);
+miniProgressTrack.addEventListener("click", (e) => {
+  if (!audio.duration) return;
+  const rect = miniProgressTrack.getBoundingClientRect();
+  audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
+});
 miniPrevButton.addEventListener("click", () => playIndex(Math.max(0, state.currentIndex - 1)));
 miniNextButton.addEventListener("click", () => playIndex(Math.min(state.queue.length - 1, state.currentIndex + 1)));
 miniPlayButton.addEventListener("click", togglePlay);
