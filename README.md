@@ -77,9 +77,9 @@ FAISS index). Then point the Emby plugin's **Python Service URL** at
 `http://<nas-host>:8765` and run one or more workers on your GPU/CPU box — they
 stream audio from Emby, so no file shares are needed.
 
-> **Prebuilt images:** at public launch the coordinator/worker images will be
-> pulled from GHCR (set `COORDINATOR_IMAGE` / `WORKER_IMAGE` and drop `--build`).
-> During the private beta the images are not yet public, so build from source.
+> **Prebuilt images:** coordinator and worker images are published to GHCR on
+> every release. Set `COORDINATOR_IMAGE` / `WORKER_IMAGE` and drop `--build` to
+> pull instead of build. The guided `./install.sh` does this automatically.
 
 ### Benchmark before a full scan
 
@@ -194,9 +194,10 @@ The Compose `worker` service builds the full [`Dockerfile`](Dockerfile), runs
 not redownloaded on every container rebuild/restart. Workers stream audio from
 Emby; no music library bind mount is needed.
 
-Worker images are CPU-only by default. To build a CUDA-capable worker on an
-x86_64 Linux host with an NVIDIA GPU, set `TORCH_VARIANT=cuda` before building
-and run the worker with GPU access:
+Worker images are CPU-only by default. To build a GPU-capable worker, set
+`TORCH_VARIANT` before building: `cuda` for CUDA 12.8+ (modern GPUs), `cu124`
+for CUDA 12.4 (older / pre-Ampere GPUs). The guided `./install.sh` detects your
+CUDA version and picks the right image automatically.
 
 ```bash
 # Keep the coordinator running normally.
@@ -222,9 +223,9 @@ The startup log is the proof: `docker compose run --rm --gpus all worker` prints
 built with `TORCH_VARIANT=cuda` and that `nvidia-smi` works inside a test
 container.
 
-> **Prebuilt images (public launch):** once the GHCR packages are public, set
-> `COORDINATOR_IMAGE` / `WORKER_IMAGE` (e.g. `…-worker:latest` or `:cuda`) and
-> drop `--build` to pull instead of build. They are private during the beta.
+> **Prebuilt images:** published to GHCR on every release — `…-worker:latest`
+> (CPU), `:cu124` (CUDA 12.4, older GPUs), or `:cuda` (CUDA 12.8+). Set
+> `WORKER_IMAGE` and drop `--build` to pull instead of build.
 
 Standalone worker container:
 
@@ -238,7 +239,7 @@ docker run -d --name emby-sonic-worker \
   emby-sonic-worker python worker.py
 ```
 
-Standalone NVIDIA GPU worker:
+Standalone NVIDIA GPU worker (use `cu124` instead of `cuda` for older / pre-Ampere hardware):
 
 ```bash
 docker build --build-arg TORCH_VARIANT=cuda -t emby-sonic-worker:cuda .

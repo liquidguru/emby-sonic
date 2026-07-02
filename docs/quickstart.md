@@ -1,10 +1,9 @@
 # Emby Sonic Quickstart
 
-> **Private beta note:** the guided installer below pulls prebuilt images from
-> GHCR, which are **not yet public**. Until launch, beta testers should build
-> from source instead — see the Docker section in the
-> [README](../README.md#deploy-on-a-nas-docker) (`docker compose up -d --build`).
-> This guide applies as-is once the images are public.
+> **Beta note:** prebuilt images are published to GHCR on every release and
+> pulled automatically by the installer. If a pull fails with `denied`, the
+> release image may not be ready yet — build from source with
+> `docker compose up -d --build` instead.
 
 Start by choosing the setup that matches where Docker will run.
 
@@ -24,7 +23,7 @@ You need:
 - Docker with Compose v2 (`docker compose version`)
 - An Emby server URL, for example `http://192.168.1.50:8096`
 - An Emby API key from Emby Dashboard -> Advanced -> API Keys
-- For GPU workers: NVIDIA drivers and NVIDIA Container Toolkit
+- For GPU workers: NVIDIA drivers and NVIDIA Container Toolkit (the installer detects these automatically)
 
 Run the installer from the repo root:
 
@@ -63,7 +62,7 @@ Use this when one machine should run both the coordinator and the worker.
 1. Run `./install.sh`.
 2. Choose `2) Single Linux/Windows Docker box`.
 3. Enter your Emby URL and API key.
-4. If this machine has an NVIDIA GPU and Container Toolkit, answer yes to GPU.
+4. The installer auto-detects your GPU and CUDA version and selects the right worker image (CPU / cu124 / cuda). Confirm or override when prompted.
 
 Check the worker device:
 
@@ -97,7 +96,7 @@ http://192.168.1.50:8765
 ```
 
 4. Enter the Emby URL and API key.
-5. Answer yes to GPU if this machine has NVIDIA Container Toolkit installed.
+5. The installer auto-detects your GPU and CUDA version and selects the right worker image. Confirm or override when prompted.
 
 The generated Compose file starts only the worker service.
 
@@ -107,12 +106,12 @@ The installer uses these images:
 
 ```text
 ghcr.io/liquidguru/emby-sonic-coordinator:latest
-ghcr.io/liquidguru/emby-sonic-worker:latest
-ghcr.io/liquidguru/emby-sonic-worker:cuda
+ghcr.io/liquidguru/emby-sonic-worker:latest       # CPU
+ghcr.io/liquidguru/emby-sonic-worker:cu124        # CUDA 12.4 (older / pre-Ampere GPUs)
+ghcr.io/liquidguru/emby-sonic-worker:cuda         # CUDA 12.8+ (modern GPUs)
 ```
 
-For pinned releases, replace `latest` with a release tag such as `v0.1.0`.
-CUDA workers also publish tag-specific variants such as `v0.1.0-cuda`.
+For pinned releases, append the release tag — e.g. `latest-v0.1.0-beta.6`, `cu124-v0.1.0-beta.6`.
 
 ## Updating
 
