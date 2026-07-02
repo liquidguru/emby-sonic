@@ -430,6 +430,7 @@ class LibraryRepository @Inject constructor(
             includeItemTypes = "Audio",
             parentId = parentId,
             albumArtistIds = artistIds.joinToString(","),
+            sortBy = "Album,ParentIndexNumber,IndexNumber",
             limit = SEARCH_LIMIT,
         ).items.map { it.toTrackItem(ContentKind.MUSIC) }
     }
