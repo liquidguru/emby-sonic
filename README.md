@@ -31,9 +31,14 @@ Any LAN machine (e.g. a GPU box)
 Workers can run on the Emby host or on any networked machine. They stream audio
 directly from Emby's HTTP API — no file shares or special network config needed.
 
-The coordinator also serves a minimal browser app at `http://<host>:8765/app`
-for non-Android users. It covers Emby login, music search, Track Radio, Similar,
-Sonic Mixes, Sonic Adventure, and browser/lock-screen media controls.
+The coordinator also serves a browser app (PWA) at `http://<host>:8765/app` for
+non-Android users (iPhone/iPad/desktop). It mirrors the liquidWave app layout —
+a home screen with Recent Plays, Stations (Library Radio, Random Album, Decade
+Radio, Genres, Sonic Adventure, Artist Mix Creator) and a Sonic Mixes shelf,
+plus Search and a Mixes tab. Playback runs through a mini player + Now Playing
+overlay (seek, shuffle/repeat, stop) with browser/lock-screen media controls,
+and any queue — an artist mix, radio, or a sonic mix — can be saved back to a
+real Emby playlist. The webapp is an active work in progress.
 
 ## Phase 1 — Python Analysis Service
 
