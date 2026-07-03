@@ -8,6 +8,23 @@ from db.database import init_db
 from config import settings
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """StaticFiles that tells browsers to revalidate the webapp on every load.
+
+    The default StaticFiles sends ETag/Last-Modified but no Cache-Control, so
+    browsers apply heuristic freshness and can serve a stale app.js on a normal
+    revisit — meaning a webapp fix (e.g. a crash fix) may not reach a tester
+    until they hard-refresh. `no-cache` keeps the cached copy but forces an
+    ETag revalidation each load (cheap 304s when unchanged), so updates land
+    promptly while unchanged assets still aren't re-downloaded.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -44,7 +61,7 @@ app.include_router(worker.router, prefix="/sonic")
 app.include_router(webapp.router, prefix="/sonic")
 
 _webapp_dir = Path(__file__).resolve().parent / "webapp"
-app.mount("/app", StaticFiles(directory=_webapp_dir, html=True), name="webapp")
+app.mount("/app", NoCacheStaticFiles(directory=_webapp_dir, html=True), name="webapp")
 
 
 if __name__ == "__main__":
