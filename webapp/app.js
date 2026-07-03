@@ -117,10 +117,11 @@ const state = {
 };
 
 // ── Boot ─────────────────────────────────────────────────
-
-renderSession();
-renderShuffle();
-renderRepeat();
+// The boot calls run at the very END of this file (after makeDraggable), so
+// every module-level `let`/`const` (e.g. toastTimer) is initialized first.
+// Booting here instead crashes on refresh when signed in: renderSession() →
+// loadHomeData → loadMixes → setMessage touches `toastTimer` in its temporal
+// dead zone (issue #32).
 
 // ── Auth ─────────────────────────────────────────────────
 
@@ -1394,3 +1395,11 @@ function makeDraggable(el) {
 
 // Attach to static shelves on boot (dynamic ones attached after render)
 document.querySelectorAll(".shelf-scroll").forEach(makeDraggable);
+
+// ── Boot (runs last, after all module-level declarations) ────────────────
+// Must stay at the end: renderSession()'s signed-in path drills into
+// loadHomeData → loadMixes → setMessage, which reads `let toastTimer`. Running
+// this before that declaration is initialized crashes on refresh (issue #32).
+renderSession();
+renderShuffle();
+renderRepeat();
