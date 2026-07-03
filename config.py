@@ -38,8 +38,6 @@ class Settings(BaseSettings):
     window_seconds: int = 30
     num_windows: int = 3
 
-    analysis_workers: int = 2
-
     # Tracks excluded from sonic mixes. Spoken-word content (audiobooks, radio
     # dramas) is typed as "Audio" by Emby and otherwise leaks in. Two signals:
     # a path substring for the audiobook library (mixed .mp3/.m4b), and the
