@@ -20,6 +20,12 @@ already at settings.panns_checkpoint_path we download it with stdlib urllib
 before constructing AudioTagging. (panns_inference's own auto-download shells out
 to `wget`, which is absent on Windows and most NAS — hence we handle it here and
 pass an explicit checkpoint_path so panns never reaches for wget.)
+
+panns_inference also hardcodes a second download at *import time*: it checks
+for ~/panns_data/class_labels_indices.csv and, if missing, shells out to the
+same absent `wget` to fetch it — silently failing on Windows/NAS, then crashing
+on the following open(). We pre-provision that file too, with the same stdlib
+urllib downloader, before the panns_inference import ever runs.
 """
 
 from __future__ import annotations
@@ -32,6 +38,10 @@ from config import settings
 
 RAW_DIM = 2048  # CNN14 embedding dimensionality (before PCA)
 _MIN_CHECKPOINT_BYTES = 3e8  # panns considers <300 MB a failed/partial download
+_LABELS_CSV_URL = (
+    "http://storage.googleapis.com/us_audioset/youtube_corpus/v1/csv/"
+    "class_labels_indices.csv"
+)
 
 
 def _download(url: str, dest: Path) -> None:
@@ -82,6 +92,21 @@ def ensure_checkpoint() -> Path:
     print(f"CNN14 checkpoint ready: {path}", flush=True)
     return path
 
+
+def ensure_labels_csv() -> Path:
+    """Return panns_inference's AudioSet labels CSV path, downloading if absent.
+
+    Must be called before `from panns_inference import AudioTagging` — that
+    import is what triggers panns_inference's own (wget-based, Windows-broken)
+    download of this exact path. Path is hardcoded to match panns_inference's
+    own convention (~/panns_data/class_labels_indices.csv) — not configurable.
+    """
+    path = Path.home() / "panns_data" / "class_labels_indices.csv"
+    if not path.exists():
+        print(f"AudioSet labels CSV not found at {path}; downloading...", flush=True)
+        _download(_LABELS_CSV_URL, path)
+    return path
+
 # NOTE: windowing now happens upstream in audio.load_windows() — the embedder
 # receives a list of pre-decoded windows and averages their embeddings. Window
 # count / length / sample rate live in config (settings.num_windows etc.).
@@ -101,6 +126,8 @@ class PANNsEmbedder:
         if self._model is not None:
             return
         import torch
+
+        ensure_labels_csv()  # must run before the panns_inference import below
         from panns_inference import AudioTagging
 
         # Auto-detect GPU: a worker on a CUDA box (e.g. liquidHulk's RTX 4070)
