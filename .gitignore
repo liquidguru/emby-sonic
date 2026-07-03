@@ -7,8 +7,11 @@ venv/
 /data/
 /models/
 worker.log
+worker_supervisor.log
 worker_run.generated.ps1
 worker_run.generated.py
+coordinator.log
+coordinator_run.generated.py
 docker-compose.installer.yml
 *.egg-info/
 dist/

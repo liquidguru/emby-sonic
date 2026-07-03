@@ -56,9 +56,19 @@ cp .env.example .env   # set EMBY_URL and EMBY_API_KEY
 python main.py         # coordinator on http://0.0.0.0:8765
 ```
 
-**PANNs CNN14 checkpoint** (~327 MB) — auto-downloaded by workers on first use
-(stdlib `urllib`, cross-platform). No manual step needed. To pre-place or
-relocate it, set `PANNS_CHECKPOINT_PATH` (default `~/panns_data/Cnn14_mAP=0.431.pth`);
+**GPU workers** (bare metal, not Docker): install a CUDA build of torch instead
+of the CPU wheel above, e.g. `pip install torch --index-url
+https://download.pytorch.org/whl/cu124` (use `cu124` for older/pre-Ampere GPUs,
+or check [pytorch.org](https://pytorch.org/get-started/locally/) for the current
+stable cuXXX index). Verify with `python -c "import torch; print(torch.cuda.is_available())"`
+before running `worker.py` — a plain `pip install torch` on Windows commonly
+resolves to the CPU wheel.
+
+**PANNs CNN14 checkpoint + labels** (~327 MB) — auto-downloaded by workers on
+first use (stdlib `urllib`, cross-platform), including the AudioSet labels CSV
+that `panns_inference` itself would otherwise try (and, on Windows/NAS, fail)
+to fetch via `wget`. No manual step needed. To pre-place or relocate the
+checkpoint, set `PANNS_CHECKPOINT_PATH` (default `~/panns_data/Cnn14_mAP=0.431.pth`);
 an existing file is reused.
 
 ### Deploy on a NAS (Docker)
@@ -134,6 +144,24 @@ python tools/broken_tracks.py --db data/sonic.db requeue --all
 
 Requeue changes `analysis_status` from `error` to `pending`, clears the claim and
 error text, and lets the next running worker retry the track.
+
+### Keeping the coordinator itself running (bare metal)
+
+A bare `python main.py` in a terminal has nothing supervising it — close the
+window, let the box sleep, or hit an unhandled exception, and the coordinator's
+listening socket is just gone until you restart it by hand. The Emby plugin
+then shows "Service: offline" and workers get connection-refused errors
+posting results. On Windows, install it as a supervised, auto-restarting
+scheduled task instead:
+
+```powershell
+# Run elevated, on the box that should host the coordinator:
+./deploy/coordinator-install.ps1
+```
+
+Runs as SYSTEM, starts at boot, restarts automatically if it dies, no console
+window. (Docker deployments don't need this — see "Deploy on a NAS" above,
+which already runs the coordinator as a supervised container.)
 
 ### Automatic analysis (worker as a service)
 
