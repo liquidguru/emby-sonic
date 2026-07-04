@@ -22,13 +22,16 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
     }
 
     function refreshStatus(view, serviceUrl) {
+        // Goes through the plugin's own same-origin proxy (emby-sonic/*), not
+        // a direct browser->coordinator fetch — see plugin/Api/SonicProxyService.cs
+        // for why (CORS/mixed-content failures under reverse-proxy setups).
         var url = normalizeUrl(serviceUrl);
         var el = view.querySelector('.sonicStatus');
         var skip = view.querySelector('.sonicSkipped');
         skip.style.display = 'none';
         skip.innerHTML = '';
         el.innerHTML = 'Contacting ' + esc(url) + '/sonic/status ...';
-        fetch(url + '/sonic/status', { headers: { 'X-Emby-Token': token() } })
+        fetch(ApiClient.getUrl('emby-sonic/status'), { headers: { 'X-Emby-Token': token() } })
             .then(function (r) {
                 if (!r.ok) { throw new Error('HTTP ' + r.status); }
                 return r.json();
@@ -57,7 +60,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
                 if (lnk) {
                     lnk.addEventListener('click', function (e) {
                         e.preventDefault();
-                        toggleSkipped(view, url, lnk);
+                        toggleSkipped(view, lnk);
                     });
                 }
             })
@@ -70,7 +73,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
             });
     }
 
-    function toggleSkipped(view, url, lnk) {
+    function toggleSkipped(view, lnk) {
         var skip = view.querySelector('.sonicSkipped');
         if (skip.style.display !== 'none') {
             skip.style.display = 'none';
@@ -80,7 +83,7 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
         skip.style.display = 'block';
         if (lnk) { lnk.textContent = 'Hide details'; }
         skip.innerHTML = 'Loading skipped tracks...';
-        fetch(url + '/sonic/status/errors', { headers: { 'X-Emby-Token': token() } })
+        fetch(ApiClient.getUrl('emby-sonic/status/errors'), { headers: { 'X-Emby-Token': token() } })
             .then(function (r) {
                 if (!r.ok) { throw new Error('HTTP ' + r.status); }
                 return r.json();
@@ -104,14 +107,19 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
             });
     }
 
-    function postAction(view, path, okMsg) {
-        var url = normalizeUrl(view.querySelector('.txtServiceUrl').value);
-        fetch(url + path, {
+    function postAction(path, okMsg) {
+        // Same-origin proxy (see refreshStatus above) — always targets the
+        // *saved* coordinator URL/config, not whatever is currently typed
+        // but unsaved in the Service URL field. Save first if you just
+        // changed it.
+        fetch(ApiClient.getUrl(path), {
             method: 'POST',
             headers: { 'X-Emby-Token': token(), 'Content-Type': 'application/json' },
             body: '{}'
-        }).then(function () { Dashboard.alert(okMsg); })
-          .catch(function () { Dashboard.alert('Request failed — is the service reachable?'); });
+        }).then(function (r) {
+            if (!r.ok) { throw new Error('HTTP ' + r.status); }
+            Dashboard.alert(okMsg);
+        }).catch(function () { Dashboard.alert('Request failed — is the service reachable?'); });
     }
 
     function save(view) {
@@ -139,11 +147,11 @@ define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-scroller'], fu
         });
 
         view.querySelector('.btnScan').addEventListener('click', function () {
-            postAction(view, '/sonic/library/scan', 'Library scan started.');
+            postAction('emby-sonic/library/scan', 'Library scan started.');
         });
 
         view.querySelector('.btnBuildMixes').addEventListener('click', function () {
-            postAction(view, '/sonic/library/build-mixes', 'Mix generation started.');
+            postAction('emby-sonic/library/build-mixes', 'Mix generation started.');
         });
     }
 
