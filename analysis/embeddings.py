@@ -38,6 +38,15 @@ from config import settings
 
 RAW_DIM = 2048  # CNN14 embedding dimensionality (before PCA)
 _MIN_CHECKPOINT_BYTES = 3e8  # panns considers <300 MB a failed/partial download
+
+# CNN14's conv/pool stack collapses to a zero-sized feature map ("Output size is
+# too small") on windows well under a full window's length — seen on very short
+# tracks and on corrupt/truncated decodes (bad MP3 headers cutting a window
+# short). Every OTHER window in normal operation is exactly this many samples
+# (window_seconds @ sample_rate), so zero-padding a short one up to that same,
+# already-proven-safe length sidesteps the crash instead of guessing CNN14's
+# true minimum.
+_MIN_WINDOW_SAMPLES = settings.window_seconds * settings.sample_rate
 _LABELS_CSV_URL = (
     "http://storage.googleapis.com/us_audioset/youtube_corpus/v1/csv/"
     "class_labels_indices.csv"
@@ -143,14 +152,27 @@ class PANNsEmbedder:
         Return the native 2048-dim CNN14 embedding for a track, given the list of
         pre-decoded 32kHz mono windows (from audio.load_windows). Each window is
         embedded independently and the results are averaged.
+
+        Windows shorter than a full window (short tracks, or a corrupt/truncated
+        decode) are zero-padded up to the full length rather than fed to CNN14
+        as-is — too-short audio collapses the model's conv/pool stack to a
+        zero-sized feature map ("Output size is too small"). Empty windows are
+        skipped; if every window is empty, raises rather than averaging nothing.
         """
         self._ensure_loaded()
 
         per_window = []
         for w in windows:
+            if w.size == 0:
+                continue
+            if w.size < _MIN_WINDOW_SAMPLES:
+                w = np.pad(w, (0, _MIN_WINDOW_SAMPLES - w.size))
             audio = np.ascontiguousarray(w[None, :], dtype=np.float32)  # (1, samples)
             _clipwise, embedding = self._model.inference(audio)
             per_window.append(np.asarray(embedding)[0])  # (2048,)
+
+        if not per_window:
+            raise ValueError("no usable audio windows (all empty)")
 
         return np.mean(per_window, axis=0).astype(np.float32)
 

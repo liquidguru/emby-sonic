@@ -77,6 +77,22 @@ def _claim(client: httpx.Client) -> list[dict]:
     return r.json()["tracks"]
 
 
+def _non_finite_field(feats: dict, lufs: float | None) -> str | None:
+    """Name+value of the first non-finite numeric feature, or None if all finite.
+
+    Silent/corrupt audio can produce NaN (e.g. correlation on a zero-variance
+    chroma vector) or Inf features. httpx's json= encoding rejects NaN/Inf
+    outright (ValueError) when posting results — and that used to fail the
+    WHOLE batch's POST, not just the bad track, so every track in the batch
+    stayed 'pending' and got re-leased forever every cycle. Catching it here,
+    per track, means only the actual bad track errors out.
+    """
+    for name, val in {**feats, "lufs": lufs}.items():
+        if isinstance(val, (int, float)) and not np.isfinite(val):
+            return f"{name}={val}"
+    return None
+
+
 def _analyse(track: dict) -> dict:
     suffix = os.path.splitext(track.get("path") or "")[1]
     path = emby.download_track(track["id"], suffix=suffix)
@@ -88,6 +104,11 @@ def _analyse(track: dict) -> dict:
         feats = extract_features(path, window_audio, settings.sample_rate)
         lufs = measure_loudness(window_audio, settings.sample_rate)
         raw = embedder.embed_raw(windows)
+        if not np.all(np.isfinite(raw)):
+            raise ValueError("non-finite embedding vector — likely silent/corrupt audio")
+        bad_field = _non_finite_field(feats, lufs)
+        if bad_field:
+            raise ValueError(f"non-finite audio feature ({bad_field}) — likely silent/corrupt audio")
     finally:
         try:
             os.remove(path)

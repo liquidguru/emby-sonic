@@ -72,12 +72,21 @@ def load_windows(file_path: str) -> list[np.ndarray]:
     starts = np.linspace(0.1, 0.9, settings.num_windows) * usable
     windows: list[np.ndarray] = []
     for s in starts:
-        y, _ = librosa.load(file_path, sr=sr, mono=True, offset=float(s), duration=win)
+        # A corrupt frame/header at one offset shouldn't lose windows decoded
+        # fine at other offsets — isolate each decode so one bad seek doesn't
+        # take the whole track down with it.
+        try:
+            y, _ = librosa.load(file_path, sr=sr, mono=True, offset=float(s), duration=win)
+        except Exception:
+            continue
         if len(y):
             windows.append(y)
 
     if not windows:  # decode failed for every window — fall back to whole file
-        y, _ = librosa.load(file_path, sr=sr, mono=True)
+        try:
+            y, _ = librosa.load(file_path, sr=sr, mono=True)
+        except Exception:
+            return []
         windows = [y] if len(y) else []
     return windows
 
