@@ -291,13 +291,20 @@ dashboard config page, and triggers scans on library changes.
   and a separate `*js` **AMD module** (`define([...], function(){ ... return View; })`
   where `View` extends `baseView` and implements `onResume`). See `plugin/Configuration/`.
 - Config load/save uses `ApiClient.get/updatePluginConfiguration`; status & action
-  calls use `fetch()` to the coordinator with `ApiClient.accessToken()`.
+  calls use `fetch(ApiClient.getUrl('emby-sonic/...'))` — same-origin, proxied through
+  the plugin's own API rather than calling the coordinator directly from the browser
+  (see below).
 - Plugin DLL goes in `…/Emby-Server/programdata/plugins/` as a **flat file**.
 - csproj needs `<FrameworkReference Include="Microsoft.AspNetCore.App" />`; the three
   `MediaBrowser.*.dll` SDK refs live in `plugin/lib/` (gitignored — not redistributable).
-- An ASP.NET MVC proxy controller (`SonicController.cs`) was scaffolded but Emby does
-  not auto-route plugin MVC controllers; the config page talks to the coordinator
-  directly instead. Kept for a possible future client-app proxy.
+- An ASP.NET MVC proxy controller (`SonicController.cs`) was scaffolded early on, but
+  Emby does not auto-route plugin MVC controllers, so the config page called the
+  coordinator directly from the browser instead — which broke under CORS/reverse-proxy
+  setups (fixed in v0.4.5.0). Replaced by `SonicProxyService`
+  (`plugin/Api/SonicProxyService.cs`): `IService` + `[Route]`/`[Authenticated]` from
+  `MediaBrowser.Model.Services`/`MediaBrowser.Controller.Net` — Emby's actual plugin
+  API convention, auto-discovered from the loaded assembly. Verified live on Emby
+  4.10.0.17-BETA.
 
 **Tools:** Claude Code, C# / .NET 8 SDK, Emby Plugin SDK
 
