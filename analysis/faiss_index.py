@@ -34,6 +34,12 @@ class SonicIndex:
     def add(self, track_id: str, vector: np.ndarray) -> None:
         self._ensure_loaded()
         vec = vector.astype(np.float32).reshape(1, -1)
+        if vec.shape[1] != settings.embedding_dim:
+            raise ValueError(
+                f"embedding has {vec.shape[1]} dims, expected {settings.embedding_dim}"
+            )
+        if not np.all(np.isfinite(vec)):
+            raise ValueError("embedding contains NaN/Inf")
         faiss.normalize_L2(vec)
         self._index.add(vec)
         self._track_ids.append(track_id)
