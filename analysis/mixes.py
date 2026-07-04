@@ -4,8 +4,11 @@ then curate one mix per cluster (tracks ranked by proximity to centroid).
 
 Each mix is given a human name derived from its tracks' sonic character (tempo +
 energy, calibrated against the whole library so there are no hard-coded BPM/energy
-magic numbers) and flavoured with a dominant artist when one clearly stands out.
-Genre tags aren't stored, so naming is audio-feature + artist based.
+magic numbers), flavoured with a dominant artist when one clearly stands out, or
+failing that a dominant genre. The tempo/energy mood grid alone has only 9 distinct
+names, so with the default 30 clusters, mixes lacking both a dominant artist and
+genre still collide and get a numeric suffix from `_dedupe` — expected for a
+maximally diverse cluster, not a bug.
 
 Run via POST /sonic/library/build-mixes. Replaces all existing mixes on each run.
 """
@@ -60,6 +63,9 @@ _MOOD = {
 # A cluster gets an artist suffix when one artist is at least this fraction of it.
 _ARTIST_DOMINANCE = 0.35
 
+# Falls back to a genre suffix (when there's no dominant artist) at this fraction.
+_GENRE_DOMINANCE = 0.35
+
 # Compilation / placeholder "artists" that shouldn't be used to name a mix.
 _IGNORED_ARTISTS = {
     "various artists", "various", "va", "unknown artist", "unknown",
@@ -104,6 +110,14 @@ def _dominant_artist(artists: list[str | None]) -> tuple[str | None, float]:
     return (artist, count / len(named))
 
 
+def _dominant_genre(genres: list[str | None]) -> tuple[str | None, float]:
+    named = [g for g in genres if g]
+    if not named:
+        return (None, 0.0)
+    genre, count = Counter(named).most_common(1)[0]
+    return (genre, count / len(named))
+
+
 def _dedupe(name: str, used: set[str]) -> str:
     if name not in used:
         used.add(name)
@@ -122,6 +136,7 @@ def _cluster_and_name(
     tempos: list[float | None],
     energies: list[float | None],
     artists: list[str | None],
+    genres: list[str | None],
     n_clusters: int,
     tracks_per_mix: int,
 ) -> list[dict]:
@@ -152,6 +167,7 @@ def _cluster_and_name(
             "mean_tempo": _mean(sel_tempos),
             "mean_energy": _mean(sel_energies),
             "artists": [artists[mask[i]] for i in top_indices],
+            "genres": [genres[mask[i]] for i in top_indices],
             "centroid": centroids[cluster_id].tobytes(),
         })
 
@@ -164,8 +180,12 @@ def _cluster_and_name(
     used_names: set[str] = set()
     for c in clusters:
         mood = _MOOD[(_level(c["mean_tempo"], tempo_terc), _level(c["mean_energy"], energy_terc))]
-        artist, frac = _dominant_artist(c["artists"])
-        base = f"{mood} · {artist}" if (artist and frac >= _ARTIST_DOMINANCE) else mood
+        artist, artist_frac = _dominant_artist(c["artists"])
+        if artist and artist_frac >= _ARTIST_DOMINANCE:
+            base = f"{mood} · {artist}"
+        else:
+            genre, genre_frac = _dominant_genre(c["genres"])
+            base = f"{mood} · {genre}" if (genre and genre_frac >= _GENRE_DOMINANCE) else mood
         c["name"] = _dedupe(base, used_names)
 
     return clusters
@@ -199,6 +219,7 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
                     Embedding.tempo,
                     Embedding.energy,
                     Track.artist,
+                    Track.genre,
                     Track.file_path,
                 ).join(Track, Track.id == Embedding.track_id)
             )
@@ -225,6 +246,7 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
     tempos = [r.tempo for r in rows]
     energies = [r.energy for r in rows]
     artists = [r.artist for r in rows]
+    genres = [r.genre for r in rows]
 
     logger.info(
         "build_mixes: clustering %d tracks into %d mixes",
@@ -235,7 +257,7 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
     # event loop stays responsive during the ~15-20s build (notably so the
     # /library/build-state poll can be answered while a build runs).
     clusters = await asyncio.to_thread(
-        _cluster_and_name, track_ids, vecs, tempos, energies, artists, n_clusters, tracks_per_mix
+        _cluster_and_name, track_ids, vecs, tempos, energies, artists, genres, n_clusters, tracks_per_mix
     )
 
     # Pass 2: replace all mixes and write the new ones.

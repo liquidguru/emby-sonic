@@ -11,6 +11,9 @@ class Track(Base):
     title: Mapped[str | None] = mapped_column(Text)
     artist: Mapped[str | None] = mapped_column(Text)
     album: Mapped[str | None] = mapped_column(Text)
+    # Primary genre only (Emby's first Genres entry) — enough to find a mix
+    # cluster's dominant genre for naming; not a full tag list.
+    genre: Mapped[str | None] = mapped_column(Text)
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     file_path: Mapped[str | None] = mapped_column(Text)
     analysed_at: Mapped[datetime | None] = mapped_column(DateTime)

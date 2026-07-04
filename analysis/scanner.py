@@ -58,6 +58,8 @@ async def _sync_library(full: bool) -> None:
             track.title = item.get("Name")
             track.artist = item.get("AlbumArtist")
             track.album = item.get("Album")
+            genres = item.get("Genres") or []
+            track.genre = genres[0] if genres else None
             ticks = item.get("RunTimeTicks")
             track.duration_ms = int(ticks / 10000) if ticks else None
             track.file_path = item.get("Path")

@@ -40,6 +40,11 @@ async def init_db() -> None:
         if "lufs" not in embedding_cols:
             await conn.execute(text("ALTER TABLE embeddings ADD COLUMN lufs REAL"))
 
+        result = await conn.execute(text("PRAGMA table_info(tracks)"))
+        track_cols = {row[1] for row in result.fetchall()}
+        if "genre" not in track_cols:
+            await conn.execute(text("ALTER TABLE tracks ADD COLUMN genre TEXT"))
+
 
 async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:

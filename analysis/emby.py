@@ -16,7 +16,7 @@ import httpx
 
 from config import settings
 
-_ITEM_FIELDS = "Id,Name,AlbumArtist,Album,RunTimeTicks,Path,Container"
+_ITEM_FIELDS = "Id,Name,AlbumArtist,Album,RunTimeTicks,Path,Container,Genres"
 
 
 def _auth_headers(token: str | None = None) -> dict:
