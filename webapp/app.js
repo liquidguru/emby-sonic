@@ -298,8 +298,8 @@ async function loadGenres() {
   genreGrid.replaceChildren();
   try {
     const base = state.session.serverUrl.replace(/\/$/, "");
-    const qs = new URLSearchParams({ api_key: state.session.token, SortBy: "SortName", Limit: 100 });
-    const resp = await fetch(`${base}/MusicGenres?${qs}`);
+    const qs = new URLSearchParams({ SortBy: "SortName", Limit: 100 });
+    const resp = await fetch(`${base}/MusicGenres?${qs}`, { headers: { "X-Emby-Token": state.session.token } });
     const data = await parseJson(resp);
     const genres = Array.isArray(data.Items) ? data.Items : [];
     genreLoading.classList.add("hidden");
@@ -597,9 +597,10 @@ artistSearchForm.addEventListener("submit", async (e) => {
       IncludeItemTypes: "MusicArtist",
       Recursive: true,
       Limit: 20,
-      api_key: state.session.token,
     });
-    const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items?${qs}`);
+    const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items?${qs}`, {
+      headers: { "X-Emby-Token": state.session.token },
+    });
     const data = await parseJson(resp);
     const artists = Array.isArray(data.Items) ? data.Items : [];
     renderArtistResults(artists);
@@ -711,9 +712,10 @@ async function findArtistByName(name) {
     IncludeItemTypes: "MusicArtist",
     Recursive: true,
     Limit: 3,
-    api_key: state.session.token,
   });
-  const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items?${qs}`);
+  const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items?${qs}`, {
+    headers: { "X-Emby-Token": state.session.token },
+  });
   const data = await parseJson(resp);
   const items = Array.isArray(data.Items) ? data.Items : [];
   return items.length ? { id: items[0].Id, name: items[0].Name } : null;
@@ -1046,9 +1048,11 @@ async function createEmbyPlaylist(name, ids) {
     Ids: ids.join(","),
     UserId: state.session.userId,
     MediaType: "Audio",
-    api_key: state.session.token,
   });
-  const data = await parseJson(await fetch(`${base}/Playlists?${qs}`, { method: "POST" }));
+  const data = await parseJson(await fetch(`${base}/Playlists?${qs}`, {
+    method: "POST",
+    headers: { "X-Emby-Token": state.session.token },
+  }));
   return typeof data.ItemAddedCount === "number" ? data.ItemAddedCount : ids.length;
 }
 
@@ -1187,10 +1191,11 @@ async function fetchEmbyItems(params) {
   const userId = state.session.userId;
   const qs = new URLSearchParams({
     ...params,
-    api_key: state.session.token,
     Fields: params.Fields || "RunTimeTicks",
   });
-  const resp = await fetch(`${base}/Users/${encodeURIComponent(userId)}/Items?${qs}`);
+  const resp = await fetch(`${base}/Users/${encodeURIComponent(userId)}/Items?${qs}`, {
+    headers: { "X-Emby-Token": state.session.token },
+  });
   const data = await parseJson(resp);
   const items = Array.isArray(data.Items) ? data.Items : [];
   return items.map(embyItemToTrack);
