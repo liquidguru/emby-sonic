@@ -1371,6 +1371,28 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   library browse, save-mix-as-Emby-playlist, audiobooks, artist/album-similar
   screens, PWA service worker, and TLS.
 
+- **M5.29 — Reliability + security hardening batch (2026-07-05, merged):**
+  - Coordinator: `sonic_index.add()` now validates vector shape/finiteness
+    before handing it to FAISS's native `add()` — a malformed vector could
+    otherwise trigger a native abort that kills the whole process (#36).
+  - Worker: `embed_raw()` zero-pads windows shorter than a full window
+    instead of feeding CNN14 something too short (crashes the conv/pool
+    stack on very short/corrupt-decoded tracks); `_analyse()` catches
+    non-finite (NaN/Inf) features/embeddings per-track instead of letting
+    one bad track's httpx `json=` encoding fail an entire batch's POST,
+    which previously caused the whole batch to re-lease forever;
+    `load_windows()` isolates per-offset decode failures so one corrupt
+    frame doesn't lose windows that decoded fine elsewhere (#37 — from a
+    beta tester's 50k-track scan on the Emby forum).
+  - Webapp: login form now sets `method="post"` as a defense-in-depth
+    fallback (only matters if the JS handler ever fails to attach, as
+    happened in #35 from a stale cached script); moved the remaining
+    `?api_key=` query-param Emby calls to `X-Emby-Token` headers (kept for
+    `streamUrl`/`artworkUrl`, which build `<audio>`/`<img>` src attributes
+    that can't carry headers); `/sonic/search/tracks` now expands to a
+    matched artist's full catalogue instead of title-only matching
+    (mirrors the Android fix in #28/`73624e0`) — fixes #33.
+
 - **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
   session token is now encrypted before being stored in the settings DataStore.
   `SettingsRepository` writes new sessions to a `session_token_ciphertext` value
