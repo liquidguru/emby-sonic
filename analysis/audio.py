@@ -82,12 +82,42 @@ def load_windows(file_path: str) -> list[np.ndarray]:
         if len(y):
             windows.append(y)
 
+    # get_duration() reads the file's own header (e.g. a Xing/VBR frame count),
+    # which can be badly wrong — seen in practice as a track reporting 74
+    # minutes when only ~15 minutes of real audio actually decodes. Offsets
+    # computed from a bogus duration land past the real end of the file and
+    # decode to nothing, so most of our "spread across the track" windows come
+    # back empty even though the file is perfectly playable. Getting fewer
+    # than half the requested windows is a strong signal of exactly that, so
+    # fall back to sequential windows from the start — real content, and
+    # doesn't depend on trusting the reported duration at all.
+    if len(windows) < settings.num_windows / 2:
+        windows = _sequential_windows_from_start(file_path, sr, win, settings.num_windows)
+
     if not windows:  # decode failed for every window — fall back to whole file
         try:
             y, _ = librosa.load(file_path, sr=sr, mono=True)
         except Exception:
             return []
         windows = [y] if len(y) else []
+    return windows
+
+
+def _sequential_windows_from_start(file_path: str, sr: int, win: int, num_windows: int) -> list[np.ndarray]:
+    """Decode up to num_windows sequential windows from position 0, stopping at
+    the real end of the file. Used when duration-based offset sampling
+    produced too few usable windows to trust (see load_windows)."""
+    import librosa
+
+    windows: list[np.ndarray] = []
+    for i in range(num_windows):
+        try:
+            y, _ = librosa.load(file_path, sr=sr, mono=True, offset=i * win, duration=win)
+        except Exception:
+            break
+        if not len(y):
+            break  # ran out of real content
+        windows.append(y)
     return windows
 
 
