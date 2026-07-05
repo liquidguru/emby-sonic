@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Query
 
@@ -97,6 +99,34 @@ async def web_login(body: WebLoginRequest) -> WebLoginResponse:
     )
 
 
+async def _search_scoped(
+    client: httpx.AsyncClient,
+    emby_token: str,
+    parent_ids: list[str],
+    extra_params: dict,
+    stop_at: int | None = None,
+) -> list[dict]:
+    """GET /Items with extra_params, once per music parent_id (or unscoped if
+    none exist — matches fetch_audio_items' fallback). Stops early once
+    stop_at items are collected, if given."""
+    items: list[dict] = []
+    queries = (
+        [{**extra_params, "ParentId": pid} for pid in parent_ids]
+        if parent_ids
+        else [extra_params]
+    )
+    for params in queries:
+        if stop_at is not None and len(items) >= stop_at:
+            break
+        resp = await client.get("/Items", params=params, headers=_emby_headers(emby_token))
+        if resp.status_code == 401:
+            raise HTTPException(status_code=401, detail="Invalid or expired Emby token")
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"Emby search failed ({resp.status_code})")
+        items.extend(resp.json().get("Items", []))
+    return items
+
+
 @router.get("/search/tracks", response_model=list[WebTrackOut])
 async def search_tracks(
     _token: AuthToken,
@@ -110,6 +140,13 @@ async def search_tracks(
     libraries — it reuses the analysis scan's music-library detection
     (`_music_parent_ids`), so audiobooks don't show up in the sonic search.
 
+    Expands results to a matched artist's full catalogue, not just tracks
+    whose title contains the term — otherwise searching "Madonna" only finds
+    a track literally titled "Madonna", missing her whole discography. Mirrors
+    the Android app's searchTracksExpanded (#28 / 73624e0): direct title
+    matches and a parallel artist-name search both run, then every track by
+    any matched artist is merged in, direct matches first, deduped by id.
+
     TODO(webapp): add an audiobooks search mode (scoped to the audiobook
     collection type) when the web app grows audiobook playback, mirroring the
     Android app's music / audiobook / all search scopes.
@@ -122,7 +159,7 @@ async def search_tracks(
     if not emby_token:
         raise HTTPException(status_code=401, detail="X-Emby-Token is required")
 
-    base_params = {
+    direct_params = {
         "UserId": user_id,
         "IncludeItemTypes": "Audio",
         "Recursive": "true",
@@ -133,36 +170,48 @@ async def search_tracks(
         "Limit": limit,
         "SearchTerm": term,
     }
-    items: list[dict] = []
+    artist_params = {
+        "UserId": user_id,
+        "IncludeItemTypes": "MusicArtist",
+        "Recursive": "true",
+        "Limit": 20,
+        "SearchTerm": term,
+    }
+
     async with httpx.AsyncClient(base_url=settings.emby_url, timeout=20.0) as client:
         try:
             parent_ids = await _music_parent_ids(client, emby_token)
-            # Search each music library; fall back to an unscoped search only if
-            # no music-typed library exists (matches fetch_audio_items).
-            queries = (
-                [{**base_params, "ParentId": pid} for pid in parent_ids]
-                if parent_ids
-                else [base_params]
+            direct_items, artist_items = await asyncio.gather(
+                _search_scoped(client, emby_token, parent_ids, direct_params, stop_at=limit),
+                _search_scoped(client, emby_token, parent_ids, artist_params),
             )
-            for params in queries:
-                if len(items) >= limit:
-                    break
-                resp = await client.get(
-                    "/Items",
-                    params=params,
-                    headers=_emby_headers(emby_token),
+            artist_ids = [str(a["Id"]) for a in artist_items if a.get("Id")]
+            by_artist_items = (
+                await _search_scoped(
+                    client, emby_token, parent_ids,
+                    {
+                        "UserId": user_id,
+                        "IncludeItemTypes": "Audio",
+                        "Recursive": "true",
+                        "Fields": _ITEM_FIELDS,
+                        "AlbumArtistIds": ",".join(artist_ids),
+                        "Limit": 200,
+                    },
                 )
-                if resp.status_code == 401:
-                    raise HTTPException(status_code=401, detail="Invalid or expired Emby token")
-                if resp.status_code >= 400:
-                    raise HTTPException(status_code=502, detail=f"Emby search failed ({resp.status_code})")
-                items.extend(resp.json().get("Items", []))
+                if artist_ids
+                else []
+            )
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Emby search request failed: {exc}") from exc
 
+    seen: set[str] = set()
     tracks: list[WebTrackOut] = []
-    for item in items[:limit]:
+    for item in direct_items + by_artist_items:
         track = _track(item)
-        if track is not None:
-            tracks.append(track)
+        if track is None or track.id in seen:
+            continue
+        seen.add(track.id)
+        tracks.append(track)
+        if len(tracks) >= limit:
+            break
     return tracks
