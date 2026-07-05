@@ -1393,6 +1393,35 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     matched artist's full catalogue instead of title-only matching
     (mirrors the Android fix in #28/`73624e0`) — fixes #33.
 
+- **M5.30 — CI test gate + two more tester-reported worker gaps (2026-07-06,
+  merged):**
+  - Added `.github/workflows/tests.yml`: runs `python -m unittest discover
+    tests` + a JS syntax check on every push/PR. Resurrected the mix-naming
+    and search-expansion checks (written ad hoc during M5.29, then thrown
+    away) as permanent tests. The C# plugin can't be included — its build
+    needs Emby SDK DLLs that are gitignored/non-redistributable.
+  - Worker: `_analyse()` now catches `extract_features()` failures
+    (`float division by zero`, `negative dimensions are not allowed` — from
+    librosa's beat/chroma internals on short/unusual audio) and degrades to
+    null feature values instead of losing the track's embedding too. #37's
+    window-padding only guarded the embedding step; this earlier
+    feature-extraction step could still crash first (reported by
+    @benjibarnicals on Reddit — Hinder's whole catalogue hit this).
+  - `load_windows()`: some MP3s report a wildly wrong duration (a corrupt
+    Xing/VBR header — one reported 74 min for a file whose real audio is
+    ~15 min), so offsets computed from it land past the real end of the
+    file and decode to nothing. If offset-based sampling returns fewer than
+    half the requested windows, falls back to sequential windows from the
+    start instead, which doesn't depend on trusting the header at all
+    (reported + a real file supplied by @ginjaninja on the Emby forum).
+  - `tools/broken_tracks.py`: new `purge` subcommand permanently deletes
+    tracks stuck in `analysis_status='error'` (corrupt files, stale/orphaned
+    Emby entries) instead of requeuing them to retry forever — requested by
+    @ginjaninja. Same `--all`/`--id`/`--ids-file`/`--csv` selection as
+    `requeue`; safe by construction (error-status tracks never have a
+    matching `Embedding` row, so nothing is orphaned by the delete).
+  - Shipped as beta.11.
+
 - **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
   session token is now encrypted before being stored in the settings DataStore.
   `SettingsRepository` writes new sessions to a `session_token_ciphertext` value
