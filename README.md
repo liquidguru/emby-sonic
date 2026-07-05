@@ -145,10 +145,18 @@ python tools/broken_tracks.py --db data/sonic.db requeue --csv broken_tracks.csv
 
 # Or requeue every error row.
 python tools/broken_tracks.py --db data/sonic.db requeue --all
+
+# Permanently delete broken tracks instead — for ones that will never
+# succeed (a corrupt file, or a stale/orphaned Emby library entry with no
+# real file behind it). Same --all/--id/--ids-file/--csv selection as requeue.
+python tools/broken_tracks.py --db data/sonic.db purge --all
 ```
 
 Requeue changes `analysis_status` from `error` to `pending`, clears the claim and
-error text, and lets the next running worker retry the track.
+error text, and lets the next running worker retry the track. Purge deletes the
+row outright, so it stops showing up in the skipped-tracks list; if the same
+Emby item still genuinely exists, the next library scan just recreates a fresh
+`pending` row for it.
 
 ### Keeping the coordinator itself running (bare metal)
 

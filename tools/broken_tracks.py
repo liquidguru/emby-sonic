@@ -61,6 +61,32 @@ def requeue_errors(db_path: Path, track_ids: Iterable[str] | None = None) -> int
         return result.rowcount
 
 
+def purge_errors(db_path: Path, track_ids: Iterable[str] | None = None) -> int:
+    """Permanently delete tracks with analysis_status='error' (optionally
+    scoped to specific ids), instead of requeuing them for another attempt.
+
+    For tracks that will never succeed — a corrupt file, or a stale/orphaned
+    Emby library entry with no real file behind it — repeatedly requeuing
+    them just retries forever and clutters the skipped-tracks list. Deleting
+    the row removes it from /status and /status/errors immediately; if the
+    same Emby item id genuinely still exists, the next library sync just
+    recreates a fresh 'pending' row for it, so nothing is lost that Emby
+    itself still has.
+    """
+    ids = [track_id.strip() for track_id in (track_ids or []) if track_id.strip()]
+    with closing(sqlite3.connect(db_path)) as conn:
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            result = conn.execute(
+                f"DELETE FROM tracks WHERE analysis_status = 'error' AND id IN ({placeholders})",
+                ids,
+            )
+        else:
+            result = conn.execute("DELETE FROM tracks WHERE analysis_status = 'error'")
+        conn.commit()
+        return result.rowcount
+
+
 def ids_from_file(path: Path) -> list[str]:
     return [
         line.strip()
@@ -77,8 +103,16 @@ def ids_from_csv(path: Path) -> list[str]:
         return [row["id"].strip() for row in reader if row.get("id", "").strip()]
 
 
+def _add_selection_group(subparser: argparse.ArgumentParser, verb: str) -> None:
+    group = subparser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--all", action="store_true", help=f"{verb} all error tracks")
+    group.add_argument("--id", action="append", dest="ids", help=f"Track ID to {verb.lower()}; repeatable")
+    group.add_argument("--ids-file", type=Path, help="Text file with one track ID per line")
+    group.add_argument("--csv", type=Path, help="CSV with an id column, such as the export output")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Export or requeue tracks with analysis_status='error'.")
+    parser = argparse.ArgumentParser(description="Export, requeue, or purge tracks with analysis_status='error'.")
     parser.add_argument("--db", type=Path, default=Path("data/sonic.db"), help="SQLite DB path")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -92,12 +126,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     requeue_parser = subparsers.add_parser("requeue", help="Requeue broken tracks for worker retry")
-    requeue_group = requeue_parser.add_mutually_exclusive_group(required=True)
-    requeue_group.add_argument("--all", action="store_true", help="Requeue all error tracks")
-    requeue_group.add_argument("--id", action="append", dest="ids", help="Track ID to requeue; repeatable")
-    requeue_group.add_argument("--ids-file", type=Path, help="Text file with one track ID per line")
-    requeue_group.add_argument("--csv", type=Path, help="CSV with an id column, such as the export output")
+    _add_selection_group(requeue_parser, "Requeue")
+
+    purge_parser = subparsers.add_parser(
+        "purge", help="Permanently delete broken tracks instead of retrying them (corrupt files, stale Emby entries)"
+    )
+    _add_selection_group(purge_parser, "Delete")
     return parser
+
+
+def _resolve_ids(args: argparse.Namespace) -> list[str] | None:
+    if args.all:
+        return None
+    if args.ids:
+        return args.ids
+    if args.ids_file:
+        return ids_from_file(args.ids_file)
+    return ids_from_csv(args.csv)
 
 
 def main() -> int:
@@ -110,16 +155,13 @@ def main() -> int:
         print(f"exported={count} output={args.output}")
         return 0
 
-    if args.all:
-        ids = None
-    elif args.ids:
-        ids = args.ids
-    elif args.ids_file:
-        ids = ids_from_file(args.ids_file)
+    ids = _resolve_ids(args)
+    if args.command == "purge":
+        count = purge_errors(args.db, ids)
+        print(f"purged={count}")
     else:
-        ids = ids_from_csv(args.csv)
-    count = requeue_errors(args.db, ids)
-    print(f"requeued={count}")
+        count = requeue_errors(args.db, ids)
+        print(f"requeued={count}")
     return 0
 
 

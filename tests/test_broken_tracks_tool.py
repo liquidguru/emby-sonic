@@ -5,7 +5,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
-from tools.broken_tracks import export_errors, requeue_errors
+from tools.broken_tracks import export_errors, requeue_errors, purge_errors
 
 
 class BrokenTracksToolTests(unittest.TestCase):
@@ -77,6 +77,33 @@ class BrokenTracksToolTests(unittest.TestCase):
         self.assertEqual(statuses["bad-1"], "pending")
         self.assertEqual(statuses["bad-2"], "pending")
         self.assertEqual(statuses["ok"], "done")
+
+    def test_purge_selected_errors_deletes_only_those_rows(self) -> None:
+        # A tester (ginja, 2026-07-06) asked for a way to clear stale error
+        # records (corrupt files, orphaned Emby entries) instead of retrying
+        # them forever.
+        count = purge_errors(self.db_path, ["bad-2"])
+
+        self.assertEqual(count, 1)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            remaining_ids = {row[0] for row in conn.execute("SELECT id FROM tracks")}
+        self.assertEqual(remaining_ids, {"ok", "bad-1"})
+
+    def test_purge_never_touches_non_error_tracks(self) -> None:
+        count = purge_errors(self.db_path, ["ok"])  # status='done', not 'error'
+
+        self.assertEqual(count, 0)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            remaining_ids = {row[0] for row in conn.execute("SELECT id FROM tracks")}
+        self.assertEqual(remaining_ids, {"ok", "bad-1", "bad-2"})
+
+    def test_purge_all_errors(self) -> None:
+        count = purge_errors(self.db_path)
+
+        self.assertEqual(count, 2)
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            remaining_ids = {row[0] for row in conn.execute("SELECT id FROM tracks")}
+        self.assertEqual(remaining_ids, {"ok"})
 
 
 if __name__ == "__main__":
