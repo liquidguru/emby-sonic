@@ -93,6 +93,12 @@ def _non_finite_field(feats: dict, lufs: float | None) -> str | None:
     return None
 
 
+_NULL_FEATS = {
+    "tempo": None, "energy": None, "valence": None,
+    "arousal": None, "instrumentalness": None, "vocals_present": None,
+}
+
+
 def _analyse(track: dict) -> dict:
     suffix = os.path.splitext(track.get("path") or "")[1]
     path = emby.download_track(track["id"], suffix=suffix)
@@ -101,7 +107,18 @@ def _analyse(track: dict) -> dict:
         if not windows:
             raise ValueError("no decodable audio")
         window_audio = np.concatenate(windows)
-        feats = extract_features(path, window_audio, settings.sample_rate)
+        # Scalar features (tempo/energy/valence/...) are auxiliary display/filter
+        # metadata, not core to sonic similarity (that's the CNN14 embedding
+        # below) -- librosa's beat/chroma internals can raise on short or
+        # unusual audio (e.g. ZeroDivisionError, "negative dimensions are not
+        # allowed"). A track shouldn't lose its embedding just because these
+        # optional extras couldn't be computed, so failures here degrade to
+        # null features instead of failing the whole track.
+        try:
+            feats = extract_features(path, window_audio, settings.sample_rate)
+        except Exception as exc:
+            log.info(f"[worker] feature extraction failed for {track['id']}: {exc}; embedding only")
+            feats = dict(_NULL_FEATS)
         lufs = measure_loudness(window_audio, settings.sample_rate)
         raw = embedder.embed_raw(windows)
         if not np.all(np.isfinite(raw)):
