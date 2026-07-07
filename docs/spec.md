@@ -1472,6 +1472,18 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     `get_vector()` returned the first stale match. Added a regression test that
     re-adds a track with a different vector and asserts search has one result
     for that id and `get_vector()` returns the fresh vector.
+  - Caught during deploy verification, not the original review: the
+    duplicate-check above was a linear scan over `_track_ids`, and `rebuild()`
+    (full startup reindex from SQLite) calls `add()` once per track — an O(n)
+    check inside an n-iteration loop makes a full rebuild O(n^2). Benchmarked:
+    ~9.5s of pure scan overhead alone at 20k tracks, scaling quadratically —
+    this project has a real 50k-track tester library on record, where that
+    would extrapolate to roughly a minute of added startup stall on every
+    coordinator restart. Added a `_position_by_id` dict (`track_id` ->
+    position) maintained alongside `_track_ids` for O(1) lookup; benchmarked
+    the same 20k-track case at 0.23s after the fix. `get_vector()` also
+    switched to the same dict instead of its own separate `in`/`.index()`
+    O(n) scan.
   - Web login brute-force throttle: `/sonic/auth/login` now rate-limits failed
     login attempts per real client IP, reading the first `X-Forwarded-For`
     value because production sits behind NPM. Five failed attempts inside one

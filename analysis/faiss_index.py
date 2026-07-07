@@ -19,13 +19,22 @@ class SonicIndex:
     def __init__(self) -> None:
         self._index: faiss.IndexFlatIP | None = None
         self._track_ids: list[str] = []
+        # track_id -> position in _track_ids, kept in sync alongside it. Lets
+        # add() check for an existing vector in O(1) instead of a linear scan
+        # — rebuild() calls add() once per track, so an O(n) check there would
+        # make a full rebuild O(n^2) (this project has seen 50k-track
+        # libraries; that's the difference between a rebuild and a multi
+        # -minute coordinator startup stall).
+        self._position_by_id: dict[str, int] = {}
 
     def load_or_create(self) -> None:
         if settings.faiss_index_path.exists() and settings.faiss_ids_path.exists():
             self._index = faiss.read_index(str(settings.faiss_index_path))
             self._track_ids = settings.faiss_ids_path.read_text(encoding="utf-8").splitlines()
+            self._position_by_id = {tid: i for i, tid in enumerate(self._track_ids)}
         else:
             self._index = faiss.IndexFlatIP(settings.embedding_dim)
+            self._position_by_id = {}
 
     def _ensure_loaded(self) -> None:
         if self._index is None:
@@ -42,22 +51,23 @@ class SonicIndex:
             raise ValueError("embedding contains NaN/Inf")
         faiss.normalize_L2(vec)
 
-        existing = [i for i, tid in enumerate(self._track_ids) if tid == track_id]
-        if existing:
-            selector = faiss.IDSelectorBatch(np.array(existing, dtype=np.int64))
+        existing_pos = self._position_by_id.get(track_id)
+        if existing_pos is not None:
+            selector = faiss.IDSelectorBatch(np.array([existing_pos], dtype=np.int64))
             removed = self._index.remove_ids(selector)
-            if removed != len(existing):
+            if removed != 1:
                 raise RuntimeError(
-                    f"removed {removed} stale FAISS vector(s) for {track_id}, "
-                    f"expected {len(existing)}"
+                    f"removed {removed} stale FAISS vector(s) for {track_id}, expected 1"
                 )
-            remove_set = set(existing)
-            self._track_ids = [
-                tid for i, tid in enumerate(self._track_ids) if i not in remove_set
-            ]
+            del self._track_ids[existing_pos]
+            # Removal shifts every later position down by one; rebuilding the
+            # map is O(n), but only on this (rare) re-analysis path, not on
+            # every add() call.
+            self._position_by_id = {tid: i for i, tid in enumerate(self._track_ids)}
 
         self._index.add(vec)
         self._track_ids.append(track_id)
+        self._position_by_id[track_id] = len(self._track_ids) - 1
 
     def rebuild(self, items: list[tuple[str, np.ndarray]]) -> None:
         """
@@ -67,6 +77,7 @@ class SonicIndex:
         """
         self._index = faiss.IndexFlatIP(settings.embedding_dim)
         self._track_ids = []
+        self._position_by_id = {}
         for tid, vec in items:
             self.add(tid, vec)
         self.save()
@@ -99,9 +110,9 @@ class SonicIndex:
     def get_vector(self, track_id: str) -> np.ndarray | None:
         """Retrieve the stored vector for a track by ID."""
         self._ensure_loaded()
-        if track_id not in self._track_ids:
+        idx = self._position_by_id.get(track_id)
+        if idx is None:
             return None
-        idx = self._track_ids.index(track_id)
         vec = np.zeros((1, settings.embedding_dim), dtype=np.float32)
         self._index.reconstruct(idx, vec[0])
         return vec[0]
