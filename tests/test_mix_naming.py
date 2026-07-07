@@ -36,6 +36,15 @@ class DominantGenreTests(unittest.TestCase):
     def test_empty_input_returns_none(self) -> None:
         self.assertEqual(_dominant_genre([]), (None, 0.0))
 
+    def test_placeholder_genres_never_win(self) -> None:
+        genre, frac = _dominant_genre(["Unknown", "Unknown", "Real Genre"])
+        self.assertEqual(genre, "Real Genre")
+
+    def test_all_placeholder_returns_none(self) -> None:
+        genre, frac = _dominant_genre(["Unknown", "Other", None])
+        self.assertIsNone(genre)
+        self.assertEqual(frac, 0.0)
+
 
 class DedupeTests(unittest.TestCase):
     def test_first_use_unchanged(self) -> None:

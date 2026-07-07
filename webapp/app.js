@@ -536,10 +536,12 @@ regenerateMixButton.addEventListener("click", async () => {
   await withBusy("Regenerating mix…", async () => {
     // The endpoint expects a JSON body — a bodyless POST 422s (which used to be
     // swallowed silently, so Regenerate appeared to do nothing).
+    const mix = state.mixes.find((m) => m.id === state.activeMixId);
+    const tracksPerMix = mix?.track_count || 50;
     await parseJson(await authedFetch(`/sonic/mixes/${encodeURIComponent(state.activeMixId)}/regenerate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tracks_per_mix: 50 }),
+      body: JSON.stringify({ tracks_per_mix: tracksPerMix }),
     }));
     const detail = await parseJson(await authedFetch(`/sonic/mixes/${encodeURIComponent(state.activeMixId)}`));
     renderDetailTrackList(mixTracksList, detail.tracks || []);

@@ -72,6 +72,11 @@ _IGNORED_ARTISTS = {
     "[unknown]", "[unknown artist]", "soundtrack", "various artist",
 }
 
+# Placeholder "genres" that shouldn't be used to name a mix.
+_IGNORED_GENRES = {
+    "unknown", "unknown genre", "[unknown]", "[unknown genre]", "other", "misc",
+}
+
 
 def build_state() -> dict:
     return {"running": _build_running}
@@ -114,7 +119,10 @@ def _dominant_genre(genres: list[str | None]) -> tuple[str | None, float]:
     named = [g for g in genres if g]
     if not named:
         return (None, 0.0)
-    genre, count = Counter(named).most_common(1)[0]
+    real = [g for g in named if g.strip().lower() not in _IGNORED_GENRES]
+    if not real:
+        return (None, 0.0)
+    genre, count = Counter(real).most_common(1)[0]
     return (genre, count / len(named))
 
 

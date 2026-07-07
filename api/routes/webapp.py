@@ -193,6 +193,8 @@ async def search_tracks(
                         "UserId": user_id,
                         "IncludeItemTypes": "Audio",
                         "Recursive": "true",
+                        "SortBy": "SortName",
+                        "SortOrder": "Ascending",
                         "Fields": _ITEM_FIELDS,
                         "AlbumArtistIds": ",".join(artist_ids),
                         "Limit": 200,

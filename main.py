@@ -65,5 +65,17 @@ app.mount("/app", NoCacheStaticFiles(directory=_webapp_dir, html=True), name="we
 
 
 if __name__ == "__main__":
+    import sys
     import uvicorn
-    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=False)
+
+    try:
+        uvicorn.run("main:app", host=settings.host, port=settings.port, reload=False)
+    except OSError as exc:
+        if exc.errno in (48, 98, 10048):  # EADDRINUSE (macOS/BSD, Linux, Windows)
+            print(
+                f"\n*** Port {settings.port} is already in use — another emby-sonic "
+                "coordinator (or something else) is bound to it. The supervisor will "
+                "keep restarting this process until the port is freed. ***\n",
+                file=sys.stderr, flush=True,
+            )
+        raise
