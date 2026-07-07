@@ -1,4 +1,6 @@
 from datetime import datetime
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -27,6 +29,7 @@ class LoudnessResponse(BaseModel):
 class WebLoginRequest(BaseModel):
     username: str
     password: str
+    device_id: UUID
 
 
 class WebLoginResponse(BaseModel):

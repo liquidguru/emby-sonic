@@ -19,12 +19,6 @@ router = APIRouter(tags=["webapp"])
 logger = logging.getLogger(__name__)
 
 _ITEM_FIELDS = "UserData,PrimaryImageAspectRatio"
-_WEB_CLIENT_AUTH = (
-    'MediaBrowser Client="liquidWave", '
-    'Device="Browser", '
-    'DeviceId="emby-sonic-web", '
-    'Version="web-mvp"'
-)
 LOGIN_RATE_LIMIT_FAILURES = 5
 LOGIN_RATE_LIMIT_WINDOW_SECONDS = 60
 LOGIN_RATE_LIMIT_BLOCK_SECONDS = 300
@@ -33,11 +27,21 @@ _login_failures: dict[str, dict] = {}
 _login_failures_lock = threading.Lock()
 
 
-def _emby_headers(token: str | None = None) -> dict[str, str]:
+def _emby_auth_header(device_id: str) -> str:
+    return (
+        'MediaBrowser Client="liquidWave", '
+        'Device="Browser", '
+        f'DeviceId="{device_id}", '
+        'Version="web-mvp"'
+    )
+
+
+def _emby_headers(token: str | None = None, device_id: str | None = None) -> dict[str, str]:
     headers = {
-        "X-Emby-Authorization": _WEB_CLIENT_AUTH,
         "Accept": "application/json",
     }
+    if device_id:
+        headers["X-Emby-Authorization"] = _emby_auth_header(device_id)
     if token:
         headers["X-Emby-Token"] = token
     return headers
@@ -139,7 +143,7 @@ async def web_login(body: WebLoginRequest, request: Request) -> WebLoginResponse
             resp = await client.post(
                 "/Users/AuthenticateByName",
                 json=payload,
-                headers=_emby_headers(),
+                headers=_emby_headers(device_id=str(body.device_id)),
             )
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Emby login request failed: {exc}") from exc

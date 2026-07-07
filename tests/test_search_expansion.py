@@ -118,6 +118,9 @@ class SearchTracksExpansionTests(unittest.IsolatedAsyncioTestCase):
 
 
 class WebLoginRateLimitTests(unittest.TestCase):
+    def setUp(self) -> None:
+        webapp_module._login_failures.clear()
+
     def test_failed_attempts_are_limited_by_forwarded_ip(self) -> None:
         app = FastAPI()
         app.include_router(webapp_module.router, prefix="/sonic")
@@ -140,7 +143,11 @@ class WebLoginRateLimitTests(unittest.TestCase):
             statuses = [
                 client.post(
                     "/sonic/auth/login",
-                    json={"username": "kaj", "password": f"bad-{i}"},
+                    json={
+                        "username": "kaj",
+                        "password": f"bad-{i}",
+                        "device_id": "11111111-1111-4111-8111-111111111111",
+                    },
                     headers={"X-Forwarded-For": "203.0.113.44"},
                 ).status_code
                 for i in range(webapp_module.LOGIN_RATE_LIMIT_FAILURES + 1)
@@ -149,6 +156,73 @@ class WebLoginRateLimitTests(unittest.TestCase):
         self.assertEqual(statuses[:-1], [401] * webapp_module.LOGIN_RATE_LIMIT_FAILURES)
         self.assertEqual(statuses[-1], 429)
         self.assertEqual(post_calls, webapp_module.LOGIN_RATE_LIMIT_FAILURES)
+
+    def test_login_uses_browser_device_id_in_emby_auth_header(self) -> None:
+        app = FastAPI()
+        app.include_router(webapp_module.router, prefix="/sonic")
+        client = TestClient(app)
+        auth_headers: list[str] = []
+
+        async def fake_post(self, path, json=None, headers=None):
+            auth_headers.append(headers["X-Emby-Authorization"])
+
+            class R:
+                status_code = 200
+
+                def json(self):
+                    return {"AccessToken": "token", "User": {"Id": "user1", "Name": "Kaj"}}
+
+            return R()
+
+        ids = [
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+        ]
+        with patch.object(httpx.AsyncClient, "post", fake_post):
+            statuses = [
+                client.post(
+                    "/sonic/auth/login",
+                    json={"username": "kaj", "password": "pw", "device_id": device_id},
+                ).status_code
+                for device_id in ids
+            ]
+
+        self.assertEqual(statuses, [200, 200])
+        self.assertEqual(len(auth_headers), 2)
+        self.assertNotEqual(auth_headers[0], auth_headers[1])
+        self.assertIn(f'DeviceId="{ids[0]}"', auth_headers[0])
+        self.assertIn(f'DeviceId="{ids[1]}"', auth_headers[1])
+
+    def test_login_rejects_malformed_device_id_before_emby_call(self) -> None:
+        app = FastAPI()
+        app.include_router(webapp_module.router, prefix="/sonic")
+        client = TestClient(app)
+        post_calls = 0
+
+        async def fake_post(self, path, json=None, headers=None):
+            nonlocal post_calls
+            post_calls += 1
+
+            class R:
+                status_code = 200
+
+                def json(self):
+                    return {"AccessToken": "token", "User": {"Id": "user1"}}
+
+            return R()
+
+        with patch.object(httpx.AsyncClient, "post", fake_post):
+            response = client.post(
+                "/sonic/auth/login",
+                json={
+                    "username": "kaj",
+                    "password": "pw",
+                    "device_id": 'bad"\r\nX-Injected: yes',
+                },
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(post_calls, 0)
 
 
 class WebMusicScopeTests(unittest.IsolatedAsyncioTestCase):

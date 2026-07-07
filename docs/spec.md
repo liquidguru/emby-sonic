@@ -1525,6 +1525,26 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     and artwork URLs if the web app ever loads a cross-origin resource. Added a
     header assertion test.
 
+- **M5.34 — Coordinator/webapp P3 review fixes (2026-07-08):**
+  - Browser DeviceId isolation: the web app now creates a random UUID once per
+    browser install and persists it in localStorage independently of login
+    state. That id is sent to `/sonic/auth/login` and used by the coordinator
+    in Emby's `AuthenticateByName` `X-Emby-Authorization` header, then reused
+    by the browser for direct Emby calls and `Sessions/Playing*` reporting.
+    This keeps login-created sessions and playback reporting on the same Emby
+    device identity while preventing different browsers from sharing the old
+    hardcoded `emby-sonic-web` id. The coordinator validates `device_id` as a
+    UUID before it can reach an outbound header; malformed/header-injection
+    attempts return 422 before contacting Emby.
+  - Baseline CSP: the coordinator now also sends
+    `Content-Security-Policy: default-src 'self'; script-src 'self';
+    object-src 'none'; base-uri 'self'; connect-src *; img-src * data:;
+    media-src * blob:`. The policy blocks injected scripts, plugin/object
+    loads, and hostile base tags, while keeping cross-origin Emby API, artwork,
+    and audio loads working for arbitrary LAN/external Emby addresses selected
+    by `activeServerUrl()`. Added tests for distinct login DeviceIds, malformed
+    DeviceId rejection, and the CSP header directives.
+
 - **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
   session token is now encrypted before being stored in the settings DataStore.
   `SettingsRepository` writes new sessions to a `session_token_ciphertext` value

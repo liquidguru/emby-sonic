@@ -1,4 +1,6 @@
 const STORAGE_KEY = "embySonic.webSession";
+const DEVICE_ID_STORAGE_KEY = "embySonic.browserDeviceId";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Playback session reporting (Sessions/Playing*) — mirrors the Android app's
 // PlaybackController so plays from the web app show up in Emby's Now Playing
@@ -142,7 +144,11 @@ loginForm.addEventListener("submit", async (e) => {
     const resp = await fetch("/sonic/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: form.get("username"), password: form.get("password") }),
+      body: JSON.stringify({
+        username: form.get("username"),
+        password: form.get("password"),
+        device_id: browserDeviceId(),
+      }),
     });
     const data = await parseJson(resp);
     state.session = {
@@ -1070,7 +1076,7 @@ async function createEmbyPlaylist(name, ids) {
   });
   const data = await parseJson(await fetch(`${base}/Playlists?${qs}`, {
     method: "POST",
-    headers: { "X-Emby-Token": state.session.token },
+    headers: embyHeaders(),
   }));
   return typeof data.ItemAddedCount === "number" ? data.ItemAddedCount : ids.length;
 }
@@ -1225,7 +1231,7 @@ async function fetchEmbyRawItems(params) {
     Fields: params.Fields || "RunTimeTicks",
   });
   const resp = await fetch(`${base}/Users/${encodeURIComponent(userId)}/Items?${qs}`, {
-    headers: { "X-Emby-Token": state.session.token },
+    headers: embyHeaders(),
   });
   const data = await parseJson(resp);
   return Array.isArray(data.Items) ? data.Items : [];
@@ -1265,7 +1271,7 @@ async function fetchMusicGenres() {
   const scopes = parentIds.length ? parentIds.map((parentId) => ({ ParentId: parentId })) : [{}];
   const batches = await Promise.all(scopes.map(async (scope) => {
     const qs = new URLSearchParams({ SortBy: "SortName", Limit: 100, ...scope });
-    const resp = await fetch(`${base}/MusicGenres?${qs}`, { headers: { "X-Emby-Token": state.session.token } });
+    const resp = await fetch(`${base}/MusicGenres?${qs}`, { headers: embyHeaders() });
     const data = await parseJson(resp);
     return Array.isArray(data.Items) ? data.Items : [];
   }));
@@ -1368,24 +1374,28 @@ function streamUrl(itemId, sessionId) {
 // Best-effort — a failed report must never interrupt playback, so these never
 // throw or block on the network.
 
-// Same client identity the coordinator's own login call sends Emby (see
-// _WEB_CLIENT_AUTH in api/routes/webapp.py). The Sessions/Playing* endpoints
-// need this on every call, not just at login — like the Android app's
-// EmbyAuthInterceptor, which attaches it to every request — to know which
-// device/session a report belongs to. Without it, Sessions/Playing* is
-// accepted but never surfaces on the Now Playing dashboard.
-const EMBY_CLIENT_AUTH = 'MediaBrowser Client="liquidWave", Device="Browser", DeviceId="emby-sonic-web", Version="web-mvp"';
+// Same persistent browser identity the coordinator sends Emby during login.
+// Emby also needs it on direct browser requests — like the Android app's
+// EmbyAuthInterceptor, which attaches client identity to every request — to
+// know which device/session a report belongs to.
+function embyClientAuth() {
+  return `MediaBrowser Client="liquidWave", Device="Browser", DeviceId="${browserDeviceId()}", Version="web-mvp"`;
+}
+
+function embyHeaders(extra = {}) {
+  return {
+    ...extra,
+    "X-Emby-Token": state.session.token,
+    "X-Emby-Authorization": embyClientAuth(),
+  };
+}
 
 function reportEmbySession(path, body) {
   if (!state.session) return;
   const base = activeServerUrl();
   fetch(`${base}/${path}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Emby-Token": state.session.token,
-      "X-Emby-Authorization": EMBY_CLIENT_AUTH,
-    },
+    headers: embyHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   }).catch(() => {});
 }
@@ -1395,11 +1405,7 @@ function updateUserData(itemId, positionMs, played) {
   const base = activeServerUrl();
   fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items/${encodeURIComponent(itemId)}/UserData`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Emby-Token": state.session.token,
-      "X-Emby-Authorization": EMBY_CLIENT_AUTH,
-    },
+    headers: embyHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ PlaybackPositionTicks: ticksFromMs(positionMs), Played: played }),
   }).catch(() => {});
 }
@@ -1491,6 +1497,14 @@ function loadSession() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
 }
 
+function browserDeviceId() {
+  const stored = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+  if (stored && UUID_RE.test(stored)) return stored.toLowerCase();
+  const id = newUuid();
+  localStorage.setItem(DEVICE_ID_STORAGE_KEY, id);
+  return id;
+}
+
 // Picks the Emby address the browser can actually reach for this page load:
 // LAN when the webapp itself was loaded via a raw IP/localhost/.local name,
 // external (if configured at login) when it was loaded via a public domain.
@@ -1507,8 +1521,21 @@ function activeServerUrl() {
 }
 
 function playSessionId() {
+  return newUuid();
+}
+
+function newUuid() {
   if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
-  return `ps-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
 }
 
 function formatTime(seconds) {

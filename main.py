@@ -44,9 +44,18 @@ app = FastAPI(title="Emby Sonic", version="0.1.0", lifespan=lifespan)
 
 
 @app.middleware("http")
-async def add_referrer_policy_header(request, call_next):
+async def add_security_headers(request, call_next):
     response = await call_next(request)
     response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "connect-src *; "
+        "img-src * data:; "
+        "media-src * blob:"
+    )
     return response
 
 
