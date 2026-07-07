@@ -1422,6 +1422,39 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     matching `Embedding` row, so nothing is orphaned by the delete).
   - Shipped as beta.11.
 
+- **M5.31 — Origin-aware Emby endpoint + bee infra fixes (2026-07-07):**
+  - Web app (#30): added optional `EMBY_URL_EXTERNAL` alongside `EMBY_URL`.
+    The web app streams audio browser→Emby directly, so a LAN-only address
+    silently failed for anyone loading the page over a public domain/reverse
+    proxy (and triggered Chrome's "scan your local network" prompt in the
+    process, since a public-page context reaching for a private IP is exactly
+    what that prompt exists to catch). `web_login` now returns both
+    addresses; the browser picks between them per-call based on how the page
+    itself was loaded (`activeServerUrl()` in `webapp/app.js` — raw
+    IP/localhost/`.local` → LAN, anything else → external), so both LAN and
+    WAN access just work off one login and the network-scan prompt goes away
+    for WAN users. Reported + diagnosed down to the FQDN workaround by
+    @trickiegt.
+  - Mix naming: filters placeholder genres ("Unknown", "Other", etc.) the
+    same way placeholder artists already were, so a mix doesn't get named
+    "... · Unknown".
+  - Web app: Regenerate now requests the mix's actual track count instead of
+    hardcoding 50 (a 100-track mix silently shrank to 50 on refresh); the
+    by-artist catalogue search now sorts results, matching the direct-match
+    query.
+  - Coordinator: logs an explicit banner on `EADDRINUSE` at startup instead of
+    a bare traceback, so a port conflict is obvious in `coordinator.log`
+    instead of a silent crash-loop.
+  - bee's worker migrated from the old Task Scheduler restart policy (found
+    unreliable — see M5.20) to the same pythonw-supervisor installer as the
+    coordinator (`deploy/worker-install.ps1 -Mode service`). Turned up two
+    live bugs in the process: the worker had been dead since 2026-06-28 (one
+    crash on boot, never auto-recovered — no tracks had been analysed on bee
+    since), and `Stop-ScheduledTask` doesn't kill the launcher's own child
+    process, so restarting either the worker or coordinator task without
+    also killing the orphaned child stacks up duplicate processes fighting
+    over the same log file.
+
 - **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
   session token is now encrypted before being stored in the settings DataStore.
   `SettingsRepository` writes new sessions to a `session_token_ciphertext` value

@@ -325,6 +325,7 @@ Set via environment variables or a `.env` file:
 | Variable | Default | Description |
 |---|---|---|
 | `EMBY_URL` | `http://192.168.1.50:8096` | Emby server URL |
+| `EMBY_URL_EXTERNAL` | *(blank = same as `EMBY_URL`)* | Emby's publicly-reachable address (FQDN/reverse proxy). Only needed for the web app: it streams audio browser→Emby directly, so a LAN-only `EMBY_URL` fails for anyone loading the page over WAN. Set this and the web app picks whichever address the browser loaded the page from |
 | `EMBY_API_KEY` | *(required)* | Emby API key for coordinator admin calls and worker audio downloads |
 | `WORKER_SECRET` | falls back to `EMBY_API_KEY` | Shared secret required in `X-Worker-Token` for worker routes |
 | `HOST` | `0.0.0.0` | Bind address |

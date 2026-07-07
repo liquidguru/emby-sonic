@@ -140,6 +140,7 @@ loginForm.addEventListener("submit", async (e) => {
       userId: data.user_id,
       userName: data.user_name,
       serverUrl: data.server_url,
+      serverUrlExternal: data.server_url_external,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.session));
     loginForm.reset();
@@ -297,7 +298,7 @@ async function loadGenres() {
   genreLoading.classList.remove("hidden");
   genreGrid.replaceChildren();
   try {
-    const base = state.session.serverUrl.replace(/\/$/, "");
+    const base = activeServerUrl();
     const qs = new URLSearchParams({ SortBy: "SortName", Limit: 100 });
     const resp = await fetch(`${base}/MusicGenres?${qs}`, { headers: { "X-Emby-Token": state.session.token } });
     const data = await parseJson(resp);
@@ -593,7 +594,7 @@ artistSearchForm.addEventListener("submit", async (e) => {
   const query = artistSearchInput.value.trim();
   if (!query) return;
   await withBusy("Searching artists…", async () => {
-    const base = state.session.serverUrl.replace(/\/$/, "");
+    const base = activeServerUrl();
     const qs = new URLSearchParams({
       SearchTerm: query,
       IncludeItemTypes: "MusicArtist",
@@ -708,7 +709,7 @@ function showSuggestedArtists(names) {
 }
 
 async function findArtistByName(name) {
-  const base = state.session.serverUrl.replace(/\/$/, "");
+  const base = activeServerUrl();
   const qs = new URLSearchParams({
     SearchTerm: name,
     IncludeItemTypes: "MusicArtist",
@@ -1044,7 +1045,7 @@ savePlaylistButton.addEventListener("click", async () => {
 // shows up in every client. Hits Emby directly (same as fetchEmbyItems), not the
 // coordinator, which has no playlist route.
 async function createEmbyPlaylist(name, ids) {
-  const base = state.session.serverUrl.replace(/\/$/, "");
+  const base = activeServerUrl();
   const qs = new URLSearchParams({
     Name: name,
     Ids: ids.join(","),
@@ -1189,7 +1190,7 @@ function renderSession() {
 
 async function fetchEmbyItems(params) {
   if (!state.session) return [];
-  const base = state.session.serverUrl.replace(/\/$/, "");
+  const base = activeServerUrl();
   const userId = state.session.userId;
   const qs = new URLSearchParams({
     ...params,
@@ -1275,7 +1276,7 @@ function setMessage(text) {
 // ── URLs ─────────────────────────────────────────────────
 
 function streamUrl(itemId) {
-  const base = state.session.serverUrl.replace(/\/$/, "");
+  const base = activeServerUrl();
   const params = new URLSearchParams({
     UserId: state.session.userId,
     MaxStreamingBitrate: "140000000",
@@ -1290,7 +1291,7 @@ function streamUrl(itemId) {
 }
 
 function artworkUrl(itemId) {
-  const base = state.session.serverUrl.replace(/\/$/, "");
+  const base = activeServerUrl();
   return `${base}/Items/${encodeURIComponent(itemId)}/Images/Primary?api_key=${state.session.token}`;
 }
 
@@ -1315,6 +1316,21 @@ function updateMediaSession(track) {
 
 function loadSession() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
+}
+
+// Picks the Emby address the browser can actually reach for this page load:
+// LAN when the webapp itself was loaded via a raw IP/localhost/.local name,
+// external (if configured at login) when it was loaded via a public domain.
+// Decided fresh on every call (not cached in the session) so a page that
+// stays open across a network change, or a persisted session reused from a
+// different network later, doesn't keep streaming from a stale address (#30).
+function activeServerUrl() {
+  const session = state.session;
+  const host = window.location.hostname;
+  const isLan = host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")
+    || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host) || host.startsWith("[");
+  const base = (isLan ? session.serverUrl : session.serverUrlExternal) || session.serverUrl;
+  return base.replace(/\/$/, "");
 }
 
 function playSessionId() {

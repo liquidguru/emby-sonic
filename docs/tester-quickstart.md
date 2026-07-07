@@ -110,6 +110,11 @@ EMBY_API_KEY=<your-emby-api-key>
 WORKER_SECRET=<any-long-random-string>     # shared secret for workers (see Security)
 ```
 
+If you access the **web app** from outside your LAN (a public domain / reverse proxy),
+also set `EMBY_URL_EXTERNAL=https://<your-public-emby-domain>` — the web app streams
+audio straight from Emby to your browser, so it needs Emby's externally-reachable
+address when you're not on the LAN, or streaming will fail.
+
 ---
 
 ## 2. Run the coordinator

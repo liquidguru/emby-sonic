@@ -34,6 +34,7 @@ class WebLoginResponse(BaseModel):
     user_id: str
     user_name: str | None = None
     server_url: str
+    server_url_external: str | None = None
 
 
 class WebTrackOut(BaseModel):

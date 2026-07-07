@@ -6,6 +6,14 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     emby_url: str = "http://192.168.1.50:8096"
+    # Optional: Emby's publicly-reachable address (reverse-proxied FQDN, etc.).
+    # The webapp hands a server URL straight to the browser for direct
+    # browser->Emby streaming, so a LAN-only address fails for anyone loading
+    # the page over WAN. When set, the webapp picks between emby_url and this
+    # one based on how the browser itself reached the coordinator (see
+    # api/routes/webapp.py's web_login). Leave blank if Emby has no separate
+    # external address — everything then behaves as it always has.
+    emby_url_external: str = ""
     emby_api_key: str = ""
     worker_secret: str = ""
 

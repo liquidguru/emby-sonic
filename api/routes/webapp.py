@@ -65,7 +65,15 @@ async def web_login(body: WebLoginRequest) -> WebLoginResponse:
     Browser login bootstrap. Authenticates against the coordinator's *own*
     configured Emby server (settings.emby_url) — never a client-supplied URL —
     so it stays same-origin and can't be abused as an open proxy. The browser
-    streams audio from the returned server_url.
+    streams audio directly from Emby using the returned server_url.
+
+    Also returns server_url_external (settings.emby_url_external), Emby's
+    optional publicly-reachable address, when configured. The two servers are
+    the same Emby instance — this just gives the browser both addresses so it
+    can pick whichever it can actually reach: a LAN client uses server_url, a
+    WAN client (loaded the webapp over a public domain) uses
+    server_url_external, since the LAN address isn't routable from outside
+    and would otherwise silently fail (issue #30).
     """
     server_url = settings.emby_url.rstrip("/")
     payload = {"Username": body.username, "Pw": body.password}
@@ -96,6 +104,7 @@ async def web_login(body: WebLoginRequest) -> WebLoginResponse:
         user_id=user_id,
         user_name=user.get("Name"),
         server_url=server_url,
+        server_url_external=settings.emby_url_external.rstrip("/") or None,
     )
 
 
