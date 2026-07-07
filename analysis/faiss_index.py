@@ -41,6 +41,21 @@ class SonicIndex:
         if not np.all(np.isfinite(vec)):
             raise ValueError("embedding contains NaN/Inf")
         faiss.normalize_L2(vec)
+
+        existing = [i for i, tid in enumerate(self._track_ids) if tid == track_id]
+        if existing:
+            selector = faiss.IDSelectorBatch(np.array(existing, dtype=np.int64))
+            removed = self._index.remove_ids(selector)
+            if removed != len(existing):
+                raise RuntimeError(
+                    f"removed {removed} stale FAISS vector(s) for {track_id}, "
+                    f"expected {len(existing)}"
+                )
+            remove_set = set(existing)
+            self._track_ids = [
+                tid for i, tid in enumerate(self._track_ids) if i not in remove_set
+            ]
+
         self._index.add(vec)
         self._track_ids.append(track_id)
 

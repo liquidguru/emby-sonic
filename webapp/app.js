@@ -123,6 +123,7 @@ const state = {
   genresLoaded: false,
   activeMixId: null,
   pendingMixDetail: null,
+  musicParentIds: null,
 };
 
 // ── Boot ─────────────────────────────────────────────────
@@ -151,6 +152,7 @@ loginForm.addEventListener("submit", async (e) => {
       serverUrl: data.server_url,
       serverUrlExternal: data.server_url_external,
     };
+    state.musicParentIds = null;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.session));
     loginForm.reset();
     renderSession();
@@ -168,6 +170,7 @@ logoutButton.addEventListener("click", () => {
     shuffle: false, repeat: "none",
     mixes: [], adventureFrom: null, adventureTo: null,
     selectedArtists: [], genresLoaded: false,
+    musicParentIds: null,
   });
   audio.pause();
   audio.removeAttribute("src");
@@ -254,21 +257,21 @@ refreshMixesButton.addEventListener("click", () => loadMixes(true));
 async function playStation(type) {
   if (type === "library") {
     await withBusy("Picking a track…", async () => {
-      const items = await fetchEmbyItems({
+      const items = await fetchMusicEmbyItems({
         SortBy: "Random", Limit: 1,
         IncludeItemTypes: "Audio", Recursive: true,
       });
       if (!items.length) { setMessage("No audio found in your library."); return; }
-      await startRadio(items[0]);
+      await startRadio(items[Math.floor(Math.random() * items.length)]);
     });
   } else if (type === "album") {
     await withBusy("Picking an album…", async () => {
-      const albums = await fetchEmbyItems({
+      const albums = await fetchMusicEmbyItems({
         SortBy: "Random", Limit: 1,
         IncludeItemTypes: "MusicAlbum", Recursive: true,
       });
       if (!albums.length) { setMessage("No albums found."); return; }
-      const album = albums[0];
+      const album = albums[Math.floor(Math.random() * albums.length)];
       const tracks = await fetchEmbyItems({
         ParentId: album.id,
         IncludeItemTypes: "Audio",
@@ -284,7 +287,7 @@ async function playStation(type) {
 async function playDecadeRadio(decade) {
   const years = Array.from({ length: 10 }, (_, i) => decade + i).join(",");
   await withBusy(`Loading ${decade}s radio…`, async () => {
-    const tracks = await fetchEmbyItems({
+    const tracks = await fetchMusicEmbyItems({
       Years: years, SortBy: "Random", Limit: 50,
       IncludeItemTypes: "Audio", Recursive: true,
       Fields: "RunTimeTicks",
@@ -309,11 +312,7 @@ async function loadGenres() {
   genreLoading.classList.remove("hidden");
   genreGrid.replaceChildren();
   try {
-    const base = activeServerUrl();
-    const qs = new URLSearchParams({ SortBy: "SortName", Limit: 100 });
-    const resp = await fetch(`${base}/MusicGenres?${qs}`, { headers: { "X-Emby-Token": state.session.token } });
-    const data = await parseJson(resp);
-    const genres = Array.isArray(data.Items) ? data.Items : [];
+    const genres = await fetchMusicGenres();
     genreLoading.classList.add("hidden");
     if (!genres.length) { genreGrid.appendChild(emptyMsg("No genres found")); return; }
     genreGrid.replaceChildren(...genres.map((g) => {
@@ -337,7 +336,7 @@ async function loadGenres() {
 
 async function playGenreRadio(genre) {
   await withBusy(`Loading ${genre} radio…`, async () => {
-    const tracks = await fetchEmbyItems({
+    const tracks = await fetchMusicEmbyItems({
       Genres: genre, SortBy: "Random", Limit: 50,
       IncludeItemTypes: "Audio", Recursive: true,
       Fields: "RunTimeTicks",
@@ -385,11 +384,22 @@ function renderMixRow() {
 // ── Recent Plays (home shelf row) ─────────────────────────
 
 async function loadRecentPlays() {
-  const tracks = await fetchEmbyItems({
+  // fetchMusicEmbyRawItems fans out one query per music library, each already
+  // Limit-capped and sorted server-side — so with more than one music library
+  // the combined+deduped pool can exceed 20 (Limit is per-library, not
+  // overall). Re-sort by actual last-played time and cap here rather than in
+  // the shared helper, since a random-pick station relies on that helper
+  // returning every library's full candidate pool, not a pre-truncated one.
+  const items = await fetchMusicEmbyRawItems({
     SortBy: "DatePlayed", SortOrder: "Descending",
     Filters: "IsPlayed", IncludeItemTypes: "Audio",
-    Recursive: true, Limit: 20, Fields: "RunTimeTicks",
+    Recursive: true, Limit: 20, Fields: "RunTimeTicks,UserData",
   }).catch(() => []);
+  const tracks = items
+    .slice()
+    .sort((a, b) => new Date(b?.UserData?.LastPlayedDate || 0) - new Date(a?.UserData?.LastPlayedDate || 0))
+    .slice(0, 20)
+    .map(embyItemToTrack);
 
   if (!tracks.length) {
     recentRow.replaceChildren(emptyMsg("No recent plays yet"));
@@ -605,18 +615,12 @@ artistSearchForm.addEventListener("submit", async (e) => {
   const query = artistSearchInput.value.trim();
   if (!query) return;
   await withBusy("Searching artists…", async () => {
-    const base = activeServerUrl();
-    const qs = new URLSearchParams({
+    const artists = await fetchMusicEmbyRawItems({
       SearchTerm: query,
       IncludeItemTypes: "MusicArtist",
       Recursive: true,
       Limit: 20,
     });
-    const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items?${qs}`, {
-      headers: { "X-Emby-Token": state.session.token },
-    });
-    const data = await parseJson(resp);
-    const artists = Array.isArray(data.Items) ? data.Items : [];
     renderArtistResults(artists);
   });
 });
@@ -670,7 +674,7 @@ function addArtistToMix(artist) {
 
 async function discoverSimilarArtists(artist) {
   // Grab one track by this artist to seed the similarity search
-  const tracks = await fetchEmbyItems({
+  const tracks = await fetchMusicEmbyItems({
     ArtistIds: artist.id,
     IncludeItemTypes: "Audio",
     Recursive: true,
@@ -720,18 +724,12 @@ function showSuggestedArtists(names) {
 }
 
 async function findArtistByName(name) {
-  const base = activeServerUrl();
-  const qs = new URLSearchParams({
+  const items = await fetchMusicEmbyRawItems({
     SearchTerm: name,
     IncludeItemTypes: "MusicArtist",
     Recursive: true,
     Limit: 3,
   });
-  const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items?${qs}`, {
-    headers: { "X-Emby-Token": state.session.token },
-  });
-  const data = await parseJson(resp);
-  const items = Array.isArray(data.Items) ? data.Items : [];
   return items.length ? { id: items[0].Id, name: items[0].Name } : null;
 }
 
@@ -768,7 +766,7 @@ buildArtistMixButton.addEventListener("click", async () => {
     const perArtist = Math.ceil(total / state.selectedArtists.length);
     const allTracks = [];
     for (const artist of state.selectedArtists) {
-      const tracks = await fetchEmbyItems({
+      const tracks = await fetchMusicEmbyItems({
         ArtistIds: artist.id,
         IncludeItemTypes: "Audio",
         Recursive: true,
@@ -1215,6 +1213,10 @@ function renderSession() {
 // ── Emby direct API ──────────────────────────────────────
 
 async function fetchEmbyItems(params) {
+  return (await fetchEmbyRawItems(params)).map(embyItemToTrack);
+}
+
+async function fetchEmbyRawItems(params) {
   if (!state.session) return [];
   const base = activeServerUrl();
   const userId = state.session.userId;
@@ -1226,8 +1228,54 @@ async function fetchEmbyItems(params) {
     headers: { "X-Emby-Token": state.session.token },
   });
   const data = await parseJson(resp);
-  const items = Array.isArray(data.Items) ? data.Items : [];
-  return items.map(embyItemToTrack);
+  return Array.isArray(data.Items) ? data.Items : [];
+}
+
+async function musicParentIds() {
+  if (!state.session) return [];
+  if (Array.isArray(state.musicParentIds)) return state.musicParentIds;
+  const resp = await authedFetch("/sonic/music/parent-ids");
+  const data = await parseJson(resp);
+  state.musicParentIds = Array.isArray(data.parent_ids) ? data.parent_ids : [];
+  return state.musicParentIds;
+}
+
+async function fetchMusicEmbyRawItems(params) {
+  if (params.ParentId) return fetchEmbyRawItems(params);
+  const parentIds = await musicParentIds();
+  if (!parentIds.length) return fetchEmbyRawItems(params);
+  const batches = await Promise.all(parentIds.map((parentId) => fetchEmbyRawItems({ ...params, ParentId: parentId })));
+  const seen = new Set();
+  return batches.flat().filter((item) => {
+    const id = item?.Id;
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+async function fetchMusicEmbyItems(params) {
+  return (await fetchMusicEmbyRawItems(params)).map(embyItemToTrack);
+}
+
+async function fetchMusicGenres() {
+  if (!state.session) return [];
+  const base = activeServerUrl();
+  const parentIds = await musicParentIds();
+  const scopes = parentIds.length ? parentIds.map((parentId) => ({ ParentId: parentId })) : [{}];
+  const batches = await Promise.all(scopes.map(async (scope) => {
+    const qs = new URLSearchParams({ SortBy: "SortName", Limit: 100, ...scope });
+    const resp = await fetch(`${base}/MusicGenres?${qs}`, { headers: { "X-Emby-Token": state.session.token } });
+    const data = await parseJson(resp);
+    return Array.isArray(data.Items) ? data.Items : [];
+  }));
+  const seen = new Set();
+  return batches.flat().filter((genre) => {
+    const key = genre?.Id || genre?.Name;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function embyItemToTrack(item) {

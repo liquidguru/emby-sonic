@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import threading
+import time
+from collections import deque
+from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 
 from analysis.emby import _music_parent_ids
 from api.deps import AuthToken
-from api.schemas import WebLoginRequest, WebLoginResponse, WebTrackOut
+from api.schemas import MusicParentIdsResponse, WebLoginRequest, WebLoginResponse, WebTrackOut
 from config import settings
 
 router = APIRouter(tags=["webapp"])
+logger = logging.getLogger(__name__)
 
 _ITEM_FIELDS = "UserData,PrimaryImageAspectRatio"
 _WEB_CLIENT_AUTH = (
@@ -19,6 +25,12 @@ _WEB_CLIENT_AUTH = (
     'DeviceId="emby-sonic-web", '
     'Version="web-mvp"'
 )
+LOGIN_RATE_LIMIT_FAILURES = 5
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = 60
+LOGIN_RATE_LIMIT_BLOCK_SECONDS = 300
+
+_login_failures: dict[str, dict] = {}
+_login_failures_lock = threading.Lock()
 
 
 def _emby_headers(token: str | None = None) -> dict[str, str]:
@@ -29,6 +41,49 @@ def _emby_headers(token: str | None = None) -> dict[str, str]:
     if token:
         headers["X-Emby-Token"] = token
     return headers
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return first
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit_trip(ip: str, now: float) -> None:
+    stamp = datetime.now(timezone.utc).isoformat()
+    logger.warning("web_login rate limit trip ip=%s timestamp=%s", ip, stamp)
+
+
+def _check_login_rate_limit(ip: str, now: float | None = None) -> None:
+    now = time.monotonic() if now is None else now
+    with _login_failures_lock:
+        entry = _login_failures.get(ip)
+        if not entry:
+            return
+        if entry.get("blocked_until", 0.0) > now:
+            _rate_limit_trip(ip, now)
+            raise HTTPException(status_code=429, detail="Too many failed login attempts")
+
+
+def _record_failed_login(ip: str, now: float | None = None) -> None:
+    now = time.monotonic() if now is None else now
+    cutoff = now - LOGIN_RATE_LIMIT_WINDOW_SECONDS
+    with _login_failures_lock:
+        entry = _login_failures.setdefault(ip, {"failures": deque(), "blocked_until": 0.0})
+        failures = entry["failures"]
+        while failures and failures[0] < cutoff:
+            failures.popleft()
+        failures.append(now)
+        if len(failures) >= LOGIN_RATE_LIMIT_FAILURES:
+            entry["blocked_until"] = now + LOGIN_RATE_LIMIT_BLOCK_SECONDS
+
+
+def _reset_failed_logins(ip: str) -> None:
+    with _login_failures_lock:
+        _login_failures.pop(ip, None)
 
 
 def _duration_ms(item: dict) -> int | None:
@@ -60,7 +115,7 @@ def _track(item: dict) -> WebTrackOut | None:
 
 
 @router.post("/auth/login", response_model=WebLoginResponse)
-async def web_login(body: WebLoginRequest) -> WebLoginResponse:
+async def web_login(body: WebLoginRequest, request: Request) -> WebLoginResponse:
     """
     Browser login bootstrap. Authenticates against the coordinator's *own*
     configured Emby server (settings.emby_url) — never a client-supplied URL —
@@ -75,6 +130,8 @@ async def web_login(body: WebLoginRequest) -> WebLoginResponse:
     server_url_external, since the LAN address isn't routable from outside
     and would otherwise silently fail (issue #30).
     """
+    ip = _client_ip(request)
+    _check_login_rate_limit(ip)
     server_url = settings.emby_url.rstrip("/")
     payload = {"Username": body.username, "Pw": body.password}
     async with httpx.AsyncClient(base_url=server_url, timeout=15.0) as client:
@@ -88,6 +145,7 @@ async def web_login(body: WebLoginRequest) -> WebLoginResponse:
             raise HTTPException(status_code=502, detail=f"Emby login request failed: {exc}") from exc
 
     if resp.status_code in {401, 403}:
+        _record_failed_login(ip)
         raise HTTPException(status_code=401, detail="Invalid Emby username or password")
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"Emby login failed ({resp.status_code})")
@@ -99,6 +157,7 @@ async def web_login(body: WebLoginRequest) -> WebLoginResponse:
     if not token or not user_id:
         raise HTTPException(status_code=502, detail="Emby login response was missing a token or user id")
 
+    _reset_failed_logins(ip)
     return WebLoginResponse(
         access_token=token,
         user_id=user_id,
@@ -134,6 +193,16 @@ async def _search_scoped(
             raise HTTPException(status_code=502, detail=f"Emby search failed ({resp.status_code})")
         items.extend(resp.json().get("Items", []))
     return items
+
+
+@router.get("/music/parent-ids", response_model=MusicParentIdsResponse)
+async def music_parent_ids(_token: AuthToken) -> MusicParentIdsResponse:
+    async with httpx.AsyncClient(base_url=settings.emby_url, timeout=20.0) as client:
+        try:
+            parent_ids = await _music_parent_ids(client, _token)
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Emby music library request failed: {exc}") from exc
+    return MusicParentIdsResponse(parent_ids=parent_ids)
 
 
 @router.get("/search/tracks", response_model=list[WebTrackOut])

@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TrackOut(BaseModel):
@@ -45,6 +45,10 @@ class WebTrackOut(BaseModel):
     duration_ms: int | None
 
 
+class MusicParentIdsResponse(BaseModel):
+    parent_ids: list[str]
+
+
 class SimilarTrack(BaseModel):
     track: TrackOut
     score: float  # cosine similarity (0–1, higher = more similar)
@@ -78,7 +82,7 @@ class RadioPlaylist(BaseModel):
 class AdventureRequest(BaseModel):
     from_id: str
     to_id: str
-    length: int = 20
+    length: int = Field(default=20, ge=5, le=100)
 
 
 class AdventurePlaylist(BaseModel):
@@ -89,8 +93,8 @@ class AdventurePlaylist(BaseModel):
 
 class ArtistMixRequest(BaseModel):
     artists: list[str]          # artist names (as stored on tracks)
-    per_artist: int = 5         # representative tracks to draw from each artist
-    length: int | None = None   # optional cap on the final ordered queue
+    per_artist: int = Field(default=5, ge=1, le=100)        # representative tracks to draw from each artist
+    length: int | None = Field(default=None, ge=1, le=100)  # optional cap on the final ordered queue
 
 
 class ArtistMixPlaylist(BaseModel):
@@ -133,12 +137,12 @@ class ScanStarted(BaseModel):
 
 
 class RegenerateMixRequest(BaseModel):
-    tracks_per_mix: int = 50   # how many tracks to include in the refreshed mix
+    tracks_per_mix: int = Field(default=50, ge=1, le=100)   # how many tracks to include in the refreshed mix
 
 
 class BuildMixesRequest(BaseModel):
-    n_clusters: int = 30       # number of mixes to generate
-    tracks_per_mix: int = 50   # tracks per mix (closest to cluster centroid)
+    n_clusters: int = Field(default=30, ge=1, le=100)       # number of mixes to generate
+    tracks_per_mix: int = Field(default=50, ge=1, le=100)   # tracks per mix (closest to cluster centroid)
 
 
 class BuildMixesStarted(BaseModel):
@@ -166,8 +170,8 @@ class SimilarAlbum(BaseModel):
 
 class ClaimRequest(BaseModel):
     worker_id: str
-    batch_size: int = 16
-    lease_seconds: int = 600  # reclaim a track if a worker hasn't reported back in time
+    batch_size: int = Field(default=16, ge=1, le=100)
+    lease_seconds: int = Field(default=600, ge=60, le=86_400)  # reclaim a track if a worker hasn't reported back in time
 
 
 class ClaimedTrack(BaseModel):

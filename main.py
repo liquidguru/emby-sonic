@@ -42,6 +42,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Emby Sonic", version="0.1.0", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def add_referrer_policy_header(request, call_next):
+    response = await call_next(request)
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

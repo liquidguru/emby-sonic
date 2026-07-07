@@ -1463,6 +1463,56 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     also killing the orphaned child stacks up duplicate processes fighting
     over the same log file.
 
+- **M5.32 — Coordinator P1 review fixes (2026-07-08, tested):**
+  - FAISS live-index reanalysis safety: `SonicIndex.add()` now replaces any
+    existing in-memory vector for a track id before adding the freshly reduced
+    embedding. Full rescans (`/sonic/library/scan` with `full:true`) requeue
+    already-analysed tracks, so the old append-only behaviour left stale and
+    duplicate vectors live until the next coordinator restart; worse,
+    `get_vector()` returned the first stale match. Added a regression test that
+    re-adds a track with a different vector and asserts search has one result
+    for that id and `get_vector()` returns the fresh vector.
+  - Web login brute-force throttle: `/sonic/auth/login` now rate-limits failed
+    login attempts per real client IP, reading the first `X-Forwarded-For`
+    value because production sits behind NPM. Five failed attempts inside one
+    minute trigger a temporary 429 block, trips are logged with IP + UTC
+    timestamp for future fail2ban-style tooling, and a successful login clears
+    that IP's failure bucket. Added a route-level test proving the blocked
+    attempt returns 429 without calling Emby's `/Users/AuthenticateByName`.
+
+- **M5.33 — Coordinator/webapp P2 review fixes (2026-07-08):**
+  - Web app music scoping: added authenticated `/sonic/music/parent-ids`, which
+    exposes the same `_music_parent_ids()` library detection used by the
+    server-side search proxy. The browser now caches those parent ids and
+    applies them to direct Emby music reads for Library Radio, Random Album,
+    Decade/Genre stations, recent plays, and Artist Mix Creator lookups, so
+    Emby's generic `Audio` type no longer lets audiobook chapters leak into
+    music-only web flows. Added a regression test that the endpoint returns the
+    parent ids computed by `_music_parent_ids()`.
+  - Fixed a side effect of that same fan-out: `Limit` is applied per music
+    library, so with more than one music-typed library the combined pool could
+    exceed the intended count — most visibly Recent Plays, which rendered
+    every result with no cap (up to `Limit × library count`) instead of 20.
+    `loadRecentPlays()` now fetches raw items (requesting `UserData` for the
+    actual last-played timestamp), re-sorts the combined pool by that
+    timestamp, then caps to 20 — left the shared fetch helper itself
+    uncapped, since the random-pick stations (Library Radio, Decade/Genre
+    radio) rely on it returning every library's full candidate pool for a
+    fair cross-library random pick, not a pre-truncated one.
+  - Request body integer bounds: user-facing and worker claim request schemas
+    now use explicit `Field(ge=..., le=...)` bounds for adventure length, artist
+    mix sizing, mix regeneration/build sizing, worker batch size, and worker
+    lease seconds. Bounds match existing client surfaces where applicable:
+    adventure requests stay within the web/Android 5-100-ish range, generated
+    mix sizes stay within the documented 25/50/75/100 selector envelope, and
+    worker claims are capped to normal single-instance deployment sizes. Added
+    FastAPI validation tests proving out-of-range bodies return 422 before route
+    handlers run.
+  - Referrer policy: the coordinator now adds `Referrer-Policy: no-referrer` on
+    responses, closing the accidental token-in-URL leak path for browser media
+    and artwork URLs if the web app ever loads a cross-origin resource. Added a
+    header assertion test.
+
 - **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
   session token is now encrypted before being stored in the settings DataStore.
   `SettingsRepository` writes new sessions to a `session_token_ciphertext` value

@@ -2,7 +2,8 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 import httpx
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 from api.routes import webapp as webapp_module
 
@@ -114,6 +115,48 @@ class SearchTracksExpansionTests(unittest.IsolatedAsyncioTestCase):
                     _token="dummy", q="x", limit=60, user_id="user1", emby_token="bad-token",
                 )
         self.assertEqual(ctx.exception.status_code, 401)
+
+
+class WebLoginRateLimitTests(unittest.TestCase):
+    def test_failed_attempts_are_limited_by_forwarded_ip(self) -> None:
+        app = FastAPI()
+        app.include_router(webapp_module.router, prefix="/sonic")
+        client = TestClient(app)
+        post_calls = 0
+
+        async def fake_post(self, path, json=None, headers=None):
+            nonlocal post_calls
+            post_calls += 1
+
+            class R:
+                status_code = 401
+
+                def json(self):
+                    return {}
+
+            return R()
+
+        with patch.object(httpx.AsyncClient, "post", fake_post):
+            statuses = [
+                client.post(
+                    "/sonic/auth/login",
+                    json={"username": "kaj", "password": f"bad-{i}"},
+                    headers={"X-Forwarded-For": "203.0.113.44"},
+                ).status_code
+                for i in range(webapp_module.LOGIN_RATE_LIMIT_FAILURES + 1)
+            ]
+
+        self.assertEqual(statuses[:-1], [401] * webapp_module.LOGIN_RATE_LIMIT_FAILURES)
+        self.assertEqual(statuses[-1], 429)
+        self.assertEqual(post_calls, webapp_module.LOGIN_RATE_LIMIT_FAILURES)
+
+
+class WebMusicScopeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_music_parent_ids_endpoint_uses_emby_music_scope(self) -> None:
+        with patch.object(webapp_module, "_music_parent_ids", AsyncMock(return_value=["music-a", "music-b"])):
+            result = await webapp_module.music_parent_ids(_token="tok")
+
+        self.assertEqual(result.parent_ids, ["music-a", "music-b"])
 
 
 if __name__ == "__main__":
