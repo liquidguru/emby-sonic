@@ -1320,12 +1320,24 @@ function streamUrl(itemId, sessionId) {
 // Best-effort — a failed report must never interrupt playback, so these never
 // throw or block on the network.
 
+// Same client identity the coordinator's own login call sends Emby (see
+// _WEB_CLIENT_AUTH in api/routes/webapp.py). The Sessions/Playing* endpoints
+// need this on every call, not just at login — like the Android app's
+// EmbyAuthInterceptor, which attaches it to every request — to know which
+// device/session a report belongs to. Without it, Sessions/Playing* is
+// accepted but never surfaces on the Now Playing dashboard.
+const EMBY_CLIENT_AUTH = 'MediaBrowser Client="liquidWave", Device="Browser", DeviceId="emby-sonic-web", Version="web-mvp"';
+
 function reportEmbySession(path, body) {
   if (!state.session) return;
   const base = activeServerUrl();
   fetch(`${base}/${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Emby-Token": state.session.token },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Emby-Token": state.session.token,
+      "X-Emby-Authorization": EMBY_CLIENT_AUTH,
+    },
     body: JSON.stringify(body),
   }).catch(() => {});
 }
@@ -1335,7 +1347,11 @@ function updateUserData(itemId, positionMs, played) {
   const base = activeServerUrl();
   fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items/${encodeURIComponent(itemId)}/UserData`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Emby-Token": state.session.token },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Emby-Token": state.session.token,
+      "X-Emby-Authorization": EMBY_CLIENT_AUTH,
+    },
     body: JSON.stringify({ PlaybackPositionTicks: ticksFromMs(positionMs), Played: played }),
   }).catch(() => {});
 }
