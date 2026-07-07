@@ -1360,11 +1360,26 @@ function ticksFromMs(ms) {
   return Math.round(ms * 10_000);
 }
 
+// Fields Emby needs beyond ItemId/PositionTicks/IsPaused to actually register
+// and surface a session — matches the Android app's PlaybackReportDto
+// defaults. Without PlayMethod/MediaSourceId in particular, Emby appears to
+// accept the call but never shows it on the Now Playing dashboard.
+function playbackReportBase(itemId) {
+  return {
+    ItemId: itemId,
+    MediaSourceId: `mediasource_${itemId}`,
+    PlaySessionId: currentPlaySessionId,
+    QueueableMediaTypes: ["Audio"],
+    CanSeek: true,
+    IsMuted: audio.muted,
+    PlayMethod: "DirectPlay",
+  };
+}
+
 function reportStarted(track) {
   reportEmbySession("Sessions/Playing", {
-    ItemId: track.id,
+    ...playbackReportBase(track.id),
     PositionTicks: 0,
-    PlaySessionId: currentPlaySessionId,
     IsPaused: false,
   });
 }
@@ -1379,9 +1394,8 @@ function reportProgressNow() {
   if (!track || !audio.src) return;
   lastProgressReportMs = Date.now();
   reportEmbySession("Sessions/Playing/Progress", {
-    ItemId: track.id,
+    ...playbackReportBase(track.id),
     PositionTicks: ticksFromMs(audio.currentTime * 1000),
-    PlaySessionId: currentPlaySessionId,
     IsPaused: audio.paused,
   });
 }
@@ -1394,9 +1408,8 @@ function reportProgressNow() {
 function reportStopped(track, positionMs) {
   const completed = track.duration_ms != null && positionMs >= track.duration_ms - RESUME_END_PADDING_MS;
   reportEmbySession("Sessions/Playing/Stopped", {
-    ItemId: track.id,
+    ...playbackReportBase(track.id),
     PositionTicks: ticksFromMs(completed ? positionMs : 0),
-    PlaySessionId: currentPlaySessionId,
     IsPaused: true,
   });
   if (completed) updateUserData(track.id, 0, true);
