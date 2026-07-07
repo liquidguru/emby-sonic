@@ -1435,6 +1435,14 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     WAN access just work off one login and the network-scan prompt goes away
     for WAN users. Reported + diagnosed down to the FQDN workaround by
     @trickiegt.
+  - Web app: playback now reports session state to Emby (`Sessions/Playing`,
+    `/Progress`, `/Stopped`, plus a `UserData` write marking a naturally
+    -completed track played) — mirrors the Android app's `PlaybackController`
+    (same 3s progress cadence, same 5s end-of-track completion threshold).
+    Previously the web app streamed audio straight from Emby with no session
+    reporting at all, so plays never showed up in Emby's Now Playing
+    dashboard and never counted toward play history — found by manually
+    testing the #30 fix, unrelated to it.
   - Mix naming: filters placeholder genres ("Unknown", "Other", etc.) the
     same way placeholder artists already were, so a mix doesn't get named
     "... · Unknown".

@@ -1,5 +1,14 @@
 const STORAGE_KEY = "embySonic.webSession";
 
+// Playback session reporting (Sessions/Playing*) — mirrors the Android app's
+// PlaybackController so plays from the web app show up in Emby's Now Playing
+// dashboard and count toward play history, instead of looking like a plain
+// HTTP download. Matches Android's cadence/thresholds for parity.
+const PROGRESS_REPORT_INTERVAL_MS = 3_000;
+const RESUME_END_PADDING_MS = 5_000;
+let currentPlaySessionId = null;
+let lastProgressReportMs = 0;
+
 // ── DOM refs ─────────────────────────────────────────────
 
 const loginView       = document.querySelector("#loginView");
@@ -150,6 +159,8 @@ loginForm.addEventListener("submit", async (e) => {
 });
 
 logoutButton.addEventListener("click", () => {
+  const track = state.queue[state.currentIndex];
+  if (track && audio.src) reportStopped(track, audio.currentTime * 1000);
   localStorage.removeItem(STORAGE_KEY);
   Object.assign(state, {
     session: null,
@@ -917,11 +928,16 @@ function loadQueue(tracks, label, autoPlay, startIndex = 0) {
   if (autoPlay && state.currentIndex >= 0) playIndex(state.currentIndex);
 }
 
-async function playIndex(index) {
+async function playIndex(index, opts = {}) {
   if (!state.queue[index]) return;
+  const previousTrack = state.queue[state.currentIndex];
+  if (!opts.skipStopReport && previousTrack && audio.src) {
+    reportStopped(previousTrack, audio.currentTime * 1000);
+  }
   state.currentIndex = index;
   const track = state.queue[index];
-  audio.src = streamUrl(track.id);
+  currentPlaySessionId = playSessionId();
+  audio.src = streamUrl(track.id, currentPlaySessionId);
   seekBar.value = "0";
   timeElapsed.textContent = "0:00";
   timeDuration.textContent = "0:00";
@@ -929,7 +945,7 @@ async function playIndex(index) {
   renderNowPlaying();
   renderQueue();
   updateMediaSession(track);
-  try { await audio.play(); }
+  try { await audio.play(); reportStarted(track); }
   catch { setMessage("Queue ready — tap play to start."); }
 }
 
@@ -992,6 +1008,8 @@ miniStopButton.addEventListener("click", stopPlayback);
 // Stop: halt playback and clear the queue, so the mini player dismisses. (Pause
 // keeps the track loaded for resume; stop tears the session down entirely.)
 function stopPlayback() {
+  const track = state.queue[state.currentIndex];
+  if (track && audio.src) reportStopped(track, audio.currentTime * 1000);
   audio.pause();
   audio.removeAttribute("src");
   audio.load();
@@ -1136,8 +1154,8 @@ function togglePlay() {
 
 // ── Audio events ─────────────────────────────────────────
 
-audio.addEventListener("play", () => { renderMini(); renderNowPlaying(); });
-audio.addEventListener("pause", () => { renderMini(); renderNowPlaying(); });
+audio.addEventListener("play", () => { renderMini(); renderNowPlaying(); reportProgressNow(); });
+audio.addEventListener("pause", () => { renderMini(); renderNowPlaying(); reportProgressNow(); });
 
 audio.addEventListener("timeupdate", () => {
   if (!audio.duration || audio.seeking) return;
@@ -1145,6 +1163,7 @@ audio.addEventListener("timeupdate", () => {
   seekBar.value = String(pct);
   timeElapsed.textContent = formatTime(audio.currentTime);
   renderMiniProgress();
+  reportProgressIfDue();
 });
 
 audio.addEventListener("loadedmetadata", () => {
@@ -1161,11 +1180,18 @@ audio.addEventListener("waiting", () => playButton.classList.add("buffering"));
 audio.addEventListener("canplay", () => playButton.classList.remove("buffering"));
 
 audio.addEventListener("ended", () => {
-  if (state.repeat === "one") { audio.currentTime = 0; audio.play(); return; }
+  const track = state.queue[state.currentIndex];
+  if (track) reportStopped(track, audio.currentTime * 1000);
+  if (state.repeat === "one") {
+    audio.currentTime = 0;
+    currentPlaySessionId = playSessionId();
+    audio.play().then(() => track && reportStarted(track));
+    return;
+  }
   if (state.currentIndex < state.queue.length - 1) {
-    playIndex(state.currentIndex + 1);
+    playIndex(state.currentIndex + 1, { skipStopReport: true });
   } else if (state.repeat === "all" && state.queue.length) {
-    playIndex(0);
+    playIndex(0, { skipStopReport: true });
   } else {
     renderMini();
     renderNowPlaying();
@@ -1275,7 +1301,7 @@ function setMessage(text) {
 
 // ── URLs ─────────────────────────────────────────────────
 
-function streamUrl(itemId) {
+function streamUrl(itemId, sessionId) {
   const base = activeServerUrl();
   const params = new URLSearchParams({
     UserId: state.session.userId,
@@ -1284,10 +1310,80 @@ function streamUrl(itemId) {
     AudioCodec: "mp3,aac,flac,vorbis,opus",
     TranscodingContainer: "mp3",
     TranscodingProtocol: "http",
-    PlaySessionId: playSessionId(),
+    PlaySessionId: sessionId,
     api_key: state.session.token,
   });
   return `${base}/Audio/${encodeURIComponent(itemId)}/universal?${params}`;
+}
+
+// ── Playback session reporting ──────────────────────────────
+// Best-effort — a failed report must never interrupt playback, so these never
+// throw or block on the network.
+
+function reportEmbySession(path, body) {
+  if (!state.session) return;
+  const base = activeServerUrl();
+  fetch(`${base}/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Emby-Token": state.session.token },
+    body: JSON.stringify(body),
+  }).catch(() => {});
+}
+
+function updateUserData(itemId, positionMs, played) {
+  if (!state.session) return;
+  const base = activeServerUrl();
+  fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items/${encodeURIComponent(itemId)}/UserData`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Emby-Token": state.session.token },
+    body: JSON.stringify({ PlaybackPositionTicks: ticksFromMs(positionMs), Played: played }),
+  }).catch(() => {});
+}
+
+function ticksFromMs(ms) {
+  return Math.round(ms * 10_000);
+}
+
+function reportStarted(track) {
+  reportEmbySession("Sessions/Playing", {
+    ItemId: track.id,
+    PositionTicks: 0,
+    PlaySessionId: currentPlaySessionId,
+    IsPaused: false,
+  });
+}
+
+function reportProgressIfDue() {
+  if (Date.now() - lastProgressReportMs < PROGRESS_REPORT_INTERVAL_MS) return;
+  reportProgressNow();
+}
+
+function reportProgressNow() {
+  const track = state.queue[state.currentIndex];
+  if (!track || !audio.src) return;
+  lastProgressReportMs = Date.now();
+  reportEmbySession("Sessions/Playing/Progress", {
+    ItemId: track.id,
+    PositionTicks: ticksFromMs(audio.currentTime * 1000),
+    PlaySessionId: currentPlaySessionId,
+    IsPaused: audio.paused,
+  });
+}
+
+// A track is "completed" (vs. skipped) once it's within RESUME_END_PADDING_MS
+// of its end — matches the Android app's isCompletedAt so a track finished
+// naturally is marked played, while a mid-track skip leaves played/resume
+// state untouched (a rolling Played=false write would wipe played status
+// earned in another session/client).
+function reportStopped(track, positionMs) {
+  const completed = track.duration_ms != null && positionMs >= track.duration_ms - RESUME_END_PADDING_MS;
+  reportEmbySession("Sessions/Playing/Stopped", {
+    ItemId: track.id,
+    PositionTicks: ticksFromMs(completed ? positionMs : 0),
+    PlaySessionId: currentPlaySessionId,
+    IsPaused: true,
+  });
+  if (completed) updateUserData(track.id, 0, true);
 }
 
 function artworkUrl(itemId) {
