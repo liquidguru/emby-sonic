@@ -84,7 +84,6 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
@@ -2019,16 +2018,17 @@ class PlaybackController @Inject constructor(
             val steps = (blendDurationMs / CROSSFADE_RAMP_STEP_MS).toInt().coerceAtLeast(1)
             for (step in 1..steps) {
                 val f = step.toFloat() / steps
-                // One shaped progress drives both sides so the pair stays
-                // equal-power (sin² + cos² = 1) across the whole blend, while
-                // the exponent still brings the incoming track forward early
-                // enough to remain perceptible beneath a loud outgoing tail.
-                // The old asymmetric curve (0.18 floor + sqrt on the incoming
-                // only) popped the incoming in at ~30% volume and bumped the
-                // combined level ~+1.3dB mid-blend.
-                val p = f.toDouble().pow(CROSSFADE_PROGRESS_EXPONENT).toFloat()
-                player.volume = sin(p * (PI.toFloat() / 2f))
-                helper.volume = cos(p * (PI.toFloat() / 2f))
+                // Both tracks mix at FULL volume through the middle of the
+                // blend: tracks usually carry their own mastered fade-out and
+                // intro, so shaping the whole blend double-fades them and
+                // audibly dips the combined level. Only the edges are eased —
+                // the incoming over the first CROSSFADE_EDGE_FRACTION of the
+                // blend, the outgoing over the last — so a cold start or cold
+                // ending can't produce a hard seam.
+                val fadeIn = (f / CROSSFADE_EDGE_FRACTION).coerceAtMost(1f)
+                val fadeOut = ((1f - f) / CROSSFADE_EDGE_FRACTION).coerceAtMost(1f)
+                player.volume = sin(fadeIn * (PI.toFloat() / 2f))
+                helper.volume = sin(fadeOut * (PI.toFloat() / 2f))
                 delay(CROSSFADE_RAMP_STEP_MS)
             }
             endCrossfade()
@@ -2301,9 +2301,9 @@ class PlaybackController @Inject constructor(
         const val CROSSFADE_FIRE_LEAD_MS = 300L
         const val MIN_CROSSFADE_START_MS = 2_000L
         const val CROSSFADE_COMPLETION_SLACK_MS = 1_000L
-        // Shapes the shared blend progress: <1 front-loads the crossfade so the
-        // incoming track becomes audible early without breaking equal power.
-        const val CROSSFADE_PROGRESS_EXPONENT = 0.7
+        // Fraction of the blend spent easing each edge (incoming in at the
+        // start, outgoing out at the end); the middle mixes both at full volume.
+        const val CROSSFADE_EDGE_FRACTION = 0.3f
         const val PREFETCH_AHEAD_COUNT = 3
         const val GUEST_DJ_TRIGGER_REMAINING = 3
         const val GUEST_DJ_INJECT_COUNT = 5
