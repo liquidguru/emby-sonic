@@ -66,6 +66,7 @@ import guru.liquid.embysonic.data.settings.ThemeChoice
 import guru.liquid.embysonic.widget.NowPlayingWidget
 import guru.liquid.embysonic.widget.WidgetTheme
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -196,6 +197,9 @@ class PlaybackController @Inject constructor(
     private var crossfadeArmedIndex = -1
     private var crossfadeTargetIndex = -1
     private var crossfadeJob: Job? = null
+    // Precisely-timed fire scheduled once the helper's tail is buffered; non-null
+    // means a fire is pending (or ran) for the armed index.
+    private var crossfadeFireJob: Job? = null
 
     // The outgoing track + blend length while a crossfade is firing, published in
     // state so Now Playing can dissolve the artwork in sync with the audio.
@@ -1881,20 +1885,51 @@ class PlaybackController @Inject constructor(
         if (!crossfadeArmed && remaining in 1..(crossfadeMs + CROSSFADE_PRELOAD_MS)) {
             armCrossfade(current, tailFromMs, index)
         }
-        if (crossfadeArmed && crossfadeArmedIndex == index && remaining in 1..crossfadeMs) {
-            val outgoingPositionMs = duration - remaining
-            val helperHasTailBuffered = fadePlayerReady &&
-                (fadePlayer?.bufferedPosition ?: 0L) >= outgoingPositionMs + CROSSFADE_BUFFER_MARGIN_MS
-            when {
-                helperHasTailBuffered -> fireCrossfade(
-                    blendDurationMs = remaining,
-                )
-                remaining <= MIN_CROSSFADE_START_MS -> {
-                    Log.w(TAG, "Crossfade helper was not ready; preserving normal transition")
-                    cancelCrossfade()
-                }
+        if (!crossfadeArmed || crossfadeArmedIndex != index || crossfadeFireJob != null) return
+        val helperHasTailBuffered = fadePlayerReady &&
+            (fadePlayer?.bufferedPosition ?: 0L) >= tailFromMs + CROSSFADE_BUFFER_MARGIN_MS
+        when {
+            // Fire on a precise schedule, not on the next 50ms poll after the
+            // blend point: the helper's tail starts at tailFromMs, so any firing
+            // lag replays audio the primary has already played past that mark —
+            // heard as a stutter at the start of the blend.
+            helperHasTailBuffered && remaining - crossfadeMs <= CROSSFADE_FIRE_LEAD_MS ->
+                scheduleCrossfadeFire(crossfadeMs)
+            !helperHasTailBuffered && remaining <= MIN_CROSSFADE_START_MS -> {
+                Log.w(TAG, "Crossfade helper was not ready; preserving normal transition")
+                cancelCrossfade()
             }
         }
+    }
+
+    /**
+     * Waits out the exact time to the blend point, then fires. Re-reads the live
+     * position after every sleep so a stall/rebuffer during the wait can't make
+     * the blend fire early; a pause cancels the job via cancelCrossfade.
+     */
+    private fun scheduleCrossfadeFire(crossfadeMs: Long) {
+        // Lazy start so the job reference is assigned before the body can run
+        // (Main.immediate would otherwise execute a no-wait fire synchronously
+        // inside launch). endCrossfade owns cancelling/clearing the reference.
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            while (isActive) {
+                val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: break
+                val wait = (duration - player.currentPosition) - crossfadeMs
+                if (wait <= 0) break
+                delay(wait)
+            }
+            if (!crossfadeArmed) return@launch
+            val duration = player.duration.takeIf { it != C.TIME_UNSET }
+            val remaining = duration?.let { it - player.currentPosition } ?: 0L
+            if (remaining <= 0) {
+                // The track ended under us; let the normal transition stand.
+                cancelCrossfade()
+                return@launch
+            }
+            fireCrossfade(blendDurationMs = remaining.coerceAtMost(crossfadeMs))
+        }
+        crossfadeFireJob = job
+        job.start()
     }
 
     private fun armCrossfade(outgoing: PlaybackTrack, tailFromMs: Long, index: Int) {
@@ -1909,7 +1944,8 @@ class PlaybackController @Inject constructor(
         helper.volume = 0f
         helper.playWhenReady = false
         // The helper plays the OUTGOING track's tail, so normalise it to that
-        // track's level (the primary's gain has already advanced to the incoming).
+        // track's level (fireCrossfade switches the primary to the incoming
+        // track's gain when it advances).
         fadeGain.gain = normalizationGainFor(outgoing.id)
         // The helper is a concurrent Emby playback request. Reusing the
         // primary queue's PlaySessionId lets a helper transcode replace the
@@ -1949,11 +1985,19 @@ class PlaybackController @Inject constructor(
         // to cover.
         helper.volume = 1f
         helper.play()
+        // Apply the incoming track's normalisation gain before the seek: the
+        // playback thread can push the next item's first buffers through the
+        // sink before the listener-driven publishState() applies it, which
+        // briefly played the incoming track at the outgoing track's gain.
+        queue.getOrNull(crossfadeTargetIndex)?.let { applyNormalizationGain(it.id) }
+        // How far the outgoing playhead is past the helper's tail start — the
+        // audio that will replay at the handoff. Should now be single-digit ms.
+        val helperLagMs = player.currentPosition - helper.currentPosition
         // Advance the primary now; the buffered helper keeps the outgoing track
         // audible while the next decoder becomes ready.
         player.volume = 0f
         player.seekToNextMediaItem()
-        Log.d(TAG, "Crossfade fired durationMs=$blendDurationMs")
+        Log.d(TAG, "Crossfade fired durationMs=$blendDurationMs helperLagMs=$helperLagMs")
         crossfadeJob?.cancel()
         crossfadeJob = scope.launch {
             // Do not spend the fade duration while the incoming decoder is
@@ -1975,15 +2019,16 @@ class PlaybackController @Inject constructor(
             val steps = (blendDurationMs / CROSSFADE_RAMP_STEP_MS).toInt().coerceAtLeast(1)
             for (step in 1..steps) {
                 val f = step.toFloat() / steps
-                // Bring the incoming track forward early enough to remain
-                // perceptible beneath a loud outgoing track. The helper reset
-                // in armCrossfade guarantees this floor begins only at the
-                // configured blend point, never during preload.
-                val incomingProgress = f.toDouble().pow(INCOMING_FADE_EXPONENT).toFloat()
-                val incomingCurve = sin(incomingProgress * (PI.toFloat() / 2f))
-                player.volume = INCOMING_START_VOLUME +
-                    ((1f - INCOMING_START_VOLUME) * incomingCurve)
-                helper.volume = cos(f * (PI.toFloat() / 2f))
+                // One shaped progress drives both sides so the pair stays
+                // equal-power (sin² + cos² = 1) across the whole blend, while
+                // the exponent still brings the incoming track forward early
+                // enough to remain perceptible beneath a loud outgoing tail.
+                // The old asymmetric curve (0.18 floor + sqrt on the incoming
+                // only) popped the incoming in at ~30% volume and bumped the
+                // combined level ~+1.3dB mid-blend.
+                val p = f.toDouble().pow(CROSSFADE_PROGRESS_EXPONENT).toFloat()
+                player.volume = sin(p * (PI.toFloat() / 2f))
+                helper.volume = cos(p * (PI.toFloat() / 2f))
                 delay(CROSSFADE_RAMP_STEP_MS)
             }
             endCrossfade()
@@ -1991,6 +2036,8 @@ class PlaybackController @Inject constructor(
     }
 
     private fun endCrossfade() {
+        crossfadeFireJob?.cancel()
+        crossfadeFireJob = null
         crossfadeJob?.cancel()
         crossfadeJob = null
         // Fully release the helper so no second decoder lingers during normal
@@ -2243,15 +2290,20 @@ class PlaybackController @Inject constructor(
         const val LONG_FORM_MIN_DURATION_MS = 20 * 60 * 1000L
         const val LONG_FORM_RESUME_PREROLL_MS = 5_000L
         const val CROSSFADE_POLL_MS = 50L
-        const val CROSSFADE_RAMP_STEP_MS = 50L
+        const val CROSSFADE_RAMP_STEP_MS = 25L
         const val CROSSFADE_READY_POLL_MS = 10L
         const val CROSSFADE_INCOMING_READY_TIMEOUT_MS = 1_500L
         const val CROSSFADE_PRELOAD_MS = 12_000L
         const val CROSSFADE_BUFFER_MARGIN_MS = 500L
+        // How far ahead of the blend point a buffered helper may schedule its
+        // precisely-timed fire. Short so playback stalls can't accrue much
+        // drift between scheduling and firing (the fire re-checks anyway).
+        const val CROSSFADE_FIRE_LEAD_MS = 300L
         const val MIN_CROSSFADE_START_MS = 2_000L
         const val CROSSFADE_COMPLETION_SLACK_MS = 1_000L
-        const val INCOMING_FADE_EXPONENT = 0.5
-        const val INCOMING_START_VOLUME = 0.18f
+        // Shapes the shared blend progress: <1 front-loads the crossfade so the
+        // incoming track becomes audible early without breaking equal power.
+        const val CROSSFADE_PROGRESS_EXPONENT = 0.7
         const val PREFETCH_AHEAD_COUNT = 3
         const val GUEST_DJ_TRIGGER_REMAINING = 3
         const val GUEST_DJ_INJECT_COUNT = 5
