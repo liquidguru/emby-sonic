@@ -84,6 +84,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
@@ -1911,6 +1912,24 @@ class PlaybackController @Inject constructor(
         // (Main.immediate would otherwise execute a no-wait fire synchronously
         // inside launch). endCrossfade owns cancelling/clearing the reference.
         val job = scope.launch(start = CoroutineStart.LAZY) {
+            // Phase 1: start the helper MUTED a little before the blend point.
+            // A cold AudioTrack takes tens of ms to emit its first samples, so
+            // swapping it in cold left a brief hole in the outgoing track at
+            // the transition; rendering silently through the preroll makes the
+            // volume swap at the blend point symmetric and instant.
+            while (isActive) {
+                val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: break
+                val wait = (duration - player.currentPosition) - crossfadeMs -
+                    CROSSFADE_HELPER_PREROLL_MS
+                if (wait <= 0) break
+                delay(wait)
+            }
+            if (!crossfadeArmed) return@launch
+            fadePlayer?.let {
+                it.volume = 0f
+                it.play()
+            }
+            // Phase 2: precise wait to the blend point itself.
             while (isActive) {
                 val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: break
                 val wait = (duration - player.currentPosition) - crossfadeMs
@@ -1957,7 +1976,9 @@ class PlaybackController @Inject constructor(
                 playbackSessionId = UUID.randomUUID().toString(),
             ),
         )
-        helper.seekTo(tailFromMs)
+        // A preroll before the tail: the helper starts rendering this stretch
+        // muted so its AudioTrack is warm when the blend point arrives.
+        helper.seekTo((tailFromMs - CROSSFADE_HELPER_PREROLL_MS).coerceAtLeast(0))
         helper.prepare()
         Log.d(
             TAG,
@@ -1979,26 +2000,40 @@ class PlaybackController @Inject constructor(
         crossfadeFromIndex = player.currentMediaItemIndex.coerceAtLeast(0)
         crossfadeFromTrack = queue.getOrNull(crossfadeFromIndex)
         crossfadeBlendMs = blendDurationMs
-        // The helper is already paused at the blend point. Seeking it again here
-        // discards its buffered decoder state and creates the very gap it exists
-        // to cover.
-        helper.volume = 1f
-        helper.play()
-        // Apply the incoming track's normalisation gain before the seek: the
-        // playback thread can push the next item's first buffers through the
-        // sink before the listener-driven publishState() applies it, which
-        // briefly played the incoming track at the outgoing track's gain.
-        queue.getOrNull(crossfadeTargetIndex)?.let { applyNormalizationGain(it.id) }
-        // How far the outgoing playhead is past the helper's tail start — the
-        // audio that will replay at the handoff. Should now be single-digit ms.
-        val helperLagMs = player.currentPosition - helper.currentPosition
-        // Advance the primary now; the buffered helper keeps the outgoing track
-        // audible while the next decoder becomes ready.
-        player.volume = 0f
-        player.seekToNextMediaItem()
-        Log.d(TAG, "Crossfade fired durationMs=$blendDurationMs helperLagMs=$helperLagMs")
+        // The helper has been rendering muted since the preroll; make sure it is
+        // actually running in case the fire happened before phase 1 could start
+        // it (a late fire inside the blend window).
+        if (!helper.isPlaying) helper.play()
+        // Decoder offset between the two copies of the outgoing track — the
+        // helper's AudioTrack start latency. The micro-swap below masks it.
+        val helperOffsetMs = player.currentPosition - helper.currentPosition
+        Log.d(TAG, "Crossfade fired durationMs=$blendDurationMs helperOffsetMs=$helperOffsetMs")
         crossfadeJob?.cancel()
         crossfadeJob = scope.launch {
+            // Micro-crossfade the outgoing track from the primary to the warm
+            // helper. Both are playing the same content a few tens of ms apart,
+            // so a short equal-power swap hides the handoff and the offset —
+            // a hard cut here was audible as a brief dip at the transition.
+            val swapSteps = (CROSSFADE_SWAP_MS / CROSSFADE_RAMP_STEP_MS).toInt().coerceAtLeast(1)
+            for (step in 1..swapSteps) {
+                val f = step.toFloat() / swapSteps
+                helper.volume = sin(f * (PI.toFloat() / 2f))
+                player.volume = cos(f * (PI.toFloat() / 2f))
+                delay(CROSSFADE_RAMP_STEP_MS)
+            }
+            player.volume = 0f
+            // Apply the incoming track's normalisation gain only now that the
+            // primary is silent and about to leave the outgoing track: the
+            // playback thread can push the next item's first buffers through
+            // the sink before the listener-driven publishState() applies it,
+            // which briefly played the incoming at the outgoing track's gain.
+            queue.getOrNull(crossfadeTargetIndex)?.let { applyNormalizationGain(it.id) }
+            // Advance the primary; the helper keeps the outgoing track audible
+            // while the next decoder becomes ready. Skip the seek if the track
+            // ended naturally during the swap (the player already advanced).
+            if (player.currentMediaItemIndex == crossfadeFromIndex) {
+                player.seekToNextMediaItem()
+            }
             // Do not spend the fade duration while the incoming decoder is
             // buffering. The outgoing helper remains at full volume meanwhile.
             var readyWaitMs = 0L
@@ -2296,9 +2331,15 @@ class PlaybackController @Inject constructor(
         const val CROSSFADE_PRELOAD_MS = 12_000L
         const val CROSSFADE_BUFFER_MARGIN_MS = 500L
         // How far ahead of the blend point a buffered helper may schedule its
-        // precisely-timed fire. Short so playback stalls can't accrue much
-        // drift between scheduling and firing (the fire re-checks anyway).
-        const val CROSSFADE_FIRE_LEAD_MS = 300L
+        // precisely-timed fire. Must exceed the helper preroll so phase 1 can
+        // start the muted helper on time; kept short so playback stalls can't
+        // accrue much drift between scheduling and firing (re-checked anyway).
+        const val CROSSFADE_FIRE_LEAD_MS = 800L
+        // Muted helper run-up before the blend point, warming its AudioTrack so
+        // the handoff swap has no cold-start hole in the outgoing audio.
+        const val CROSSFADE_HELPER_PREROLL_MS = 500L
+        // Length of the equal-power handoff swap from primary to helper.
+        const val CROSSFADE_SWAP_MS = 100L
         const val MIN_CROSSFADE_START_MS = 2_000L
         const val CROSSFADE_COMPLETION_SLACK_MS = 1_000L
         // Fraction of the blend spent easing each edge (incoming in at the
