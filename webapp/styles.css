@@ -875,3 +875,157 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
 /* ── Scrollbar ───────────────────────────────────────────── */
 .page-content::-webkit-scrollbar { width: 4px; }
 .page-content::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
+
+/* ── Library ─────────────────────────────────────────────── */
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  margin: 0 20px 14px;
+  padding: 4px;
+  background: var(--panel);
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.segment {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.segment.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.library-pane { padding-bottom: 8px; }
+
+.alpha-bar {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 0 20px 10px;
+  scrollbar-width: none;
+}
+.alpha-bar::-webkit-scrollbar { display: none; }
+.alpha-btn {
+  min-width: 30px;
+  padding: 5px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.alpha-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+.letter-header {
+  list-style: none;
+  padding: 14px 20px 4px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* Detail (artist / album / playlist) */
+.library-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 20px 12px;
+}
+.library-detail-art-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  flex: 0 0 auto;
+}
+.library-detail-art,
+.library-detail-art-placeholder {
+  width: 96px;
+  height: 96px;
+  border-radius: var(--card-radius);
+  background: var(--panel-strong);
+  object-fit: cover;
+}
+.library-detail-art { position: absolute; inset: 0; }
+.library-detail-art-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: var(--muted);
+}
+.library-detail-meta { min-width: 0; }
+.library-detail-meta h2 {
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+.library-detail-actions {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px 16px;
+}
+
+/* Album grid on artist detail */
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+  padding: 0 20px 20px;
+}
+.album-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.album-card-art-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--card-radius);
+  overflow: hidden;
+  background: var(--panel-strong);
+}
+.album-card-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.album-card-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  color: var(--muted);
+}
+.album-card-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.album-card-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+}

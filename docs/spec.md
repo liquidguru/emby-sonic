@@ -1545,6 +1545,23 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     by `activeServerUrl()`. Added tests for distinct login DeviceIds, malformed
     DeviceId rejection, and the CSP header directives.
 
+- **M5.36 — Web app library & playlist browse (2026-07-11, in progress —
+  pending live verification):**
+  - New Library bottom-nav tab with Artists/Playlists segments. Artists A–Z
+    (letter headers + jump strip, music-scoped via `/sonic/music/parent-ids`,
+    deduped across libraries) → artist detail (album grid with lazy Primary
+    art, Play/Shuffle all) → album detail (ordered tracks, play-from-row,
+    per-row Similar) — the same drill-down chain the Android app has.
+  - Playlists list (unscoped by design — Emby playlists live outside music
+    libraries) → playlist detail in stored order via `/Playlists/{id}/Items`;
+    play/shuffle/queue-from-row. Saving a playlist invalidates the pane cache
+    so it appears immediately. Closes the "web app creates playlists it
+    cannot browse" gap from issue #19.
+  - Emby query shapes mirror Android's `LibraryRepository` exactly
+    (`Artists/AlbumArtists`, `AlbumArtistIds` for artist albums,
+    `ParentIndexNumber,IndexNumber` for album order). Audiobooks remain
+    out of scope for the web app (deliberate, unchanged).
+
 - **M5.35 — Coordinator hardening pass (2026-07-11):**
   - Reproducible Windows development: root `dev.ps1` bootstraps a Python 3.12
     `.venv`, installs CPU development dependencies, checks core imports, and

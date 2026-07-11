@@ -234,6 +234,52 @@
           </div>
         </section>
 
+        <!-- LIBRARY ────────────────────────────────────────── -->
+        <section id="libraryView" class="view hidden">
+          <div class="view-header">
+            <p class="eyebrow">Your music</p>
+            <h2>Library</h2>
+          </div>
+          <div class="segmented" role="tablist" aria-label="Library sections">
+            <button id="libraryTabArtists" class="segment active" type="button" role="tab" aria-selected="true">Artists</button>
+            <button id="libraryTabPlaylists" class="segment" type="button" role="tab" aria-selected="false">Playlists</button>
+          </div>
+          <div id="libraryArtistsPane" class="library-pane">
+            <div id="libraryAlphaBar" class="alpha-bar" aria-label="Jump to letter"></div>
+            <ul id="libraryArtistsList" class="track-list" aria-label="Artists"></ul>
+          </div>
+          <div id="libraryPlaylistsPane" class="library-pane hidden">
+            <ul id="libraryPlaylistsList" class="track-list" aria-label="Playlists"></ul>
+          </div>
+        </section>
+
+        <!-- LIBRARY DETAIL (artist / album / playlist) ─────── -->
+        <section id="libraryDetailView" class="view hidden">
+          <div class="view-header back-header">
+            <button id="libraryDetailBack" class="back-btn" type="button">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+              <span id="libraryDetailBackLabel">Library</span>
+            </button>
+          </div>
+          <div class="library-detail-head">
+            <div class="library-detail-art-wrap">
+              <img id="libraryDetailArt" class="library-detail-art hidden" alt="">
+              <div id="libraryDetailArtPlaceholder" class="library-detail-art-placeholder">♪</div>
+            </div>
+            <div class="library-detail-meta">
+              <p id="libraryDetailEyebrow" class="eyebrow"></p>
+              <h2 id="libraryDetailTitle"></h2>
+              <p id="libraryDetailSub" class="muted-text"></p>
+            </div>
+          </div>
+          <div class="library-detail-actions">
+            <button id="libraryDetailPlay" class="primary-btn" type="button">Play</button>
+            <button id="libraryDetailShuffle" class="secondary-btn" type="button">Shuffle</button>
+          </div>
+          <div id="libraryAlbumsGrid" class="album-grid hidden"></div>
+          <ol id="libraryDetailTracks" class="track-list numbered-list hidden" aria-label="Tracks"></ol>
+        </section>
+
       </div><!-- /page-content -->
 
       <!-- ── MINI PLAYER (in flow) ───────────────────────── -->
@@ -267,6 +313,10 @@
         <button class="nav-btn" type="button" data-view="search">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
           <span class="nav-label">Search</span>
+        </button>
+        <button class="nav-btn" type="button" data-view="library">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 12.5v-9l6 4.5-6 4.5z"/></svg>
+          <span class="nav-label">Library</span>
         </button>
         <button class="nav-btn" type="button" data-view="mixes">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>

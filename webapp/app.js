@@ -72,6 +72,26 @@ const selectedArtistChips     = document.querySelector("#selectedArtistChips");
 const artistMixCountInput     = document.querySelector("#artistMixCountInput");
 const buildArtistMixButton    = document.querySelector("#buildArtistMixButton");
 
+// Library
+const libraryTabArtists     = document.querySelector("#libraryTabArtists");
+const libraryTabPlaylists   = document.querySelector("#libraryTabPlaylists");
+const libraryArtistsPane    = document.querySelector("#libraryArtistsPane");
+const libraryPlaylistsPane  = document.querySelector("#libraryPlaylistsPane");
+const libraryAlphaBar       = document.querySelector("#libraryAlphaBar");
+const libraryArtistsList    = document.querySelector("#libraryArtistsList");
+const libraryPlaylistsList  = document.querySelector("#libraryPlaylistsList");
+const libraryDetailBack     = document.querySelector("#libraryDetailBack");
+const libraryDetailBackLabel = document.querySelector("#libraryDetailBackLabel");
+const libraryDetailArt      = document.querySelector("#libraryDetailArt");
+const libraryDetailArtPlaceholder = document.querySelector("#libraryDetailArtPlaceholder");
+const libraryDetailEyebrow  = document.querySelector("#libraryDetailEyebrow");
+const libraryDetailTitle    = document.querySelector("#libraryDetailTitle");
+const libraryDetailSub      = document.querySelector("#libraryDetailSub");
+const libraryDetailPlay     = document.querySelector("#libraryDetailPlay");
+const libraryDetailShuffle  = document.querySelector("#libraryDetailShuffle");
+const libraryAlbumsGrid     = document.querySelector("#libraryAlbumsGrid");
+const libraryDetailTracks   = document.querySelector("#libraryDetailTracks");
+
 // Mini player
 const miniPlayer         = document.querySelector("#miniPlayer");
 const miniOpenNowPlaying = document.querySelector("#miniOpenNowPlaying");
@@ -126,6 +146,10 @@ const state = {
   activeMixId: null,
   pendingMixDetail: null,
   musicParentIds: null,
+  libraryTab: "artists",   // "artists" | "playlists"
+  libraryArtists: null,    // cached AlbumArtists items
+  libraryPlaylists: null,  // cached Playlist items (null = refetch)
+  libraryStack: [],        // drill-down entries for the shared detail view
 };
 
 // ── Boot ─────────────────────────────────────────────────
@@ -177,6 +201,8 @@ logoutButton.addEventListener("click", () => {
     mixes: [], adventureFrom: null, adventureTo: null,
     selectedArtists: [], genresLoaded: false,
     musicParentIds: null,
+    libraryTab: "artists", libraryArtists: null,
+    libraryPlaylists: null, libraryStack: [],
   });
   audio.pause();
   audio.removeAttribute("src");
@@ -201,13 +227,17 @@ document.querySelectorAll(".back-btn[data-back]").forEach((btn) => {
 
 async function switchView(view) {
   state.activeView = view;
-  // Only highlight nav for top-level nav views
-  const navViews = ["home", "search", "mixes"];
-  navButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
+  // Keep the Library nav item lit while inside its drill-down detail view.
+  const highlightView = view === "libraryDetail" ? "library" : view;
+  navButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.view === highlightView));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hidden", v.id !== `${view}View`));
   pageContent.scrollTop = 0;
   if (view === "home") loadHomeData();
   if (view === "mixes") loadMixesView();
+  if (view === "library") {
+    state.libraryStack = [];
+    loadLibraryView();
+  }
 }
 
 // ── Home ─────────────────────────────────────────────────
@@ -919,6 +949,349 @@ async function buildAdventure() {
 
 // ── Queue + playback ─────────────────────────────────────
 
+// ── Library (artists / playlists browse + drill-down) ────
+
+libraryTabArtists.addEventListener("click", () => setLibraryTab("artists"));
+libraryTabPlaylists.addEventListener("click", () => setLibraryTab("playlists"));
+libraryDetailBack.addEventListener("click", libraryBack);
+libraryDetailPlay.addEventListener("click", () => playLibraryDetail(false));
+libraryDetailShuffle.addEventListener("click", () => playLibraryDetail(true));
+
+function setLibraryTab(tab) {
+  state.libraryTab = tab;
+  libraryTabArtists.classList.toggle("active", tab === "artists");
+  libraryTabPlaylists.classList.toggle("active", tab === "playlists");
+  libraryTabArtists.setAttribute("aria-selected", String(tab === "artists"));
+  libraryTabPlaylists.setAttribute("aria-selected", String(tab === "playlists"));
+  libraryArtistsPane.classList.toggle("hidden", tab !== "artists");
+  libraryPlaylistsPane.classList.toggle("hidden", tab !== "playlists");
+  loadLibraryView();
+}
+
+async function loadLibraryView() {
+  if (!state.session) return;
+  if (state.libraryTab === "artists") {
+    if (!state.libraryArtists) {
+      await withBusy("Loading artists…", async () => {
+        state.libraryArtists = await fetchAlbumArtists();
+      });
+    }
+    renderLibraryArtists(state.libraryArtists || []);
+  } else {
+    if (!state.libraryPlaylists) {
+      await withBusy("Loading playlists…", async () => {
+        state.libraryPlaylists = await fetchPlaylistsList();
+      });
+    }
+    renderLibraryPlaylists(state.libraryPlaylists || []);
+  }
+}
+
+// Same shapes the Android app's LibraryRepository uses, music-scoped by the
+// coordinator's parent-ids so audiobooks never appear. Playlists are the one
+// deliberate exception: they live outside the music libraries in Emby, so
+// that query is unscoped (they are created MediaType=Audio by this app).
+async function fetchAlbumArtists() {
+  const base = activeServerUrl();
+  const parentIds = await musicParentIds();
+  const scopes = parentIds.length ? parentIds.map((parentId) => ({ ParentId: parentId })) : [{}];
+  const batches = await Promise.all(scopes.map(async (scope) => {
+    const qs = new URLSearchParams({
+      UserId: state.session.userId,
+      SortBy: "SortName",
+      Limit: "5000",
+      ...scope,
+    });
+    const resp = await fetch(`${base}/Artists/AlbumArtists?${qs}`, { headers: embyHeaders() });
+    const data = await parseJson(resp);
+    return Array.isArray(data.Items) ? data.Items : [];
+  }));
+  const seen = new Set();
+  const artists = batches.flat().filter((artist) => {
+    if (!artist?.Id || seen.has(artist.Id)) return false;
+    seen.add(artist.Id);
+    return true;
+  });
+  artists.sort((a, b) => (a.Name || "").localeCompare(b.Name || "", undefined, { sensitivity: "base" }));
+  return artists;
+}
+
+async function fetchPlaylistsList() {
+  return fetchEmbyRawItems({
+    IncludeItemTypes: "Playlist",
+    Recursive: "true",
+    SortBy: "SortName",
+    Fields: "ChildCount",
+    Limit: "1000",
+  });
+}
+
+async function fetchPlaylistTracks(playlistId) {
+  const base = activeServerUrl();
+  const qs = new URLSearchParams({ UserId: state.session.userId, Fields: "RunTimeTicks" });
+  const resp = await fetch(`${base}/Playlists/${encodeURIComponent(playlistId)}/Items?${qs}`, {
+    headers: embyHeaders(),
+  });
+  const data = await parseJson(resp);
+  return (Array.isArray(data.Items) ? data.Items : []).map(embyItemToTrack);
+}
+
+async function fetchArtistAlbums(artistId) {
+  return fetchEmbyRawItems({
+    IncludeItemTypes: "MusicAlbum",
+    AlbumArtistIds: artistId,
+    Recursive: "true",
+    SortBy: "ProductionYear,SortName",
+    Fields: "ProductionYear,ChildCount",
+    Limit: "500",
+  });
+}
+
+async function fetchAlbumTracks(albumId) {
+  return fetchEmbyItems({
+    ParentId: albumId,
+    IncludeItemTypes: "Audio",
+    Recursive: "true",
+    SortBy: "ParentIndexNumber,IndexNumber",
+    Limit: "600",
+  });
+}
+
+async function fetchArtistTracks(artistId) {
+  return fetchEmbyItems({
+    IncludeItemTypes: "Audio",
+    AlbumArtistIds: artistId,
+    Recursive: "true",
+    SortBy: "Album,ParentIndexNumber,IndexNumber",
+    Limit: "1000",
+  });
+}
+
+function artistInitial(name) {
+  const first = (name || "#").trim().charAt(0).toUpperCase();
+  return /[A-Z]/.test(first) ? first : "#";
+}
+
+function renderLibraryArtists(artists) {
+  if (!artists.length) {
+    libraryAlphaBar.replaceChildren();
+    libraryArtistsList.replaceChildren(emptyMsg("No artists found", "li"));
+    return;
+  }
+  const rows = [];
+  const letterAnchors = new Map();
+  for (const artist of artists) {
+    const letter = artistInitial(artist.Name);
+    if (!letterAnchors.has(letter)) {
+      const header = document.createElement("li");
+      header.className = "letter-header";
+      header.textContent = letter;
+      letterAnchors.set(letter, header);
+      rows.push(header);
+    }
+    const item = document.createElement("li");
+    item.className = "track-item";
+    const thumb = document.createElement("div");
+    thumb.className = "track-thumb-placeholder";
+    thumb.textContent = (artist.Name || "?").trim().charAt(0).toUpperCase() || "?";
+    const info = document.createElement("div");
+    info.className = "track-info";
+    const name = document.createElement("span");
+    name.className = "track-name";
+    name.textContent = artist.Name || "Unknown artist";
+    info.append(name);
+    item.append(thumb, info);
+    item.addEventListener("click", () => openArtistDetail(artist));
+    rows.push(item);
+  }
+  libraryArtistsList.replaceChildren(...rows);
+  libraryAlphaBar.replaceChildren(...[...letterAnchors.keys()].map((letter) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "alpha-btn";
+    btn.textContent = letter;
+    btn.addEventListener("click", () => letterAnchors.get(letter).scrollIntoView({ block: "start" }));
+    return btn;
+  }));
+}
+
+function renderLibraryPlaylists(playlists) {
+  if (!playlists.length) {
+    libraryPlaylistsList.replaceChildren(
+      emptyMsg("No playlists yet — save a mix or queue to create one", "li"),
+    );
+    return;
+  }
+  libraryPlaylistsList.replaceChildren(...playlists.map((pl) => {
+    const item = document.createElement("li");
+    item.className = "track-item";
+    const thumb = document.createElement("div");
+    thumb.className = "track-thumb-placeholder";
+    thumb.textContent = "♪";
+    const info = document.createElement("div");
+    info.className = "track-info";
+    const name = document.createElement("span");
+    name.className = "track-name";
+    name.textContent = pl.Name || "Untitled playlist";
+    const meta = document.createElement("span");
+    meta.className = "track-meta";
+    meta.textContent = pl.ChildCount ? `${pl.ChildCount} tracks` : "Playlist";
+    info.append(name, meta);
+    item.append(thumb, info);
+    item.addEventListener("click", () => openPlaylistDetail(pl));
+    return item;
+  }));
+}
+
+async function openArtistDetail(artist) {
+  const entry = {
+    kind: "artist",
+    id: artist.Id,
+    title: artist.Name || "Unknown artist",
+    backLabel: "Library",
+  };
+  await withBusy("Loading albums…", async () => {
+    entry.albums = await fetchArtistAlbums(artist.Id);
+  });
+  if (!entry.albums) return;
+  entry.sub = `${entry.albums.length} album${entry.albums.length === 1 ? "" : "s"}`;
+  openLibraryDetail(entry);
+}
+
+async function openAlbumDetail(album, artistName) {
+  const entry = {
+    kind: "album",
+    id: album.Id,
+    title: album.Name || "Untitled album",
+    backLabel: artistName || "Library",
+  };
+  await withBusy("Loading tracks…", async () => {
+    entry.tracks = await fetchAlbumTracks(album.Id);
+  });
+  if (!entry.tracks) return;
+  const bits = [artistName, album.ProductionYear, `${entry.tracks.length} tracks`].filter(Boolean);
+  entry.sub = bits.join(" · ");
+  openLibraryDetail(entry);
+}
+
+async function openPlaylistDetail(pl) {
+  const entry = {
+    kind: "playlist",
+    id: pl.Id,
+    title: pl.Name || "Untitled playlist",
+    backLabel: "Library",
+  };
+  await withBusy("Loading playlist…", async () => {
+    entry.tracks = await fetchPlaylistTracks(pl.Id);
+  });
+  if (!entry.tracks) return;
+  entry.sub = `${entry.tracks.length} tracks`;
+  openLibraryDetail(entry);
+}
+
+function openLibraryDetail(entry) {
+  state.libraryStack.push(entry);
+  renderLibraryDetail(entry);
+  switchView("libraryDetail");
+}
+
+function libraryBack() {
+  state.libraryStack.pop();
+  const prev = state.libraryStack[state.libraryStack.length - 1];
+  if (!prev) {
+    switchView("library");
+    return;
+  }
+  renderLibraryDetail(prev);
+  switchView("libraryDetail");
+}
+
+function renderLibraryDetail(entry) {
+  const eyebrows = { artist: "Artist", album: "Album", playlist: "Playlist" };
+  libraryDetailEyebrow.textContent = eyebrows[entry.kind] || "";
+  libraryDetailTitle.textContent = entry.title;
+  libraryDetailSub.textContent = entry.sub || "";
+  libraryDetailBackLabel.textContent = entry.backLabel || "Library";
+
+  libraryDetailArt.classList.add("hidden");
+  libraryDetailArtPlaceholder.classList.remove("hidden");
+  libraryDetailArt.onerror = () => {
+    libraryDetailArt.classList.add("hidden");
+    libraryDetailArtPlaceholder.classList.remove("hidden");
+  };
+  libraryDetailArt.onload = () => {
+    libraryDetailArt.classList.remove("hidden");
+    libraryDetailArtPlaceholder.classList.add("hidden");
+  };
+  libraryDetailArt.src = artworkUrl(entry.id);
+
+  const isArtist = entry.kind === "artist";
+  libraryAlbumsGrid.classList.toggle("hidden", !isArtist);
+  libraryDetailTracks.classList.toggle("hidden", isArtist);
+  if (isArtist) {
+    renderAlbumGrid(entry.albums || [], entry.title);
+  } else {
+    const tracks = entry.tracks || [];
+    renderTrackList(
+      libraryDetailTracks,
+      tracks,
+      (track) => loadQueue(tracks, entry.title, true, tracks.indexOf(track)),
+      true,
+    );
+  }
+}
+
+function renderAlbumGrid(albums, artistName) {
+  if (!albums.length) {
+    libraryAlbumsGrid.replaceChildren(emptyMsg("No albums found"));
+    return;
+  }
+  libraryAlbumsGrid.replaceChildren(...albums.map((album) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "album-card";
+    const artWrap = document.createElement("div");
+    artWrap.className = "album-card-art-wrap";
+    const img = document.createElement("img");
+    img.className = "album-card-art";
+    img.loading = "lazy";
+    img.alt = "";
+    const placeholder = document.createElement("div");
+    placeholder.className = "album-card-placeholder";
+    placeholder.textContent = "♪";
+    img.addEventListener("load", () => placeholder.classList.add("hidden"));
+    img.addEventListener("error", () => img.classList.add("hidden"));
+    img.src = artworkUrl(album.Id);
+    artWrap.append(placeholder, img);
+    const title = document.createElement("span");
+    title.className = "album-card-title";
+    title.textContent = album.Name || "Untitled";
+    const sub = document.createElement("span");
+    sub.className = "album-card-sub";
+    sub.textContent = album.ProductionYear || "";
+    card.append(artWrap, title, sub);
+    card.addEventListener("click", () => openAlbumDetail(album, artistName));
+    return card;
+  }));
+}
+
+async function playLibraryDetail(shuffled) {
+  const entry = state.libraryStack[state.libraryStack.length - 1];
+  if (!entry) return;
+  if (!entry.tracks && entry.kind === "artist") {
+    await withBusy("Loading tracks…", async () => {
+      entry.tracks = await fetchArtistTracks(entry.id);
+    });
+  }
+  const tracks = entry.tracks || [];
+  if (!tracks.length) {
+    setMessage("Nothing to play.");
+    return;
+  }
+  const list = shuffled ? shuffleArray(tracks) : tracks;
+  loadQueue(list, entry.title, true);
+}
+
 function loadQueue(tracks, label, autoPlay, startIndex = 0) {
   state.queueLabel = label || "";
   state.originalQueue = Array.isArray(tracks) ? [...tracks] : [];
@@ -1078,6 +1451,9 @@ async function createEmbyPlaylist(name, ids) {
     method: "POST",
     headers: embyHeaders(),
   }));
+  // The Library → Playlists pane caches its list; a newly created playlist
+  // must show up there on next visit.
+  state.libraryPlaylists = null;
   return typeof data.ItemAddedCount === "number" ? data.ItemAddedCount : ids.length;
 }
 
