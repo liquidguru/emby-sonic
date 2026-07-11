@@ -2,8 +2,11 @@ from fastapi import APIRouter
 from sqlalchemy import select, func
 from api.deps import DB, AuthToken
 from api.schemas import StatusOut, ErroredTrack
+from api.auth import token_cache_stats
 from db.models import Track, Embedding
+from analysis.faiss_index import sonic_index
 from analysis.scanner import scan_state
+from db.migrations import current_schema_version
 
 router = APIRouter(tags=["status"])
 
@@ -17,6 +20,14 @@ async def get_status(db: DB, _token: AuthToken) -> StatusOut:
             select(func.count()).select_from(Track).where(Track.analysis_status == "error")
         )
     ).scalar_one()
+    claimed, oldest_claimed_at = (
+        await db.execute(
+            select(func.count(), func.min(Track.claimed_at)).where(
+                Track.analysis_status == "pending",
+                Track.claimed_at.is_not(None),
+            )
+        )
+    ).one()
 
     # Pending = genuinely queued work, excluding tracks that errored out and won't
     # retry (unreadable/missing files). Progress is measured over *analysable*
@@ -25,6 +36,8 @@ async def get_status(db: DB, _token: AuthToken) -> StatusOut:
     pending = max(total - analysed - failed, 0)
     analysable = total - failed
     progress = (analysed / analysable) if analysable > 0 else None
+    indexed = len(sonic_index)
+    cache = token_cache_stats()
 
     return StatusOut(
         total_tracks=total,
@@ -33,6 +46,14 @@ async def get_status(db: DB, _token: AuthToken) -> StatusOut:
         failed_tracks=failed,
         scan_running=scan_state["running"],
         scan_progress=progress,
+        indexed_tracks=indexed,
+        index_in_sync=indexed == analysed,
+        claimed_tracks=claimed,
+        oldest_claimed_at=oldest_claimed_at,
+        auth_cache_entries=cache["entries"],
+        auth_cache_hits=cache["hits"],
+        auth_cache_misses=cache["misses"],
+        database_schema_version=current_schema_version(),
     )
 
 

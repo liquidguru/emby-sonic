@@ -52,6 +52,22 @@ New installs should start with the scenario guide:
 
 ### Setup
 
+On Windows, the repository wrapper creates a Python 3.12 virtual environment,
+installs the CPU development dependencies, and runs the same Python and web-app
+checks as CI:
+
+```powershell
+.\dev.ps1 bootstrap    # first run, or repair/recreate .venv
+.\dev.ps1 test         # subsequent full test runs
+.\dev.ps1 check        # environment/import diagnostics only
+```
+
+The wrapper uses `.venv\Scripts\python.exe` directly, so a global `python`
+command does not need to be on `PATH`. Install Python 3.12 first if the wrapper
+reports that `py -3.12` is unavailable.
+
+For Linux, macOS, containers, or a manual installation:
+
 ```bash
 # CPU-only PyTorch (recommended for Emby hosts; workers can use GPU separately)
 pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -175,6 +191,27 @@ scheduled task instead:
 Runs as SYSTEM, starts at boot, restarts automatically if it dies, no console
 window. (Docker deployments don't need this — see "Deploy on a NAS" above,
 which already runs the coordinator as a supervised container.)
+
+Inspect or safely restart either Windows task with the shared operations tool:
+
+```powershell
+# Read-only task, process, and health status:
+./deploy/service-control.ps1 -Service coordinator -Action status
+./deploy/service-control.ps1 -Service worker -Action status
+
+# Preview the exact stop/process-sweep/start operations:
+./deploy/service-control.ps1 -Service coordinator -Action restart -WhatIf
+
+# Perform the restart (run elevated on the service host):
+./deploy/service-control.ps1 -Service coordinator -Action restart
+```
+
+The generated launcher supervises a child Python process that Task Scheduler
+does not stop itself. The operations tool identifies that child using the exact
+repository launcher, configured Python executable, and service entry point
+before restarting, then waits for coordinator HTTP readiness or a live worker
+process. Avoid restarting these tasks with `Stop-ScheduledTask` and
+`Start-ScheduledTask` directly, which can leave the child behind.
 
 ### Automatic analysis (worker as a service)
 
@@ -346,6 +383,8 @@ Set via environment variables or a `.env` file:
 | `EMBY_URL_EXTERNAL` | *(blank = same as `EMBY_URL`)* | Emby's publicly-reachable address (FQDN/reverse proxy). Only needed for the web app: it streams audio browser→Emby directly, so a LAN-only `EMBY_URL` fails for anyone loading the page over WAN. Set this and the web app picks whichever address the browser loaded the page from |
 | `EMBY_API_KEY` | *(required)* | Emby API key for coordinator admin calls and worker audio downloads |
 | `WORKER_SECRET` | falls back to `EMBY_API_KEY` | Shared secret required in `X-Worker-Token` for worker routes |
+| `AUTH_CACHE_TTL_SECONDS` | `30` | Seconds to cache successful Emby user-token validation by SHA-256 digest; `0` disables caching |
+| `AUTH_CACHE_MAX_ENTRIES` | `1024` | Maximum successful token digests retained in the in-process validation cache; `0` disables caching |
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8765` | Bind port |
 | `NUM_WINDOWS` | `3` | Windows sampled per track (speed/quality knob) |

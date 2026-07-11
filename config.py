@@ -1,4 +1,5 @@
 from pathlib import Path
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,11 @@ class Settings(BaseSettings):
     emby_url_external: str = ""
     emby_api_key: str = ""
     worker_secret: str = ""
+    # Successful Emby user-token validations are cached briefly by SHA-256
+    # digest. This avoids an Emby /System/Info round trip on every coordinator
+    # request while bounding both revocation delay and process memory.
+    auth_cache_ttl_seconds: int = Field(default=30, ge=0, le=3600)
+    auth_cache_max_entries: int = Field(default=1024, ge=0, le=10_000)
 
     host: str = "0.0.0.0"
     port: int = 8765

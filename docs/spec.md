@@ -1545,6 +1545,38 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     by `activeServerUrl()`. Added tests for distinct login DeviceIds, malformed
     DeviceId rejection, and the CSP header directives.
 
+- **M5.35 — Coordinator hardening pass (2026-07-11):**
+  - Reproducible Windows development: root `dev.ps1` bootstraps a Python 3.12
+    `.venv`, installs CPU development dependencies, checks core imports, and
+    runs the Python + web JavaScript gates without requiring global `python` on
+    PATH. Clean bootstrap verified on dev-pc with Python 3.12.10.
+  - Safe Windows operations: `deploy/service-control.ps1` provides coordinator/
+    worker status, `-WhatIf`, narrowly matched supervisor/child cleanup, elevated
+    restart, and bounded readiness checks. Verified read-only and WhatIf against
+    dev-pc's idle worker task; real coordinator-host restart remains pending review.
+  - Scanner performance: library sync now resolves existing tracks with one
+    bounded `IN` query per 500 items instead of one `db.get()` per track, while
+    preserving incremental metadata refresh and full-rescan requeue semantics.
+  - Auth/status hardening: successful Emby user tokens are cached briefly by
+    SHA-256 digest only (30-second TTL, 1,024-entry bound; invalid tokens never
+    cached). Authenticated status adds FAISS/DB sync, worker claim age/count,
+    cache counters, and database schema version; additions are backward-
+    compatible with Android/plugin consumers.
+  - Database evolution: replaced startup's ad hoc ALTER checks with an ordered
+    `schema_migrations` ledger (at-least-once: a migration is recorded only
+    after it applies, and migration functions must be idempotent because
+    SQLite DDL runs in autocommit). Versions 1-3 adopt the existing centroid,
+    loudness, and genre columns idempotently, including databases already
+    upgraded by older releases.
+  - Verification: 12 focused scanner/auth/status/migration tests passed, followed
+    by the complete gate (59 Python tests + web-app JavaScript syntax check).
+    Independently reviewed; findings F1-F4 (migration semantics documented as
+    at-least-once + pinned by test, post-stop process sweep, non-elevated
+    visibility warning, venv-in-use bootstrap guard) fixed and re-verified
+    before commit. See `docs/hardening-roadmap.md` / `docs/hardening-handoff.md`.
+    Not yet deployed to coordinator-host — the first real elevated coordinator restart
+    via service-control.ps1 happens at deploy time.
+
 - **M5.17 — Android token-at-rest encryption (2026-06-21, built):** the Emby
   session token is now encrypted before being stored in the settings DataStore.
   `SettingsRepository` writes new sessions to a `session_token_ciphertext` value

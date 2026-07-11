@@ -64,6 +64,14 @@ class StatusOut(BaseModel):
     failed_tracks: int = 0       # couldn't be analysed (e.g. unreadable/missing files) — won't retry
     scan_running: bool
     scan_progress: float | None  # 0.0–1.0 over *analysable* tracks; reaches 1.0 when only failed remain
+    indexed_tracks: int = 0
+    index_in_sync: bool = False
+    claimed_tracks: int = 0
+    oldest_claimed_at: datetime | None = None
+    auth_cache_entries: int = 0
+    auth_cache_hits: int = 0
+    auth_cache_misses: int = 0
+    database_schema_version: int = 0
 
 
 class ErroredTrack(BaseModel):

@@ -1,3 +1,7 @@
+from collections import OrderedDict
+import hashlib
+import time
+
 import httpx
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
@@ -6,6 +10,65 @@ from config import settings
 
 _header = APIKeyHeader(name="X-Emby-Token", auto_error=True)
 _worker_header = APIKeyHeader(name="X-Worker-Token", auto_error=True)
+
+# SHA-256 token digest -> monotonic expiry. Raw Emby tokens are never retained.
+_valid_token_cache: OrderedDict[str, float] = OrderedDict()
+_cache_hits = 0
+_cache_misses = 0
+
+
+def _token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _prune_token_cache(now: float) -> None:
+    expired = [digest for digest, expiry in _valid_token_cache.items() if expiry <= now]
+    for digest in expired:
+        _valid_token_cache.pop(digest, None)
+
+
+def _cached_token_is_valid(digest: str) -> bool:
+    global _cache_hits, _cache_misses
+    now = time.monotonic()
+    expiry = _valid_token_cache.get(digest)
+    if expiry is not None and expiry > now:
+        _valid_token_cache.move_to_end(digest)
+        _cache_hits += 1
+        return True
+    if expiry is not None:
+        _valid_token_cache.pop(digest, None)
+    _cache_misses += 1
+    return False
+
+
+def _cache_valid_token(digest: str) -> None:
+    ttl = settings.auth_cache_ttl_seconds
+    max_entries = settings.auth_cache_max_entries
+    if ttl <= 0 or max_entries <= 0:
+        return
+    now = time.monotonic()
+    _prune_token_cache(now)
+    _valid_token_cache[digest] = now + ttl
+    _valid_token_cache.move_to_end(digest)
+    while len(_valid_token_cache) > max_entries:
+        _valid_token_cache.popitem(last=False)
+
+
+def clear_token_cache() -> None:
+    """Clear cached validations and counters (startup/tests/admin diagnostics)."""
+    global _cache_hits, _cache_misses
+    _valid_token_cache.clear()
+    _cache_hits = 0
+    _cache_misses = 0
+
+
+def token_cache_stats() -> dict[str, int]:
+    _prune_token_cache(time.monotonic())
+    return {
+        "entries": len(_valid_token_cache),
+        "hits": _cache_hits,
+        "misses": _cache_misses,
+    }
 
 
 async def verify_emby_token(token: str = Security(_header)) -> str:
@@ -20,6 +83,9 @@ async def verify_emby_token(token: str = Security(_header)) -> str:
     """
     if settings.emby_api_key and token == settings.emby_api_key:
         return token
+    digest = _token_digest(token)
+    if _cached_token_is_valid(digest):
+        return token
     async with httpx.AsyncClient(base_url=settings.emby_url, timeout=5.0) as client:
         resp = await client.get(
             "/System/Info",
@@ -27,6 +93,7 @@ async def verify_emby_token(token: str = Security(_header)) -> str:
         )
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Invalid or expired Emby token")
+    _cache_valid_token(digest)
     return token
 
 

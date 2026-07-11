@@ -6,6 +6,7 @@ CREATE TABLE tracks (
   title TEXT,
   artist TEXT,
   album TEXT,
+  genre TEXT,                  -- primary Emby genre used for mix naming
   duration_ms INTEGER,
   file_path TEXT,
   analysed_at TIMESTAMP,
@@ -32,7 +33,8 @@ CREATE TABLE mixes (
   id TEXT PRIMARY KEY,
   name TEXT,
   created_at TIMESTAMP,
-  cluster_id INTEGER
+  cluster_id INTEGER,
+  centroid BLOB                -- serialised k-means centroid
 );
 
 CREATE TABLE mix_tracks (
@@ -40,4 +42,10 @@ CREATE TABLE mix_tracks (
   track_id TEXT REFERENCES tracks(id),
   position INTEGER,
   PRIMARY KEY (mix_id, position)
+);
+
+CREATE TABLE schema_migrations (
+  version INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at TEXT NOT NULL
 );
