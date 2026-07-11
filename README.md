@@ -293,6 +293,24 @@ docker run -d --name emby-sonic-worker-gpu --gpus all \
 docker logs emby-sonic-worker-gpu | grep 'device='
 ```
 
+### Network access
+
+Besides your own Emby server, the containers make outbound calls to a small,
+fixed set of domains — useful if you run a firewall/router that flags new
+outbound traffic:
+
+| Domain | Called by | Why |
+|---|---|---|
+| `pypi.org`, `pythonhosted.org` | build time (`pip install`) | Resolving/downloading the Python dependencies in [`requirements.txt`](requirements.txt) / [`requirements-coordinator.txt`](requirements-coordinator.txt). Not called at runtime once built. |
+| `download.pytorch.org` | build time (`pip install torch`) | The CPU/CUDA PyTorch wheel, per [`Dockerfile`](Dockerfile)'s `TORCH_VARIANT` install step. |
+| `zenodo.org` | worker, first run only | One-time download of the ~327 MB PANNs `Cnn14_mAP=0.431.pth` checkpoint (pretrained AudioSet audio-tagging model) from its author's own hosting. Cached in the `emby-sonic-panns` volume — see above — so it should only be fetched once per volume, not on every restart. |
+| `ghcr.io` | anyone using prebuilt images | Pulling the published `coordinator`/`worker` images instead of building locally. |
+
+If `zenodo.org` is being called repeatedly rather than once, the checkpoint
+isn't persisting — check that `-v emby-sonic-panns:/root/panns_data` (or the
+Compose equivalent) is actually mounted and that the volume hasn't been
+recreated (e.g. by `docker compose down -v`).
+
 ## API
 
 All user-facing routes are under `/sonic` and require an `X-Emby-Token` header
