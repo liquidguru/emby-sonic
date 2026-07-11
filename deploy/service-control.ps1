@@ -102,16 +102,29 @@ function Get-ServiceProcesses {
 }
 
 function Get-CoordinatorHealth {
+    # 401/403 count as ready: /sonic/status requires a token, so an auth
+    # rejection proves the coordinator is up. No -SkipHttpErrorCheck — that is
+    # PowerShell 7+ only and the service hosts run Windows PowerShell 5.1, so
+    # non-2xx statuses are recovered from the thrown exception instead (5.1
+    # raises WebException, 7+ raises HttpResponseException; both expose
+    # Response.StatusCode).
     $uri = $CoordinatorUrl.TrimEnd('/') + '/sonic/status'
     try {
-        $response = Invoke-WebRequest -Uri $uri -Method Get -TimeoutSec 3 -SkipHttpErrorCheck
-        return [pscustomobject]@{
-            Ready = $response.StatusCode -in 200, 401, 403
-            Detail = "HTTP $($response.StatusCode) from $uri"
-        }
+        $response = Invoke-WebRequest -Uri $uri -Method Get -TimeoutSec 3 -UseBasicParsing
+        $code = [int]$response.StatusCode
     }
     catch {
-        return [pscustomobject]@{ Ready = $false; Detail = $_.Exception.Message }
+        $errorResponse = $_.Exception.Response
+        if ($errorResponse -and $errorResponse.StatusCode) {
+            $code = [int]$errorResponse.StatusCode
+        }
+        else {
+            return [pscustomobject]@{ Ready = $false; Detail = $_.Exception.Message }
+        }
+    }
+    return [pscustomobject]@{
+        Ready = $code -in 200, 401, 403
+        Detail = "HTTP $code from $uri"
     }
 }
 
