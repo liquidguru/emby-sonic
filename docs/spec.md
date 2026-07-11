@@ -1561,6 +1561,12 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     (`Artists/AlbumArtists`, `AlbumArtistIds` for artist albums,
     `ParentIndexNumber,IndexNumber` for album order). Audiobooks remain
     out of scope for the web app (deliberate, unchanged).
+  - Settings view (gear icon, top right) replacing the old instant-logout
+    icon, which looked like a back button and signed the user out on a
+    single mis-tap (maintainer feedback). Settings shows account (user,
+    active Emby endpoint) with Log out moved safely inside, plus a live
+    Sonic analysis status card (analysed/queued/failed/scan/index-sync)
+    — the start of Android-settings parity.
 
 - **M5.35 — Coordinator hardening pass (2026-07-11):**
   - Reproducible Windows development: root `dev.ps1` bootstraps a Python 3.12

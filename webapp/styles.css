@@ -1029,3 +1029,45 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   font-size: 0.78rem;
   color: var(--muted);
 }
+
+/* ── Settings ────────────────────────────────────────────── */
+
+.settings-card {
+  margin: 0 20px 16px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+}
+.settings-card-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 0;
+}
+.settings-label { color: var(--muted); font-size: 0.9rem; flex: 0 0 auto; }
+.settings-value { font-size: 0.9rem; font-weight: 600; text-align: right; }
+.settings-value-wrap { overflow-wrap: anywhere; }
+
+.danger-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 11px 0;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--danger);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.danger-btn:hover { background: rgba(240,106,138,.12); }

@@ -17,6 +17,10 @@ const loginView       = document.querySelector("#loginView");
 const loginForm       = document.querySelector("#loginForm");
 const appShell        = document.querySelector("#appShell");
 const logoutButton    = document.querySelector("#logoutButton");
+const settingsButton  = document.querySelector("#settingsButton");
+const settingsUserName   = document.querySelector("#settingsUserName");
+const settingsServerUrl  = document.querySelector("#settingsServerUrl");
+const settingsStatusRows = document.querySelector("#settingsStatusRows");
 const greeting        = document.querySelector("#greeting");
 const navButtons      = [...document.querySelectorAll(".nav-btn")];
 const pageContent     = document.querySelector("#pageContent");
@@ -237,6 +241,46 @@ async function switchView(view) {
   if (view === "library") {
     state.libraryStack = [];
     loadLibraryView();
+  }
+  if (view === "settings") loadSettingsView();
+}
+
+// ── Settings ─────────────────────────────────────────────
+
+settingsButton.addEventListener("click", () => switchView("settings"));
+
+async function loadSettingsView() {
+  if (!state.session) return;
+  settingsUserName.textContent = state.session.userName || "Unknown";
+  settingsServerUrl.textContent = activeServerUrl();
+  settingsStatusRows.replaceChildren(emptyMsg("Loading status…"));
+  try {
+    const status = await parseJson(await authedFetch("/sonic/status"));
+    const analysed = status.analysed_tracks ?? 0;
+    const total = status.total_tracks ?? 0;
+    const rows = [
+      ["Tracks analysed", `${analysed.toLocaleString()} of ${total.toLocaleString()}`],
+      ["Queued", (status.pending_tracks ?? 0).toLocaleString()],
+      ["Failed (won't retry)", (status.failed_tracks ?? 0).toLocaleString()],
+      ["Scan running", status.scan_running ? "Yes" : "No"],
+      ["Index in sync", status.index_in_sync ? "Yes" : "No"],
+    ];
+    settingsStatusRows.replaceChildren(...rows.map(([label, value]) => {
+      const row = document.createElement("div");
+      row.className = "settings-row";
+      const labelEl = document.createElement("span");
+      labelEl.className = "settings-label";
+      labelEl.textContent = label;
+      const valueEl = document.createElement("span");
+      valueEl.className = "settings-value";
+      valueEl.textContent = value;
+      row.append(labelEl, valueEl);
+      return row;
+    }));
+  } catch (err) {
+    settingsStatusRows.replaceChildren(
+      emptyMsg("Coordinator status unavailable — is the service running?"),
+    );
   }
 }
 
