@@ -154,6 +154,7 @@ const state = {
   libraryArtists: null,    // cached AlbumArtists items
   libraryPlaylists: null,  // cached Playlist items (null = refetch)
   libraryStack: [],        // drill-down entries for the shared detail view
+  libraryScrollTop: 0,     // list scroll position, restored when backing out
 };
 
 // ── Boot ─────────────────────────────────────────────────
@@ -1081,7 +1082,7 @@ async function fetchPlaylistTracks(playlistId) {
 }
 
 async function fetchArtistAlbums(artistId) {
-  return fetchEmbyRawItems({
+  const albums = await fetchEmbyRawItems({
     IncludeItemTypes: "MusicAlbum",
     AlbumArtistIds: artistId,
     Recursive: "true",
@@ -1089,6 +1090,40 @@ async function fetchArtistAlbums(artistId) {
     Fields: "ProductionYear,ChildCount",
     Limit: "500",
   });
+  await hydrateAlbumArt(albums, artistId);
+  return albums;
+}
+
+// Most albums have no album-level Primary image — the art lives in the
+// tracks' embedded tags — so mirror the Android app's hydration: one query
+// of the artist's tracks, taking the first track WITH art per album (not
+// just the first track; some tracks have no image either). Sets _artItemId
+// to the item whose Primary image the grid should show, or null for the
+// placeholder (avoids firing image requests that are known 404s).
+async function hydrateAlbumArt(albums, artistId) {
+  const missing = new Set();
+  for (const album of albums) {
+    if (album.ImageTags?.Primary) album._artItemId = album.Id;
+    else missing.add(album.Id);
+  }
+  if (!missing.size) return;
+  const tracks = await fetchEmbyRawItems({
+    IncludeItemTypes: "Audio",
+    AlbumArtistIds: artistId,
+    Recursive: "true",
+    SortBy: "Album,ParentIndexNumber,IndexNumber",
+    Fields: "AlbumId",
+    Limit: "2000",
+  });
+  const covers = new Map();
+  for (const track of tracks) {
+    const albumId = track.AlbumId;
+    if (!albumId || !missing.has(albumId) || covers.has(albumId)) continue;
+    if (track.ImageTags?.Primary) covers.set(albumId, track.Id);
+  }
+  for (const album of albums) {
+    if (!album._artItemId) album._artItemId = covers.get(album.Id) || null;
+  }
 }
 
 async function fetchAlbumTracks(albumId) {
@@ -1188,6 +1223,8 @@ function renderLibraryPlaylists(playlists) {
 }
 
 async function openArtistDetail(artist) {
+  // Captured before the view switch wipes it, restored by libraryBack().
+  state.libraryScrollTop = pageContent.scrollTop;
   const entry = {
     kind: "artist",
     id: artist.Id,
@@ -1206,6 +1243,7 @@ async function openAlbumDetail(album, artistName) {
   const entry = {
     kind: "album",
     id: album.Id,
+    artItemId: album._artItemId,
     title: album.Name || "Untitled album",
     backLabel: artistName || "Library",
   };
@@ -1219,6 +1257,7 @@ async function openAlbumDetail(album, artistName) {
 }
 
 async function openPlaylistDetail(pl) {
+  state.libraryScrollTop = pageContent.scrollTop;
   const entry = {
     kind: "playlist",
     id: pl.Id,
@@ -1243,7 +1282,12 @@ function libraryBack() {
   state.libraryStack.pop();
   const prev = state.libraryStack[state.libraryStack.length - 1];
   if (!prev) {
+    const restoreTo = state.libraryScrollTop;
     switchView("library");
+    // switchView zeroes pageContent.scrollTop; put the user back where they
+    // were in the A-Z/playlists list (cached data renders synchronously, so
+    // the list has its height again by the next frame).
+    requestAnimationFrame(() => { pageContent.scrollTop = restoreTo; });
     return;
   }
   renderLibraryDetail(prev);
@@ -1267,7 +1311,7 @@ function renderLibraryDetail(entry) {
     libraryDetailArt.classList.remove("hidden");
     libraryDetailArtPlaceholder.classList.add("hidden");
   };
-  libraryDetailArt.src = artworkUrl(entry.id);
+  libraryDetailArt.src = artworkUrl(entry.artItemId || entry.id);
 
   const isArtist = entry.kind === "artist";
   libraryAlbumsGrid.classList.toggle("hidden", !isArtist);
@@ -1296,17 +1340,20 @@ function renderAlbumGrid(albums, artistName) {
     card.className = "album-card";
     const artWrap = document.createElement("div");
     artWrap.className = "album-card-art-wrap";
-    const img = document.createElement("img");
-    img.className = "album-card-art";
-    img.loading = "lazy";
-    img.alt = "";
     const placeholder = document.createElement("div");
     placeholder.className = "album-card-placeholder";
     placeholder.textContent = "♪";
-    img.addEventListener("load", () => placeholder.classList.add("hidden"));
-    img.addEventListener("error", () => img.classList.add("hidden"));
-    img.src = artworkUrl(album.Id);
-    artWrap.append(placeholder, img);
+    artWrap.append(placeholder);
+    if (album._artItemId) {
+      const img = document.createElement("img");
+      img.className = "album-card-art";
+      img.loading = "lazy";
+      img.alt = "";
+      img.addEventListener("load", () => placeholder.classList.add("hidden"));
+      img.addEventListener("error", () => img.classList.add("hidden"));
+      img.src = artworkUrl(album._artItemId);
+      artWrap.append(img);
+    }
     const title = document.createElement("span");
     title.className = "album-card-title";
     title.textContent = album.Name || "Untitled";
