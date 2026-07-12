@@ -1103,3 +1103,30 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   margin-top: 0;
   padding: 11px 16px;
 }
+
+/* ── Search filter chips (Android-style result-type switch) ─ */
+
+.search-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 20px 12px;
+  scrollbar-width: none;
+}
+.search-filters::-webkit-scrollbar { display: none; }
+.search-chip {
+  flex: 0 0 auto;
+  padding: 7px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.search-chip.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}

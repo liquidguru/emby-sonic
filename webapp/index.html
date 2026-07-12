@@ -124,15 +124,11 @@
             <input id="searchInput" type="search" autocomplete="off" placeholder="Search tracks, artists…">
             <button class="primary-btn compact-btn" type="submit">Search</button>
           </form>
-          <section id="searchArtistsSection" class="search-sub hidden">
-            <p class="search-sub-label">Artists</p>
-            <ul id="searchArtistsList" class="track-list compact-list" aria-label="Artist results"></ul>
-          </section>
-          <section id="searchAlbumsSection" class="search-sub hidden">
-            <p class="search-sub-label">Albums</p>
-            <ul id="searchAlbumsList" class="track-list compact-list" aria-label="Album results"></ul>
-          </section>
-          <p id="searchTracksLabel" class="search-sub-label hidden">Tracks</p>
+          <div id="searchFilters" class="search-filters hidden" role="tablist" aria-label="Result type">
+            <button class="search-chip active" type="button" role="tab" data-filter="tracks">Tracks</button>
+            <button class="search-chip" type="button" role="tab" data-filter="albums">Albums</button>
+            <button class="search-chip" type="button" role="tab" data-filter="artists">Artists</button>
+          </div>
           <ul id="resultsList" class="track-list" aria-label="Search results"></ul>
           <section id="similarPanel" class="similar-section hidden">
             <div class="section-label">

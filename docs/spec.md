@@ -1571,9 +1571,12 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     /Items/{id}`) and remove individual tracks (per-entry ✕ using
     `PlaylistItemId` via `DELETE /Playlists/{id}/Items?EntryIds=`, same
     as Android — entry ids verified against the live server).
-  - Search now returns artists and albums alongside tracks, linking into
-    the Library drill-down views; the detail back button returns to
-    whichever view (Library or Search) the drill-down started from.
+  - Search returns artists and albums alongside tracks, presented as an
+    Android-style filter-chip row (Tracks/Albums/Artists, defaulting to
+    Tracks) that switches a single result list; artist/album hits link
+    into the Library drill-down views, and the detail back button returns
+    to whichever view (Library or Search) the drill-down started from.
+    Chip row leaves room for Books/Authors when audiobooks land.
 
 - **M5.35 — Coordinator hardening pass (2026-07-11):**
   - Reproducible Windows development: root `dev.ps1` bootstraps a Python 3.12

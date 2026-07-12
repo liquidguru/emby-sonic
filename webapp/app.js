@@ -38,11 +38,8 @@ const genreGrid          = document.querySelector("#genreGrid");
 const searchForm      = document.querySelector("#searchForm");
 const searchInput     = document.querySelector("#searchInput");
 const resultsList     = document.querySelector("#resultsList");
-const searchArtistsSection = document.querySelector("#searchArtistsSection");
-const searchArtistsList    = document.querySelector("#searchArtistsList");
-const searchAlbumsSection  = document.querySelector("#searchAlbumsSection");
-const searchAlbumsList     = document.querySelector("#searchAlbumsList");
-const searchTracksLabel    = document.querySelector("#searchTracksLabel");
+const searchFilters   = document.querySelector("#searchFilters");
+const searchChips     = [...document.querySelectorAll(".search-chip")];
 const similarPanel    = document.querySelector("#similarPanel");
 const similarTitle    = document.querySelector("#similarTitle");
 const similarList     = document.querySelector("#similarList");
@@ -161,6 +158,7 @@ const state = {
   libraryPlaylists: null,  // cached Playlist items (null = refetch)
   libraryStack: [],        // drill-down entries for the shared detail view
   libraryScrollTop: 0,     // list scroll position, restored when backing out
+  search: { tracks: [], albums: [], artists: [], filter: "tracks" },
 };
 
 // ── Boot ─────────────────────────────────────────────────
@@ -214,7 +212,10 @@ logoutButton.addEventListener("click", () => {
     musicParentIds: null,
     libraryTab: "artists", libraryArtists: null,
     libraryPlaylists: null, libraryStack: [],
+    search: { tracks: [], albums: [], artists: [], filter: "tracks" },
   });
+  resultsList.replaceChildren();
+  searchFilters.classList.add("hidden");
   audio.pause();
   audio.removeAttribute("src");
   renderSession();
@@ -884,9 +885,7 @@ searchForm.addEventListener("submit", async (e) => {
   const query = searchInput.value.trim();
   if (!query) {
     resultsList.replaceChildren();
-    searchArtistsSection.classList.add("hidden");
-    searchAlbumsSection.classList.add("hidden");
-    searchTracksLabel.classList.add("hidden");
+    searchFilters.classList.add("hidden");
     return;
   }
   await withBusy("Searching…", async () => {
@@ -899,57 +898,73 @@ searchForm.addEventListener("submit", async (e) => {
         SearchTerm: query, IncludeItemTypes: "MusicAlbum", Recursive: "true", Limit: "100",
       }).catch(() => []),
     ]);
-    renderSearchArtists(artists);
-    renderSearchAlbums(albums);
-    searchTracksLabel.classList.toggle("hidden", !tracks.length || (!artists.length && !albums.length));
-    renderTrackList(resultsList, tracks, (t) => startRadio(t), true);
-    setMessage(tracks.length ? `${tracks.length} tracks found.` : "No tracks found.");
+    state.search = { tracks, albums, artists, filter: "tracks" };
+    searchFilters.classList.remove("hidden");
+    setSearchFilter("tracks");
+    const counts = `${tracks.length} tracks, ${albums.length} albums, ${artists.length} artists`;
+    setMessage(tracks.length || albums.length || artists.length ? counts : "No results.");
   });
 });
 
-// Artist/album search hits link into the Library drill-down views.
-function renderSearchArtists(artists) {
-  searchArtistsSection.classList.toggle("hidden", !artists.length);
-  searchArtistsList.replaceChildren(...artists.map((artist) => {
-    const item = document.createElement("li");
-    item.className = "track-item";
-    const thumb = document.createElement("div");
-    thumb.className = "track-thumb-placeholder";
-    thumb.textContent = (artist.Name || "?").trim().charAt(0).toUpperCase() || "?";
-    const info = document.createElement("div");
-    info.className = "track-info";
-    const name = document.createElement("span");
-    name.className = "track-name";
-    name.textContent = artist.Name || "Unknown artist";
-    const meta = document.createElement("span");
-    meta.className = "track-meta";
-    meta.textContent = "Artist";
-    info.append(name, meta);
-    item.append(thumb, info);
-    item.addEventListener("click", () => openArtistDetail(artist, "search"));
-    return item;
-  }));
+// Chip row selects which result type fills the single list (Android pattern).
+searchChips.forEach((chip) => {
+  chip.addEventListener("click", () => setSearchFilter(chip.dataset.filter));
+});
+
+function setSearchFilter(filter) {
+  state.search.filter = filter;
+  searchChips.forEach((chip) => {
+    const active = chip.dataset.filter === filter;
+    chip.classList.toggle("active", active);
+    chip.setAttribute("aria-selected", String(active));
+  });
+  renderSearchResults();
 }
 
-function renderSearchAlbums(albums) {
-  searchAlbumsSection.classList.toggle("hidden", !albums.length);
-  searchAlbumsList.replaceChildren(...albums.map((album) => {
+function renderSearchResults() {
+  const { tracks, albums, artists, filter } = state.search;
+  if (filter === "tracks") {
+    renderTrackList(resultsList, tracks, (t) => startRadio(t), true);
+  } else if (filter === "artists") {
+    renderCollectionRows(artists, {
+      empty: "No artists found",
+      glyph: (a) => (a.Name || "?").trim().charAt(0).toUpperCase() || "?",
+      title: (a) => a.Name || "Unknown artist",
+      meta: () => "Artist",
+      onClick: (a) => openArtistDetail(a, "search"),
+    });
+  } else {
+    renderCollectionRows(albums, {
+      empty: "No albums found",
+      glyph: () => "◉",
+      title: (a) => a.Name || "Untitled album",
+      meta: (a) => ["Album", a.AlbumArtist].filter(Boolean).join(" · "),
+      onClick: (a) => openAlbumDetail(a, a.AlbumArtist, "search"),
+    });
+  }
+}
+
+// Artist/album search hits render as tappable rows that link into the Library
+// drill-down views.
+function renderCollectionRows(items, { empty, glyph, title, meta, onClick }) {
+  if (!items.length) { resultsList.replaceChildren(emptyMsg(empty, "li")); return; }
+  resultsList.replaceChildren(...items.map((it) => {
     const item = document.createElement("li");
     item.className = "track-item";
     const thumb = document.createElement("div");
     thumb.className = "track-thumb-placeholder";
-    thumb.textContent = "◉";
+    thumb.textContent = glyph(it);
     const info = document.createElement("div");
     info.className = "track-info";
     const name = document.createElement("span");
     name.className = "track-name";
-    name.textContent = album.Name || "Untitled album";
-    const meta = document.createElement("span");
-    meta.className = "track-meta";
-    meta.textContent = ["Album", album.AlbumArtist].filter(Boolean).join(" · ");
-    info.append(name, meta);
+    name.textContent = title(it);
+    const metaEl = document.createElement("span");
+    metaEl.className = "track-meta";
+    metaEl.textContent = meta(it);
+    info.append(name, metaEl);
     item.append(thumb, info);
-    item.addEventListener("click", () => openAlbumDetail(album, album.AlbumArtist, "search"));
+    item.addEventListener("click", () => onClick(it));
     return item;
   }));
 }
