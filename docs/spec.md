@@ -1545,8 +1545,8 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     by `activeServerUrl()`. Added tests for distinct login DeviceIds, malformed
     DeviceId rejection, and the CSP header directives.
 
-- **M5.36 — Web app library & playlist browse (2026-07-11, in progress —
-  pending live verification):**
+- **M5.36 — Web app library & playlist browse (2026-07-12, verified
+  live and shipped in beta.15):**
   - New Library bottom-nav tab with Artists/Playlists segments. Artists A–Z
     (letter headers + jump strip, music-scoped via `/sonic/music/parent-ids`,
     deduped across libraries) → artist detail (album grid with lazy Primary
