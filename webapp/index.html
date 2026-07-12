@@ -124,6 +124,15 @@
             <input id="searchInput" type="search" autocomplete="off" placeholder="Search tracks, artists…">
             <button class="primary-btn compact-btn" type="submit">Search</button>
           </form>
+          <section id="searchArtistsSection" class="search-sub hidden">
+            <p class="search-sub-label">Artists</p>
+            <ul id="searchArtistsList" class="track-list compact-list" aria-label="Artist results"></ul>
+          </section>
+          <section id="searchAlbumsSection" class="search-sub hidden">
+            <p class="search-sub-label">Albums</p>
+            <ul id="searchAlbumsList" class="track-list compact-list" aria-label="Album results"></ul>
+          </section>
+          <p id="searchTracksLabel" class="search-sub-label hidden">Tracks</p>
           <ul id="resultsList" class="track-list" aria-label="Search results"></ul>
           <section id="similarPanel" class="similar-section hidden">
             <div class="section-label">
@@ -277,6 +286,7 @@
           <div class="library-detail-actions">
             <button id="libraryDetailPlay" class="primary-btn" type="button">Play</button>
             <button id="libraryDetailShuffle" class="secondary-btn" type="button">Shuffle</button>
+            <button id="libraryDetailDelete" class="danger-btn danger-btn-compact hidden" type="button">Delete</button>
           </div>
           <div id="libraryAlbumsGrid" class="album-grid hidden"></div>
           <ol id="libraryDetailTracks" class="track-list numbered-list hidden" aria-label="Tracks"></ol>

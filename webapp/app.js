@@ -38,6 +38,11 @@ const genreGrid          = document.querySelector("#genreGrid");
 const searchForm      = document.querySelector("#searchForm");
 const searchInput     = document.querySelector("#searchInput");
 const resultsList     = document.querySelector("#resultsList");
+const searchArtistsSection = document.querySelector("#searchArtistsSection");
+const searchArtistsList    = document.querySelector("#searchArtistsList");
+const searchAlbumsSection  = document.querySelector("#searchAlbumsSection");
+const searchAlbumsList     = document.querySelector("#searchAlbumsList");
+const searchTracksLabel    = document.querySelector("#searchTracksLabel");
 const similarPanel    = document.querySelector("#similarPanel");
 const similarTitle    = document.querySelector("#similarTitle");
 const similarList     = document.querySelector("#similarList");
@@ -93,6 +98,7 @@ const libraryDetailTitle    = document.querySelector("#libraryDetailTitle");
 const libraryDetailSub      = document.querySelector("#libraryDetailSub");
 const libraryDetailPlay     = document.querySelector("#libraryDetailPlay");
 const libraryDetailShuffle  = document.querySelector("#libraryDetailShuffle");
+const libraryDetailDelete   = document.querySelector("#libraryDetailDelete");
 const libraryAlbumsGrid     = document.querySelector("#libraryAlbumsGrid");
 const libraryDetailTracks   = document.querySelector("#libraryDetailTracks");
 
@@ -876,13 +882,77 @@ buildArtistMixButton.addEventListener("click", async () => {
 searchForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const query = searchInput.value.trim();
-  if (!query) { resultsList.replaceChildren(); return; }
+  if (!query) {
+    resultsList.replaceChildren();
+    searchArtistsSection.classList.add("hidden");
+    searchAlbumsSection.classList.add("hidden");
+    searchTracksLabel.classList.add("hidden");
+    return;
+  }
   await withBusy("Searching…", async () => {
-    const tracks = await searchTracks(query);
+    const [tracks, artists, albums] = await Promise.all([
+      searchTracks(query),
+      fetchMusicEmbyRawItems({
+        SearchTerm: query, IncludeItemTypes: "MusicArtist", Recursive: "true", Limit: "5",
+      }).catch(() => []),
+      fetchMusicEmbyRawItems({
+        SearchTerm: query, IncludeItemTypes: "MusicAlbum", Recursive: "true", Limit: "5",
+      }).catch(() => []),
+    ]);
+    renderSearchArtists(artists);
+    renderSearchAlbums(albums);
+    searchTracksLabel.classList.toggle("hidden", !tracks.length || (!artists.length && !albums.length));
     renderTrackList(resultsList, tracks, (t) => startRadio(t), true);
     setMessage(tracks.length ? `${tracks.length} tracks found.` : "No tracks found.");
   });
 });
+
+// Artist/album search hits link into the Library drill-down views.
+function renderSearchArtists(artists) {
+  searchArtistsSection.classList.toggle("hidden", !artists.length);
+  searchArtistsList.replaceChildren(...artists.map((artist) => {
+    const item = document.createElement("li");
+    item.className = "track-item";
+    const thumb = document.createElement("div");
+    thumb.className = "track-thumb-placeholder";
+    thumb.textContent = (artist.Name || "?").trim().charAt(0).toUpperCase() || "?";
+    const info = document.createElement("div");
+    info.className = "track-info";
+    const name = document.createElement("span");
+    name.className = "track-name";
+    name.textContent = artist.Name || "Unknown artist";
+    const meta = document.createElement("span");
+    meta.className = "track-meta";
+    meta.textContent = "Artist";
+    info.append(name, meta);
+    item.append(thumb, info);
+    item.addEventListener("click", () => openArtistDetail(artist, "search"));
+    return item;
+  }));
+}
+
+function renderSearchAlbums(albums) {
+  searchAlbumsSection.classList.toggle("hidden", !albums.length);
+  searchAlbumsList.replaceChildren(...albums.map((album) => {
+    const item = document.createElement("li");
+    item.className = "track-item";
+    const thumb = document.createElement("div");
+    thumb.className = "track-thumb-placeholder";
+    thumb.textContent = "◉";
+    const info = document.createElement("div");
+    info.className = "track-info";
+    const name = document.createElement("span");
+    name.className = "track-name";
+    name.textContent = album.Name || "Untitled album";
+    const meta = document.createElement("span");
+    meta.className = "track-meta";
+    meta.textContent = ["Album", album.AlbumArtist].filter(Boolean).join(" · ");
+    info.append(name, meta);
+    item.append(thumb, info);
+    item.addEventListener("click", () => openAlbumDetail(album, album.AlbumArtist, "search"));
+    return item;
+  }));
+}
 
 async function searchTracks(query, limit = 60) {
   return parseJson(await authedFetch(`/sonic/search/tracks?q=${encodeURIComponent(query)}&limit=${limit}`));
@@ -1001,6 +1071,17 @@ libraryTabPlaylists.addEventListener("click", () => setLibraryTab("playlists"));
 libraryDetailBack.addEventListener("click", libraryBack);
 libraryDetailPlay.addEventListener("click", () => playLibraryDetail(false));
 libraryDetailShuffle.addEventListener("click", () => playLibraryDetail(true));
+libraryDetailDelete.addEventListener("click", async () => {
+  const entry = state.libraryStack[state.libraryStack.length - 1];
+  if (!entry || entry.kind !== "playlist") return;
+  if (!window.confirm(`Delete playlist "${entry.title}"? This cannot be undone.`)) return;
+  await withBusy("Deleting playlist…", async () => {
+    await deleteEmbyItem(entry.id);
+    state.libraryPlaylists = null;
+    switchView("library");
+    setMessage(`Deleted "${entry.title}".`);
+  });
+});
 
 function setLibraryTab(tab) {
   state.libraryTab = tab;
@@ -1078,7 +1159,32 @@ async function fetchPlaylistTracks(playlistId) {
     headers: embyHeaders(),
   });
   const data = await parseJson(resp);
-  return (Array.isArray(data.Items) ? data.Items : []).map(embyItemToTrack);
+  return (Array.isArray(data.Items) ? data.Items : []).map((item) => {
+    const track = embyItemToTrack(item);
+    // Removal targets the playlist ENTRY, not the track id (a track can be
+    // in a playlist twice) — same as Android's deletePlaylistItems.
+    track.playlistItemId = item.PlaylistItemId || null;
+    return track;
+  });
+}
+
+async function deleteEmbyItem(itemId) {
+  const base = activeServerUrl();
+  const resp = await fetch(`${base}/Items/${encodeURIComponent(itemId)}`, {
+    method: "DELETE",
+    headers: embyHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Delete failed (HTTP ${resp.status})`);
+}
+
+async function removePlaylistEntries(playlistId, entryIds) {
+  const base = activeServerUrl();
+  const qs = new URLSearchParams({ EntryIds: entryIds.join(",") });
+  const resp = await fetch(`${base}/Playlists/${encodeURIComponent(playlistId)}/Items?${qs}`, {
+    method: "DELETE",
+    headers: embyHeaders(),
+  });
+  if (!resp.ok) throw new Error(`Remove failed (HTTP ${resp.status})`);
 }
 
 async function fetchArtistAlbums(artistId) {
@@ -1222,14 +1328,15 @@ function renderLibraryPlaylists(playlists) {
   }));
 }
 
-async function openArtistDetail(artist) {
+async function openArtistDetail(artist, backTo = "library") {
   // Captured before the view switch wipes it, restored by libraryBack().
   state.libraryScrollTop = pageContent.scrollTop;
   const entry = {
     kind: "artist",
     id: artist.Id,
     title: artist.Name || "Unknown artist",
-    backLabel: "Library",
+    backTo,
+    backLabel: backTo === "search" ? "Search" : "Library",
   };
   await withBusy("Loading albums…", async () => {
     entry.albums = await fetchArtistAlbums(artist.Id);
@@ -1239,13 +1346,14 @@ async function openArtistDetail(artist) {
   openLibraryDetail(entry);
 }
 
-async function openAlbumDetail(album, artistName) {
+async function openAlbumDetail(album, artistName, backTo = "library") {
   const entry = {
     kind: "album",
     id: album.Id,
-    artItemId: album._artItemId,
+    artItemId: album._artItemId || (album.ImageTags?.Primary ? album.Id : null),
     title: album.Name || "Untitled album",
-    backLabel: artistName || "Library",
+    backTo,
+    backLabel: artistName || (backTo === "search" ? "Search" : "Library"),
   };
   await withBusy("Loading tracks…", async () => {
     entry.tracks = await fetchAlbumTracks(album.Id);
@@ -1262,6 +1370,7 @@ async function openPlaylistDetail(pl) {
     kind: "playlist",
     id: pl.Id,
     title: pl.Name || "Untitled playlist",
+    backTo: "library",
     backLabel: "Library",
   };
   await withBusy("Loading playlist…", async () => {
@@ -1279,15 +1388,19 @@ function openLibraryDetail(entry) {
 }
 
 function libraryBack() {
-  state.libraryStack.pop();
+  const popped = state.libraryStack.pop();
   const prev = state.libraryStack[state.libraryStack.length - 1];
   if (!prev) {
+    // Return to wherever the drill-down began (Library list or Search).
+    const origin = popped?.backTo || "library";
     const restoreTo = state.libraryScrollTop;
-    switchView("library");
-    // switchView zeroes pageContent.scrollTop; put the user back where they
-    // were in the A-Z/playlists list (cached data renders synchronously, so
-    // the list has its height again by the next frame).
-    requestAnimationFrame(() => { pageContent.scrollTop = restoreTo; });
+    switchView(origin);
+    if (origin === "library") {
+      // switchView zeroes pageContent.scrollTop; put the user back where
+      // they were in the A-Z/playlists list (cached data renders
+      // synchronously, so the list has its height again by the next frame).
+      requestAnimationFrame(() => { pageContent.scrollTop = restoreTo; });
+    }
     return;
   }
   renderLibraryDetail(prev);
@@ -1316,6 +1429,7 @@ function renderLibraryDetail(entry) {
   const isArtist = entry.kind === "artist";
   libraryAlbumsGrid.classList.toggle("hidden", !isArtist);
   libraryDetailTracks.classList.toggle("hidden", isArtist);
+  libraryDetailDelete.classList.toggle("hidden", entry.kind !== "playlist");
   if (isArtist) {
     renderAlbumGrid(entry.albums || [], entry.title);
   } else {
@@ -1325,8 +1439,24 @@ function renderLibraryDetail(entry) {
       tracks,
       (track) => loadQueue(tracks, entry.title, true, tracks.indexOf(track)),
       true,
+      entry.kind === "playlist" ? (track) => removeFromPlaylist(entry, track) : null,
     );
   }
+}
+
+async function removeFromPlaylist(entry, track) {
+  if (!track.playlistItemId) {
+    setMessage("Emby did not return an entry id for this track.");
+    return;
+  }
+  await withBusy("Removing track…", async () => {
+    await removePlaylistEntries(entry.id, [track.playlistItemId]);
+    entry.tracks = entry.tracks.filter((t) => t !== track);
+    entry.sub = `${entry.tracks.length} tracks`;
+    state.libraryPlaylists = null;
+    renderLibraryDetail(entry);
+    setMessage(`Removed "${track.title}" from ${entry.title}.`);
+  });
 }
 
 function renderAlbumGrid(albums, artistName) {
@@ -1763,7 +1893,7 @@ function embyItemToTrack(item) {
 
 // ── Render helpers ───────────────────────────────────────
 
-function renderTrackList(container, tracks, onPlay, showSimilarBtn) {
+function renderTrackList(container, tracks, onPlay, showSimilarBtn, onRemove = null) {
   if (!tracks.length) { container.replaceChildren(emptyMsg("No results", "li")); return; }
   container.replaceChildren(...tracks.map((track) => {
     const item = document.createElement("li");
@@ -1792,6 +1922,16 @@ function renderTrackList(container, tracks, onPlay, showSimilarBtn) {
       simBtn.textContent = "Similar";
       simBtn.addEventListener("click", (e) => { e.stopPropagation(); showSimilar(track); });
       actions.appendChild(simBtn);
+    }
+    if (onRemove) {
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "row-remove-btn";
+      removeBtn.textContent = "✕";
+      removeBtn.setAttribute("aria-label", "Remove from playlist");
+      removeBtn.title = "Remove from playlist";
+      removeBtn.addEventListener("click", (e) => { e.stopPropagation(); onRemove(track); });
+      actions.appendChild(removeBtn);
     }
 
     item.append(thumb, info, actions);

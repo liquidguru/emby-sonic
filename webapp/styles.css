@@ -1073,3 +1073,33 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   cursor: pointer;
 }
 .danger-btn:hover { background: rgba(240,106,138,.12); }
+
+/* ── Search sub-sections & playlist management ───────────── */
+
+.search-sub-label {
+  padding: 12px 20px 2px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.row-remove-btn {
+  width: 30px;
+  height: 30px;
+  margin-left: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.row-remove-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+.danger-btn-compact {
+  width: auto;
+  margin-top: 0;
+  padding: 11px 16px;
+}
