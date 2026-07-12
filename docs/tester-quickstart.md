@@ -42,6 +42,14 @@ Then: install the Emby plugin ([step 3](#3-install-the-emby-plugin-prebuilt--no-
 kick off a library scan and run a worker ([step 4](#4-analyse-your-library)),
 and install the Android app ([step 5](#5-install-the-android-app-liquidwave)).
 
+> **In a hurry, or just want to try the app first?** You can install the
+> Android app ([step 5](#5-install-the-android-app-liquidwave)) on its own,
+> skipping everything above — it's a fully working Emby player by itself.
+> You just won't have the sonic features (mixes, radio, similar tracks) until
+> the coordinator's running. See
+> [You can start with just the app](#you-can-start-with-just-the-app) below
+> for exactly what works without it.
+
 Running Windows instead, or want a GPU worker on a separate box? See
 [Pick your setup](#pick-your-setup) below.
 
