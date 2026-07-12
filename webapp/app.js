@@ -893,10 +893,10 @@ searchForm.addEventListener("submit", async (e) => {
     const [tracks, artists, albums] = await Promise.all([
       searchTracks(query),
       fetchMusicEmbyRawItems({
-        SearchTerm: query, IncludeItemTypes: "MusicArtist", Recursive: "true", Limit: "5",
+        SearchTerm: query, IncludeItemTypes: "MusicArtist", Recursive: "true", Limit: "100",
       }).catch(() => []),
       fetchMusicEmbyRawItems({
-        SearchTerm: query, IncludeItemTypes: "MusicAlbum", Recursive: "true", Limit: "5",
+        SearchTerm: query, IncludeItemTypes: "MusicAlbum", Recursive: "true", Limit: "100",
       }).catch(() => []),
     ]);
     renderSearchArtists(artists);
