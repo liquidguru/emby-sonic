@@ -457,6 +457,7 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
 
 .track-info { flex: 1; min-width: 0; }
 .track-name {
+  display: block;
   font-size: .88rem;
   font-weight: 500;
   white-space: nowrap;
@@ -465,6 +466,7 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   color: var(--text);
 }
 .track-meta {
+  display: block;
   font-size: .74rem;
   color: var(--muted);
   white-space: nowrap;
