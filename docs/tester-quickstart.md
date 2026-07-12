@@ -134,13 +134,21 @@ Or pull and start manually:
 docker compose up -d coordinator
 ```
 
-**Or native Python (3.11+):**
+**Or native Python (3.11+) — no Docker or Linux box needed, works the same on
+Windows, macOS, or Linux:**
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 python main.py
 ```
+
+> **On Windows specifically:** if this is a "one Windows box does everything"
+> setup (see the table above), there's a wrapper that does the above for you
+> and also runs the test suite: `.\dev.ps1 bootstrap` (first run) or
+> `.\dev.ps1 test`. It creates its own `.venv`, so it won't touch anything you
+> already have installed. See
+> [README → Setup](../README.md#setup) for details.
 
 Either way the coordinator listens on **`http://<host>:8765`**. Check it:
 
