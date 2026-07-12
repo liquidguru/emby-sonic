@@ -23,6 +23,30 @@ Then you install the **Android app** and point it at your Emby server + coordina
 
 ---
 
+## Fastest path (most testers: NAS/Docker + Android)
+
+If you just want to get moving, this is the common case — a NAS or Linux box
+running Docker, plus your phone. Everything below is explained in full further
+down; come back here if you get stuck.
+
+```bash
+git clone https://github.com/liquidguru/emby-sonic.git
+cd emby-sonic
+cp .env.example .env
+# Edit .env: set EMBY_URL and EMBY_API_KEY (Emby Dashboard → Advanced → API Keys)
+chmod +x ./install.sh
+./install.sh
+```
+
+Then: install the Emby plugin ([step 3](#3-install-the-emby-plugin-prebuilt--no-compiling)),
+kick off a library scan and run a worker ([step 4](#4-analyse-your-library)),
+and install the Android app ([step 5](#5-install-the-android-app-liquidwave)).
+
+Running Windows instead, or want a GPU worker on a separate box? See
+[Pick your setup](#pick-your-setup) below.
+
+---
+
 ## Prerequisites — check before you start
 
 - [ ] An **Emby server you administer** (you can install plugins and restart it),
