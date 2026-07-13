@@ -93,6 +93,8 @@ const libraryBooksAlphaBar  = document.querySelector("#libraryBooksAlphaBar");
 const libraryArtistsList    = document.querySelector("#libraryArtistsList");
 const libraryPlaylistsList  = document.querySelector("#libraryPlaylistsList");
 const libraryBooksList      = document.querySelector("#libraryBooksList");
+const resumeBooksSection    = document.querySelector("#resumeBooksSection");
+const resumeBooksRow        = document.querySelector("#resumeBooksRow");
 const libraryDetailBack     = document.querySelector("#libraryDetailBack");
 const libraryDetailBackLabel = document.querySelector("#libraryDetailBackLabel");
 const libraryDetailArt      = document.querySelector("#libraryDetailArt");
@@ -1185,6 +1187,9 @@ async function loadLibraryView() {
       });
     }
     renderLibraryBooks(state.libraryBooks || []);
+    // Refresh the "Continue listening" shelf each visit (positions change as
+    // you listen) — cheap, and it must reflect the latest resume points.
+    renderResumeBooks(await fetchResumeBooks());
   } else {
     if (!state.libraryPlaylists) {
       await withBusy("Loading playlists…", async () => {
@@ -1258,6 +1263,79 @@ async function hydrateAuthorArt(authors) {
   for (const author of authors) {
     if (!author._artItemId) author._artItemId = covers.get(author.Id) || null;
   }
+}
+
+// In-progress books for the "Continue listening" shelf: resumable chapters
+// in the audiobook library, most-recently-played first, deduped to their
+// book. Emby's IsResumable filter already means a mid-item position exists.
+async function fetchResumeBooks(limit = 12) {
+  if (!state.audiobookLibId) return [];
+  const chapters = await fetchEmbyRawItems({
+    ParentId: state.audiobookLibId,
+    IncludeItemTypes: "Audio",
+    Recursive: "true",
+    Filters: "IsResumable",
+    SortBy: "DatePlayed",
+    SortOrder: "Descending",
+    Fields: "UserData,RunTimeTicks",
+    Limit: "200",
+  }).catch(() => []);
+  const seen = new Set();
+  const books = [];
+  for (const ch of chapters) {
+    const bookId = ch.AlbumId || ch.Id;
+    if (!bookId || seen.has(bookId)) continue;
+    seen.add(bookId);
+    const posTicks = ch.UserData?.PlaybackPositionTicks || 0;
+    books.push({
+      bookId,
+      name: ch.Album || ch.Name || "Untitled book",
+      author: ch.AlbumArtist || null,
+      artItemId: ch.ImageTags?.Primary ? ch.Id : bookId,
+      positionMs: Math.round(posTicks / 10000),
+    });
+    if (books.length >= limit) break;
+  }
+  return books;
+}
+
+function renderResumeBooks(books) {
+  resumeBooksSection.classList.toggle("hidden", !books.length);
+  if (!books.length) { resumeBooksRow.replaceChildren(); return; }
+  resumeBooksRow.replaceChildren(...books.map((b) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "resume-card";
+    const artWrap = document.createElement("div");
+    artWrap.className = "resume-card-art-wrap";
+    const placeholder = document.createElement("div");
+    placeholder.className = "resume-card-placeholder";
+    placeholder.textContent = "📖";
+    artWrap.append(placeholder);
+    const img = document.createElement("img");
+    img.className = "resume-card-art";
+    img.loading = "lazy";
+    img.alt = "";
+    img.addEventListener("load", () => placeholder.classList.add("hidden"));
+    img.addEventListener("error", () => img.classList.add("hidden"));
+    img.src = artworkUrl(b.artItemId);
+    artWrap.append(img);
+    const title = document.createElement("span");
+    title.className = "resume-card-title";
+    title.textContent = b.name;
+    const sub = document.createElement("span");
+    sub.className = "resume-card-sub";
+    sub.textContent = b.positionMs > 0 ? `at ${formatTime(b.positionMs / 1000)}` : (b.author || "");
+    card.append(artWrap, title, sub);
+    card.addEventListener("click", () => openResumeBook(b));
+    return card;
+  }));
+}
+
+// Tapping a Continue card opens the book detail (which shows Resume with the
+// exact chapter + position, freshly computed from current UserData).
+async function openResumeBook(b) {
+  await openBookDetail({ Id: b.bookId, Name: b.name, _artItemId: b.artItemId }, b.author);
 }
 
 async function fetchAuthorBooks(authorId) {
@@ -2480,14 +2558,22 @@ function reportProgressNow() {
 // naturally is marked played, while a mid-track skip leaves played/resume
 // state untouched (a rolling Played=false write would wipe played status
 // earned in another session/client).
+//
+// Audiobooks are the deliberate exception: a book chapter MUST keep its
+// mid-point position on stop so it resumes — for music, reporting position 0
+// on stop is intentional (music starts fresh next time). Without this, a
+// mid-book stop reported PositionTicks 0 and wiped the resume point in Emby
+// (so it also vanished from the Android app and Emby's own clients).
 function reportStopped(track, positionMs) {
   const completed = track.duration_ms != null && positionMs >= track.duration_ms - RESUME_END_PADDING_MS;
+  const keepPosition = track.isBook && !completed && positionMs > RESUME_MIN_POSITION_MS;
   reportEmbySession("Sessions/Playing/Stopped", {
     ...playbackReportBase(track.id),
-    PositionTicks: ticksFromMs(completed ? positionMs : 0),
+    PositionTicks: ticksFromMs(completed || keepPosition ? positionMs : 0),
     IsPaused: true,
   });
   if (completed) updateUserData(track.id, 0, true);
+  else if (keepPosition) updateUserData(track.id, positionMs, false);
 }
 
 function artworkUrl(itemId) {

@@ -1565,6 +1565,15 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     `SearchTerm` queries), shown only when an audiobooks library exists; hits
     open the same book/author detail views. Audiobooks stay out of the sonic
     index (never analysed) — this is browse/playback only.
+  - "Continue listening" shelf at the top of the Audiobooks tab: Emby
+    `Filters=IsResumable` audio in the library, most-recently-played first,
+    deduped to their book; a card opens the book at its resume point.
+  - Fix (found in testing): `reportStopped` wrote `PositionTicks: 0` for any
+    non-completed stop — correct for music (starts fresh) but it wiped an
+    audiobook's resume point in Emby on a mid-book stop, so the position also
+    vanished from the Android app and Emby's own clients. Books now persist
+    their mid-point position on stop (`isBook && !completed` → write the real
+    position + `Played:false`).
 
 - **M5.36 — Web app library & playlist browse (2026-07-12, verified
   live and shipped in beta.15):**
