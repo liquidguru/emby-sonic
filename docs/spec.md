@@ -1545,6 +1545,27 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     by `activeServerUrl()`. Added tests for distinct login DeviceIds, malformed
     DeviceId rejection, and the CSP header directives.
 
+- **M5.37 — Web app audiobooks (2026-07-12, pending live verification):**
+  - Audiobooks segment in the Library view (shown only when the user's Views
+    include a `CollectionType: "audiobooks"` library — browser-side detection,
+    no coordinator call). Authors A–Z → books grid → chapters, reusing the
+    M5.36 drill-down and art hydration (author/book covers resolved from a
+    chapter's Primary image via the chapter's `AlbumArtists` ids).
+  - Long-form resume mirrors Android's `resumeStartItem`: first mid-chapter
+    position (`UserData.PlaybackPositionTicks` > 10s and not within 5s of the
+    end) → else first unplayed chapter after the last played → else start.
+    The book detail's primary button reads "Resume" (with chapter + timestamp
+    in the subtitle) or "Play". Single-file books resume by seeking within the
+    one item. Resume seek is applied once on `loadedmetadata`.
+  - Playback speed (0.75–2×, cycled from a Now Playing chip, applied to
+    `<audio>.playbackRate` and kept across chapter changes) and a sleep timer
+    (15/30/45/60 min or end-of-chapter, in the same chip row). Both work for
+    music too but are aimed at audiobooks.
+  - Search gains Books/Authors filter chips (audiobook-library-scoped
+    `SearchTerm` queries), shown only when an audiobooks library exists; hits
+    open the same book/author detail views. Audiobooks stay out of the sonic
+    index (never analysed) — this is browse/playback only.
+
 - **M5.36 — Web app library & playlist browse (2026-07-12, verified
   live and shipped in beta.15):**
   - New Library bottom-nav tab with Artists/Playlists segments. Artists A–Z

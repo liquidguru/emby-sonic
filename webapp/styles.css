@@ -1130,3 +1130,48 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ── Now Playing: speed + sleep-timer chips ──────────────── */
+
+.np-extra-controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+}
+.np-chip-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.np-chip-btn.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.sleep-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+}
+.sleep-opt {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  color: var(--text);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.sleep-opt:hover { border-color: var(--accent); color: var(--accent); }

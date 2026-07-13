@@ -128,6 +128,8 @@
             <button class="search-chip active" type="button" role="tab" data-filter="tracks">Tracks</button>
             <button class="search-chip" type="button" role="tab" data-filter="albums">Albums</button>
             <button class="search-chip" type="button" role="tab" data-filter="artists">Artists</button>
+            <button class="search-chip search-chip-book hidden" type="button" role="tab" data-filter="books">Books</button>
+            <button class="search-chip search-chip-book hidden" type="button" role="tab" data-filter="authors">Authors</button>
           </div>
           <ul id="resultsList" class="track-list" aria-label="Search results"></ul>
           <section id="similarPanel" class="similar-section hidden">
@@ -250,6 +252,7 @@
           <div class="segmented" role="tablist" aria-label="Library sections">
             <button id="libraryTabArtists" class="segment active" type="button" role="tab" aria-selected="true">Artists</button>
             <button id="libraryTabPlaylists" class="segment" type="button" role="tab" aria-selected="false">Playlists</button>
+            <button id="libraryTabBooks" class="segment hidden" type="button" role="tab" aria-selected="false">Audiobooks</button>
           </div>
           <div id="libraryArtistsPane" class="library-pane">
             <div id="libraryAlphaBar" class="alpha-bar" aria-label="Jump to letter"></div>
@@ -257,6 +260,10 @@
           </div>
           <div id="libraryPlaylistsPane" class="library-pane hidden">
             <ul id="libraryPlaylistsList" class="track-list" aria-label="Playlists"></ul>
+          </div>
+          <div id="libraryBooksPane" class="library-pane hidden">
+            <div id="libraryBooksAlphaBar" class="alpha-bar" aria-label="Jump to letter"></div>
+            <ul id="libraryBooksList" class="track-list" aria-label="Authors"></ul>
           </div>
         </section>
 
@@ -399,6 +406,18 @@
             <button id="playButton" class="np-play-btn" type="button" aria-label="Play">▶</button>
             <button id="nextButton" class="np-icon-btn" type="button" aria-label="Next">⏭</button>
             <button id="repeatButton" class="np-icon-btn" type="button" aria-label="Repeat off" title="Repeat off">↻</button>
+          </div>
+          <div id="npExtraControls" class="np-extra-controls">
+            <button id="speedButton" class="np-chip-btn" type="button" aria-label="Playback speed">Speed 1×</button>
+            <button id="sleepButton" class="np-chip-btn" type="button" aria-label="Sleep timer">Sleep off</button>
+          </div>
+          <div id="sleepMenu" class="sleep-menu hidden" role="menu" aria-label="Sleep timer options">
+            <button class="sleep-opt" type="button" role="menuitem" data-sleep="0">Off</button>
+            <button class="sleep-opt" type="button" role="menuitem" data-sleep="15">15 min</button>
+            <button class="sleep-opt" type="button" role="menuitem" data-sleep="30">30 min</button>
+            <button class="sleep-opt" type="button" role="menuitem" data-sleep="45">45 min</button>
+            <button class="sleep-opt" type="button" role="menuitem" data-sleep="60">60 min</button>
+            <button class="sleep-opt" type="button" role="menuitem" data-sleep="chapter">End of chapter</button>
           </div>
           <div class="np-queue-section">
             <h3 class="np-queue-label">Queue</h3>

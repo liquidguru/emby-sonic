@@ -8,6 +8,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 // HTTP download. Matches Android's cadence/thresholds for parity.
 const PROGRESS_REPORT_INTERVAL_MS = 3_000;
 const RESUME_END_PADDING_MS = 5_000;
+// A chapter counts as "in progress" only past this position, so a stray
+// second or two of playback doesn't make the book resume mid-chapter.
+const RESUME_MIN_POSITION_MS = 10_000;
 let currentPlaySessionId = null;
 let lastProgressReportMs = 0;
 
@@ -81,11 +84,15 @@ const buildArtistMixButton    = document.querySelector("#buildArtistMixButton");
 // Library
 const libraryTabArtists     = document.querySelector("#libraryTabArtists");
 const libraryTabPlaylists   = document.querySelector("#libraryTabPlaylists");
+const libraryTabBooks       = document.querySelector("#libraryTabBooks");
 const libraryArtistsPane    = document.querySelector("#libraryArtistsPane");
 const libraryPlaylistsPane  = document.querySelector("#libraryPlaylistsPane");
+const libraryBooksPane      = document.querySelector("#libraryBooksPane");
 const libraryAlphaBar       = document.querySelector("#libraryAlphaBar");
+const libraryBooksAlphaBar  = document.querySelector("#libraryBooksAlphaBar");
 const libraryArtistsList    = document.querySelector("#libraryArtistsList");
 const libraryPlaylistsList  = document.querySelector("#libraryPlaylistsList");
+const libraryBooksList      = document.querySelector("#libraryBooksList");
 const libraryDetailBack     = document.querySelector("#libraryDetailBack");
 const libraryDetailBackLabel = document.querySelector("#libraryDetailBackLabel");
 const libraryDetailArt      = document.querySelector("#libraryDetailArt");
@@ -128,6 +135,9 @@ const nextButton       = document.querySelector("#nextButton");
 const repeatButton     = document.querySelector("#repeatButton");
 const nowSimilarButton = document.querySelector("#nowSimilarButton");
 const savePlaylistButton = document.querySelector("#savePlaylistButton");
+const speedButton      = document.querySelector("#speedButton");
+const sleepButton      = document.querySelector("#sleepButton");
+const sleepMenu        = document.querySelector("#sleepMenu");
 const queueList        = document.querySelector("#queueList");
 
 const audio      = document.querySelector("#audio");
@@ -158,7 +168,12 @@ const state = {
   libraryPlaylists: null,  // cached Playlist items (null = refetch)
   libraryStack: [],        // drill-down entries for the shared detail view
   libraryScrollTop: 0,     // list scroll position, restored when backing out
+  libraryBooks: null,      // cached audiobook authors (null = refetch)
+  audiobookLibId: undefined, // undefined = undetected, null = none, else id
   search: { tracks: [], albums: [], artists: [], filter: "tracks" },
+  playbackRate: 1,         // audiobook speed; applied to <audio>.playbackRate
+  sleepTimer: null,        // { mode: "time"|"chapter", endsAt?, } or null
+  pendingSeekMs: 0,        // resume seek applied once on the next metadata load
 };
 
 // ── Boot ─────────────────────────────────────────────────
@@ -212,17 +227,22 @@ logoutButton.addEventListener("click", () => {
     musicParentIds: null,
     libraryTab: "artists", libraryArtists: null,
     libraryPlaylists: null, libraryStack: [],
+    libraryBooks: null, audiobookLibId: undefined,
     search: { tracks: [], albums: [], artists: [], filter: "tracks" },
+    playbackRate: 1, sleepTimer: null, pendingSeekMs: 0,
   });
+  clearSleepTimer();
   resultsList.replaceChildren();
   searchFilters.classList.add("hidden");
   audio.pause();
   audio.removeAttribute("src");
+  audio.playbackRate = 1;
   renderSession();
   renderMini();
   renderNowPlaying();
   renderShuffle();
   renderRepeat();
+  renderSpeed();
   setMessage("");
 });
 
@@ -889,7 +909,11 @@ searchForm.addEventListener("submit", async (e) => {
     return;
   }
   await withBusy("Searching…", async () => {
-    const [tracks, artists, albums] = await Promise.all([
+    if (state.audiobookLibId === undefined) {
+      state.audiobookLibId = await detectAudiobookLibrary();
+    }
+    const ab = state.audiobookLibId;
+    const [tracks, artists, albums, books, authors] = await Promise.all([
       searchTracks(query),
       fetchMusicEmbyRawItems({
         SearchTerm: query, IncludeItemTypes: "MusicArtist", Recursive: "true", Limit: "100",
@@ -897,12 +921,22 @@ searchForm.addEventListener("submit", async (e) => {
       fetchMusicEmbyRawItems({
         SearchTerm: query, IncludeItemTypes: "MusicAlbum", Recursive: "true", Limit: "100",
       }).catch(() => []),
+      ab ? fetchEmbyRawItems({
+        ParentId: ab, SearchTerm: query, IncludeItemTypes: "MusicAlbum", Recursive: "true", Limit: "100",
+      }).catch(() => []) : Promise.resolve([]),
+      ab ? fetchEmbyRawItems({
+        ParentId: ab, SearchTerm: query, IncludeItemTypes: "MusicArtist", Recursive: "true", Limit: "100",
+      }).catch(() => []) : Promise.resolve([]),
     ]);
-    state.search = { tracks, albums, artists, filter: "tracks" };
+    state.search = { tracks, albums, artists, books, authors, filter: "tracks" };
     searchFilters.classList.remove("hidden");
+    // Book/author chips only when the server has an audiobooks library.
+    document.querySelectorAll(".search-chip-book").forEach((c) => c.classList.toggle("hidden", !ab));
     setSearchFilter("tracks");
-    const counts = `${tracks.length} tracks, ${albums.length} albums, ${artists.length} artists`;
-    setMessage(tracks.length || albums.length || artists.length ? counts : "No results.");
+    const counts = [`${tracks.length} tracks`, `${albums.length} albums`, `${artists.length} artists`];
+    if (ab) counts.push(`${books.length} books`, `${authors.length} authors`);
+    const any = tracks.length || albums.length || artists.length || books.length || authors.length;
+    setMessage(any ? counts.join(", ") : "No results.");
   });
 });
 
@@ -922,7 +956,7 @@ function setSearchFilter(filter) {
 }
 
 function renderSearchResults() {
-  const { tracks, albums, artists, filter } = state.search;
+  const { tracks, albums, artists, books, authors, filter } = state.search;
   if (filter === "tracks") {
     renderTrackList(resultsList, tracks, (t) => startRadio(t), true);
   } else if (filter === "artists") {
@@ -932,6 +966,22 @@ function renderSearchResults() {
       title: (a) => a.Name || "Unknown artist",
       meta: () => "Artist",
       onClick: (a) => openArtistDetail(a, "search"),
+    });
+  } else if (filter === "books") {
+    renderCollectionRows(books || [], {
+      empty: "No books found",
+      glyph: () => "📖",
+      title: (b) => b.Name || "Untitled book",
+      meta: (b) => ["Book", b.AlbumArtist].filter(Boolean).join(" · "),
+      onClick: (b) => openBookDetail(b, b.AlbumArtist, "search"),
+    });
+  } else if (filter === "authors") {
+    renderCollectionRows(authors || [], {
+      empty: "No authors found",
+      glyph: () => "📖",
+      title: (a) => a.Name || "Unknown author",
+      meta: () => "Author",
+      onClick: (a) => openAuthorDetail(a, "search"),
     });
   } else {
     renderCollectionRows(albums, {
@@ -1083,6 +1133,7 @@ async function buildAdventure() {
 
 libraryTabArtists.addEventListener("click", () => setLibraryTab("artists"));
 libraryTabPlaylists.addEventListener("click", () => setLibraryTab("playlists"));
+libraryTabBooks.addEventListener("click", () => setLibraryTab("books"));
 libraryDetailBack.addEventListener("click", libraryBack);
 libraryDetailPlay.addEventListener("click", () => playLibraryDetail(false));
 libraryDetailShuffle.addEventListener("click", () => playLibraryDetail(true));
@@ -1100,17 +1151,26 @@ libraryDetailDelete.addEventListener("click", async () => {
 
 function setLibraryTab(tab) {
   state.libraryTab = tab;
-  libraryTabArtists.classList.toggle("active", tab === "artists");
-  libraryTabPlaylists.classList.toggle("active", tab === "playlists");
-  libraryTabArtists.setAttribute("aria-selected", String(tab === "artists"));
-  libraryTabPlaylists.setAttribute("aria-selected", String(tab === "playlists"));
-  libraryArtistsPane.classList.toggle("hidden", tab !== "artists");
-  libraryPlaylistsPane.classList.toggle("hidden", tab !== "playlists");
+  const tabs = { artists: libraryTabArtists, playlists: libraryTabPlaylists, books: libraryTabBooks };
+  const panes = { artists: libraryArtistsPane, playlists: libraryPlaylistsPane, books: libraryBooksPane };
+  for (const [key, el] of Object.entries(tabs)) {
+    el.classList.toggle("active", key === tab);
+    el.setAttribute("aria-selected", String(key === tab));
+  }
+  for (const [key, el] of Object.entries(panes)) {
+    el.classList.toggle("hidden", key !== tab);
+  }
   loadLibraryView();
 }
 
 async function loadLibraryView() {
   if (!state.session) return;
+  // Reveal the Audiobooks tab only when the server actually has such a library.
+  if (state.audiobookLibId === undefined) {
+    state.audiobookLibId = await detectAudiobookLibrary();
+  }
+  libraryTabBooks.classList.toggle("hidden", !state.audiobookLibId);
+
   if (state.libraryTab === "artists") {
     if (!state.libraryArtists) {
       await withBusy("Loading artists…", async () => {
@@ -1118,6 +1178,13 @@ async function loadLibraryView() {
       });
     }
     renderLibraryArtists(state.libraryArtists || []);
+  } else if (state.libraryTab === "books") {
+    if (!state.libraryBooks) {
+      await withBusy("Loading audiobooks…", async () => {
+        state.libraryBooks = await fetchAuthors();
+      });
+    }
+    renderLibraryBooks(state.libraryBooks || []);
   } else {
     if (!state.libraryPlaylists) {
       await withBusy("Loading playlists…", async () => {
@@ -1126,6 +1193,111 @@ async function loadLibraryView() {
     }
     renderLibraryPlaylists(state.libraryPlaylists || []);
   }
+}
+
+// The audiobooks library id from the user's own Views (CollectionType
+// "audiobooks"). Browser-side detection — no coordinator call — mirroring
+// Android's audioLibraries(). Returns the id, or null if there's no such
+// library (the tab then stays hidden).
+async function detectAudiobookLibrary() {
+  const base = activeServerUrl();
+  try {
+    const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Views`, {
+      headers: embyHeaders(),
+    });
+    const data = await parseJson(resp);
+    const view = (data.Items || []).find((v) => (v.CollectionType || "").toLowerCase() === "audiobooks");
+    return view?.Id || null;
+  } catch {
+    return null;
+  }
+}
+
+// Authors = AlbumArtists in the audiobooks library. Most have no image of
+// their own, so hydrate each author's cover from one of their chapters —
+// same trick as album art, keyed by AlbumArtist.
+async function fetchAuthors() {
+  const base = activeServerUrl();
+  const qs = new URLSearchParams({
+    UserId: state.session.userId,
+    ParentId: state.audiobookLibId,
+    SortBy: "SortName",
+    Limit: "5000",
+  });
+  const resp = await fetch(`${base}/Artists/AlbumArtists?${qs}`, { headers: embyHeaders() });
+  const data = await parseJson(resp);
+  const authors = Array.isArray(data.Items) ? data.Items : [];
+  await hydrateAuthorArt(authors);
+  return authors;
+}
+
+async function hydrateAuthorArt(authors) {
+  const missing = new Set();
+  for (const author of authors) {
+    if (author.ImageTags?.Primary) author._artItemId = author.Id;
+    else missing.add(author.Id);
+  }
+  if (!missing.size) return;
+  // One scan of the library's chapters; take the first chapter with art per
+  // author (chapters carry AlbumArtists ids in their AlbumArtist... actually
+  // in ArtistItems). Emby returns the author id on the chapter's AlbumArtists.
+  const chapters = await fetchEmbyRawItems({
+    ParentId: state.audiobookLibId,
+    IncludeItemTypes: "Audio",
+    Recursive: "true",
+    Fields: "AlbumArtists",
+    Limit: "5000",
+  });
+  const covers = new Map();
+  for (const ch of chapters) {
+    if (!ch.ImageTags?.Primary) continue;
+    for (const aa of ch.AlbumArtists || []) {
+      if (missing.has(aa.Id) && !covers.has(aa.Id)) covers.set(aa.Id, ch.Id);
+    }
+  }
+  for (const author of authors) {
+    if (!author._artItemId) author._artItemId = covers.get(author.Id) || null;
+  }
+}
+
+async function fetchAuthorBooks(authorId) {
+  const books = await fetchEmbyRawItems({
+    IncludeItemTypes: "MusicAlbum",
+    AlbumArtistIds: authorId,
+    Recursive: "true",
+    SortBy: "SortName",
+    Fields: "ChildCount,ProductionYear",
+    Limit: "500",
+  });
+  // Books rarely carry album-level art either; reuse the same hydration.
+  await hydrateAlbumArt(books, authorId);
+  return books;
+}
+
+// A book's chapters in play order, WITH resume UserData. A single-file book
+// returns one item (the whole book); resume then seeks within it.
+async function fetchBookChapters(bookId) {
+  const base = activeServerUrl();
+  const qs = new URLSearchParams({
+    UserId: state.session.userId,
+    ParentId: bookId,
+    IncludeItemTypes: "Audio",
+    Recursive: "true",
+    SortBy: "ParentIndexNumber,IndexNumber",
+    Fields: "RunTimeTicks,UserData",
+  });
+  const resp = await fetch(`${base}/Users/${encodeURIComponent(state.session.userId)}/Items?${qs}`, {
+    headers: embyHeaders(),
+  });
+  const data = await parseJson(resp);
+  return (Array.isArray(data.Items) ? data.Items : []).map((item) => {
+    const track = embyItemToTrack(item);
+    const ud = item.UserData || {};
+    track.playbackPositionMs = ud.PlaybackPositionTicks ? Math.round(ud.PlaybackPositionTicks / 10000) : 0;
+    track.played = Boolean(ud.Played);
+    track.isBook = true;
+    return track;
+  });
 }
 
 // Same shapes the Android app's LibraryRepository uses, music-scoped by the
@@ -1273,15 +1445,33 @@ function artistInitial(name) {
 }
 
 function renderLibraryArtists(artists) {
-  if (!artists.length) {
-    libraryAlphaBar.replaceChildren();
-    libraryArtistsList.replaceChildren(emptyMsg("No artists found", "li"));
+  renderAlphaList(artists, libraryArtistsList, libraryAlphaBar, {
+    empty: "No artists found",
+    fallbackName: "Unknown artist",
+    onClick: (artist) => openArtistDetail(artist),
+  });
+}
+
+function renderLibraryBooks(authors) {
+  renderAlphaList(authors, libraryBooksList, libraryBooksAlphaBar, {
+    empty: "No audiobooks found",
+    fallbackName: "Unknown author",
+    onClick: (author) => openAuthorDetail(author),
+  });
+}
+
+// Shared A–Z list with letter headers + a jump strip. Used for both music
+// artists and audiobook authors (identical Emby AlbumArtist shape).
+function renderAlphaList(items, listEl, alphaEl, { empty, fallbackName, onClick }) {
+  if (!items.length) {
+    alphaEl.replaceChildren();
+    listEl.replaceChildren(emptyMsg(empty, "li"));
     return;
   }
   const rows = [];
   const letterAnchors = new Map();
-  for (const artist of artists) {
-    const letter = artistInitial(artist.Name);
+  for (const it of items) {
+    const letter = artistInitial(it.Name);
     if (!letterAnchors.has(letter)) {
       const header = document.createElement("li");
       header.className = "letter-header";
@@ -1293,19 +1483,19 @@ function renderLibraryArtists(artists) {
     item.className = "track-item";
     const thumb = document.createElement("div");
     thumb.className = "track-thumb-placeholder";
-    thumb.textContent = (artist.Name || "?").trim().charAt(0).toUpperCase() || "?";
+    thumb.textContent = (it.Name || "?").trim().charAt(0).toUpperCase() || "?";
     const info = document.createElement("div");
     info.className = "track-info";
     const name = document.createElement("span");
     name.className = "track-name";
-    name.textContent = artist.Name || "Unknown artist";
+    name.textContent = it.Name || fallbackName;
     info.append(name);
     item.append(thumb, info);
-    item.addEventListener("click", () => openArtistDetail(artist));
+    item.addEventListener("click", () => onClick(it));
     rows.push(item);
   }
-  libraryArtistsList.replaceChildren(...rows);
-  libraryAlphaBar.replaceChildren(...[...letterAnchors.keys()].map((letter) => {
+  listEl.replaceChildren(...rows);
+  alphaEl.replaceChildren(...[...letterAnchors.keys()].map((letter) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "alpha-btn";
@@ -1396,6 +1586,71 @@ async function openPlaylistDetail(pl) {
   openLibraryDetail(entry);
 }
 
+async function openAuthorDetail(author, backTo = "library") {
+  state.libraryScrollTop = pageContent.scrollTop;
+  const entry = {
+    kind: "author",
+    id: author.Id,
+    title: author.Name || "Unknown author",
+    backTo,
+    backLabel: backTo === "search" ? "Search" : "Audiobooks",
+  };
+  await withBusy("Loading books…", async () => {
+    entry.albums = await fetchAuthorBooks(author.Id);
+  });
+  if (!entry.albums) return;
+  entry.sub = `${entry.albums.length} book${entry.albums.length === 1 ? "" : "s"}`;
+  openLibraryDetail(entry);
+}
+
+async function openBookDetail(book, authorName, backTo = "library") {
+  const entry = {
+    kind: "book",
+    id: book.Id,
+    artItemId: book._artItemId || (book.ImageTags?.Primary ? book.Id : null),
+    title: book.Name || "Untitled book",
+    backTo,
+    backLabel: authorName || (backTo === "search" ? "Search" : "Audiobooks"),
+  };
+  await withBusy("Loading book…", async () => {
+    entry.tracks = await fetchBookChapters(book.Id);
+  });
+  if (!entry.tracks) return;
+  const single = entry.tracks.length === 1;
+  entry.resumeIndex = resumeStartIndex(entry.tracks);
+  const resumePos = entry.tracks[entry.resumeIndex]?.playbackPositionMs || 0;
+  const chapterWord = single ? "1 file" : `${entry.tracks.length} chapters`;
+  const resuming = entry.resumeIndex > 0 || resumePos > RESUME_MIN_POSITION_MS;
+  if (resuming) {
+    const parts = [];
+    if (!single) parts.push(`ch. ${entry.resumeIndex + 1}`);
+    if (resumePos > RESUME_MIN_POSITION_MS) parts.push(`at ${formatTime(resumePos / 1000)}`);
+    entry.sub = `${chapterWord} · resume ${parts.join(" ")}`;
+  } else {
+    entry.sub = chapterWord;
+  }
+  openLibraryDetail(entry);
+}
+
+// Mirrors Android's resumeStartItem: the first chapter with a mid-chapter
+// position; else the first unplayed chapter after the last played one; else
+// the start. Keeps a half-listened book landing where you left off.
+function resumeStartIndex(chapters) {
+  const inProgress = chapters.findIndex((c) => {
+    const pos = c.playbackPositionMs || 0;
+    const dur = c.duration_ms;
+    return pos > RESUME_MIN_POSITION_MS && (!dur || pos < dur - RESUME_END_PADDING_MS);
+  });
+  if (inProgress >= 0) return inProgress;
+  let lastPlayed = -1;
+  chapters.forEach((c, i) => { if (c.played) lastPlayed = i; });
+  if (lastPlayed >= 0 && lastPlayed < chapters.length - 1) {
+    const nextUnplayed = chapters.findIndex((c, i) => i > lastPlayed && !c.played);
+    if (nextUnplayed >= 0) return nextUnplayed;
+  }
+  return 0;
+}
+
 function openLibraryDetail(entry) {
   state.libraryStack.push(entry);
   renderLibraryDetail(entry);
@@ -1423,12 +1678,14 @@ function libraryBack() {
 }
 
 function renderLibraryDetail(entry) {
-  const eyebrows = { artist: "Artist", album: "Album", playlist: "Playlist" };
+  const eyebrows = { artist: "Artist", album: "Album", playlist: "Playlist", author: "Author", book: "Book" };
   libraryDetailEyebrow.textContent = eyebrows[entry.kind] || "";
   libraryDetailTitle.textContent = entry.title;
   libraryDetailSub.textContent = entry.sub || "";
   libraryDetailBackLabel.textContent = entry.backLabel || "Library";
 
+  const placeholderGlyph = (entry.kind === "author" || entry.kind === "book") ? "📖" : "♪";
+  libraryDetailArtPlaceholder.textContent = placeholderGlyph;
   libraryDetailArt.classList.add("hidden");
   libraryDetailArtPlaceholder.classList.remove("hidden");
   libraryDetailArt.onerror = () => {
@@ -1441,21 +1698,44 @@ function renderLibraryDetail(entry) {
   };
   libraryDetailArt.src = artworkUrl(entry.artItemId || entry.id);
 
-  const isArtist = entry.kind === "artist";
-  libraryAlbumsGrid.classList.toggle("hidden", !isArtist);
-  libraryDetailTracks.classList.toggle("hidden", isArtist);
+  const isGrid = entry.kind === "artist" || entry.kind === "author";
+  const isBook = entry.kind === "book";
+  const isAuthor = entry.kind === "author";
+  libraryAlbumsGrid.classList.toggle("hidden", !isGrid);
+  libraryDetailTracks.classList.toggle("hidden", isGrid);
   libraryDetailDelete.classList.toggle("hidden", entry.kind !== "playlist");
-  if (isArtist) {
-    renderAlbumGrid(entry.albums || [], entry.title);
+  // Author = pick a book (no play-all across books). Book = Resume, no shuffle
+  // (chapters are ordered). Everything else keeps Play + Shuffle.
+  libraryDetailPlay.classList.toggle("hidden", isAuthor);
+  libraryDetailShuffle.classList.toggle("hidden", isBook || isAuthor);
+  libraryDetailPlay.textContent = isBook && (entry.resumeIndex > 0 ||
+    (entry.tracks?.[entry.resumeIndex]?.playbackPositionMs || 0) > RESUME_MIN_POSITION_MS)
+    ? "Resume" : "Play";
+
+  if (isGrid) {
+    const openChild = entry.kind === "author"
+      ? (album) => openBookDetail(album, entry.title)
+      : (album) => openAlbumDetail(album, entry.title);
+    renderAlbumGrid(entry.albums || [], openChild, entry.kind === "author");
   } else {
     const tracks = entry.tracks || [];
     renderTrackList(
       libraryDetailTracks,
       tracks,
-      (track) => loadQueue(tracks, entry.title, true, tracks.indexOf(track)),
-      true,
+      (track) => playBookOrTracks(entry, tracks, tracks.indexOf(track)),
+      !isBook,   // no per-row Similar on book chapters
       entry.kind === "playlist" ? (track) => removeFromPlaylist(entry, track) : null,
     );
+  }
+}
+
+// Playing a chapter row starts the book from that chapter, seeking to its
+// saved position if it has one; a music/playlist row just plays from there.
+function playBookOrTracks(entry, tracks, index) {
+  if (entry.kind === "book") {
+    playBook(entry, index);
+  } else {
+    loadQueue(tracks, entry.title, true, index);
   }
 }
 
@@ -1474,9 +1754,9 @@ async function removeFromPlaylist(entry, track) {
   });
 }
 
-function renderAlbumGrid(albums, artistName) {
+function renderAlbumGrid(albums, onClick, isBooks = false) {
   if (!albums.length) {
-    libraryAlbumsGrid.replaceChildren(emptyMsg("No albums found"));
+    libraryAlbumsGrid.replaceChildren(emptyMsg(isBooks ? "No books found" : "No albums found"));
     return;
   }
   libraryAlbumsGrid.replaceChildren(...albums.map((album) => {
@@ -1487,7 +1767,7 @@ function renderAlbumGrid(albums, artistName) {
     artWrap.className = "album-card-art-wrap";
     const placeholder = document.createElement("div");
     placeholder.className = "album-card-placeholder";
-    placeholder.textContent = "♪";
+    placeholder.textContent = isBooks ? "📖" : "♪";
     artWrap.append(placeholder);
     if (album._artItemId) {
       const img = document.createElement("img");
@@ -1506,7 +1786,7 @@ function renderAlbumGrid(albums, artistName) {
     sub.className = "album-card-sub";
     sub.textContent = album.ProductionYear || "";
     card.append(artWrap, title, sub);
-    card.addEventListener("click", () => openAlbumDetail(album, artistName));
+    card.addEventListener("click", () => onClick(album));
     return card;
   }));
 }
@@ -1514,6 +1794,10 @@ function renderAlbumGrid(albums, artistName) {
 async function playLibraryDetail(shuffled) {
   const entry = state.libraryStack[state.libraryStack.length - 1];
   if (!entry) return;
+  if (entry.kind === "book") {
+    playBook(entry, entry.resumeIndex || 0);
+    return;
+  }
   if (!entry.tracks && entry.kind === "artist") {
     await withBusy("Loading tracks…", async () => {
       entry.tracks = await fetchArtistTracks(entry.id);
@@ -1526,6 +1810,21 @@ async function playLibraryDetail(shuffled) {
   }
   const list = shuffled ? shuffleArray(tracks) : tracks;
   loadQueue(list, entry.title, true);
+}
+
+// Play a book from [index], seeking into that chapter at its saved position.
+// Never shuffles; the queue is the book's chapters in order.
+function playBook(entry, index) {
+  const chapters = entry.tracks || [];
+  if (!chapters.length) { setMessage("Nothing to play."); return; }
+  const startPositionMs = chapters[index]?.playbackPositionMs || 0;
+  // Book playback is inherently ordered; force shuffle off so loadQueue
+  // doesn't scramble the chapters.
+  const wasShuffle = state.shuffle;
+  state.shuffle = false;
+  loadQueue(chapters, entry.title, true, index);
+  state.shuffle = wasShuffle;
+  if (startPositionMs > RESUME_MIN_POSITION_MS) state.pendingSeekMs = startPositionMs;
 }
 
 function loadQueue(tracks, label, autoPlay, startIndex = 0) {
@@ -1543,6 +1842,9 @@ function loadQueue(tracks, label, autoPlay, startIndex = 0) {
 
 async function playIndex(index, opts = {}) {
   if (!state.queue[index]) return;
+  // Any fresh track load clears a stale resume seek; playBook re-arms it
+  // right after this returns for the chapter it actually wants to resume.
+  state.pendingSeekMs = 0;
   const previousTrack = state.queue[state.currentIndex];
   if (!opts.skipStopReport && previousTrack && audio.src) {
     reportStopped(previousTrack, audio.currentTime * 1000);
@@ -1749,6 +2051,90 @@ seekBar.addEventListener("input", () => {
   timeElapsed.textContent = formatTime(audio.currentTime);
 });
 
+// ── Playback speed + sleep timer (audiobook-oriented, work for anything) ──
+
+const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
+
+speedButton.addEventListener("click", () => {
+  const next = SPEEDS[(SPEEDS.indexOf(state.playbackRate) + 1) % SPEEDS.length];
+  state.playbackRate = next;
+  audio.playbackRate = next;
+  renderSpeed();
+});
+
+function renderSpeed() {
+  speedButton.textContent = `Speed ${state.playbackRate}×`;
+}
+
+sleepButton.addEventListener("click", () => {
+  sleepMenu.classList.toggle("hidden");
+});
+
+sleepMenu.querySelectorAll(".sleep-opt").forEach((opt) => {
+  opt.addEventListener("click", () => {
+    setSleepTimer(opt.dataset.sleep);
+    sleepMenu.classList.add("hidden");
+  });
+});
+
+let sleepInterval = null;
+
+function setSleepTimer(value) {
+  clearSleepTimer();
+  if (value === "0") { renderSleep(); return; }
+  if (value === "chapter") {
+    state.sleepTimer = { mode: "chapter" };
+  } else {
+    const minutes = Number(value);
+    state.sleepTimer = { mode: "time", endsAt: Date.now() + minutes * 60_000 };
+    sleepInterval = setInterval(() => {
+      if (!state.sleepTimer) { clearSleepTimer(); return; }
+      if (Date.now() >= state.sleepTimer.endsAt) {
+        audio.pause();
+        clearSleepTimer();
+        setMessage("Sleep timer — paused.");
+      } else {
+        renderSleep();
+      }
+    }, 1000);
+  }
+  renderSleep();
+}
+
+function clearSleepTimer() {
+  if (sleepInterval) { clearInterval(sleepInterval); sleepInterval = null; }
+  state.sleepTimer = null;
+  renderSleep();
+}
+
+// Called from the "ended" handler: if a chapter-end sleep timer is armed,
+// stop after the current chapter finishes rather than rolling to the next.
+function sleepTimerStopsAfterChapter() {
+  if (state.sleepTimer?.mode === "chapter") {
+    clearSleepTimer();
+    setMessage("Sleep timer — paused at end of chapter.");
+    return true;
+  }
+  return false;
+}
+
+function renderSleep() {
+  const t = state.sleepTimer;
+  if (!t) {
+    sleepButton.textContent = "Sleep off";
+    sleepButton.classList.remove("on");
+    return;
+  }
+  sleepButton.classList.add("on");
+  if (t.mode === "chapter") {
+    sleepButton.textContent = "Sleep: chapter";
+  } else {
+    const remainMs = Math.max(0, t.endsAt - Date.now());
+    const mins = Math.ceil(remainMs / 60_000);
+    sleepButton.textContent = `Sleep ${mins}m`;
+  }
+}
+
 function renderShuffle() {
   shuffleButton.classList.toggle("on", state.shuffle);
   shuffleButton.setAttribute("aria-label", state.shuffle ? "Shuffle on" : "Shuffle off");
@@ -1783,8 +2169,15 @@ audio.addEventListener("timeupdate", () => {
 });
 
 audio.addEventListener("loadedmetadata", () => {
-  seekBar.value = "0";
-  timeElapsed.textContent = "0:00";
+  // Resume seek (audiobooks): apply once, here, now that duration is known.
+  if (state.pendingSeekMs > 0 && audio.duration) {
+    audio.currentTime = Math.min(state.pendingSeekMs / 1000, audio.duration - 1);
+    state.pendingSeekMs = 0;
+  }
+  // Keep audiobook speed across chapter changes / new loads.
+  audio.playbackRate = state.playbackRate;
+  seekBar.value = audio.duration ? String((audio.currentTime / audio.duration) * 100) : "0";
+  timeElapsed.textContent = formatTime(audio.currentTime);
   timeDuration.textContent = formatTime(audio.duration);
 });
 
@@ -1802,6 +2195,12 @@ audio.addEventListener("ended", () => {
     audio.currentTime = 0;
     currentPlaySessionId = playSessionId();
     audio.play().then(() => track && reportStarted(track));
+    return;
+  }
+  // An end-of-chapter sleep timer stops here instead of rolling on.
+  if (sleepTimerStopsAfterChapter()) {
+    renderMini();
+    renderNowPlaying();
     return;
   }
   if (state.currentIndex < state.queue.length - 1) {
@@ -2248,3 +2647,5 @@ document.querySelectorAll(".shelf-scroll").forEach(makeDraggable);
 renderSession();
 renderShuffle();
 renderRepeat();
+renderSpeed();
+renderSleep();
