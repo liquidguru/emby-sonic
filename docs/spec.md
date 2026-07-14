@@ -1545,7 +1545,8 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     by `activeServerUrl()`. Added tests for distinct login DeviceIds, malformed
     DeviceId rejection, and the CSP header directives.
 
-- **M5.37 — Web app audiobooks (2026-07-12, pending live verification):**
+- **M5.37 — Web app audiobooks (2026-07-12, verified live and shipped in
+  beta.16):**
   - Audiobooks segment in the Library view (shown only when the user's Views
     include a `CollectionType: "audiobooks"` library — browser-side detection,
     no coordinator call). Authors A–Z → books grid → chapters, reusing the
