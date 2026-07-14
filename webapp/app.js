@@ -95,6 +95,8 @@ const libraryPlaylistsList  = document.querySelector("#libraryPlaylistsList");
 const libraryBooksList      = document.querySelector("#libraryBooksList");
 const resumeBooksSection    = document.querySelector("#resumeBooksSection");
 const resumeBooksRow        = document.querySelector("#resumeBooksRow");
+const homeResumeShelf       = document.querySelector("#homeResumeShelf");
+const homeResumeRow         = document.querySelector("#homeResumeRow");
 const libraryDetailBack     = document.querySelector("#libraryDetailBack");
 const libraryDetailBackLabel = document.querySelector("#libraryDetailBackLabel");
 const libraryDetailArt      = document.querySelector("#libraryDetailArt");
@@ -320,6 +322,17 @@ async function loadHomeData() {
   if (!state.session) return;
   loadMixes(false);
   loadRecentPlays();
+  loadHomeResume();
+}
+
+// "Continue listening" on Home — only shown when the server has an audiobooks
+// library and something is in progress.
+async function loadHomeResume() {
+  if (state.audiobookLibId === undefined) {
+    state.audiobookLibId = await detectAudiobookLibrary();
+  }
+  if (!state.audiobookLibId) { renderHomeResume([]); return; }
+  renderHomeResume(await fetchResumeBooks());
 }
 
 // Station cards
@@ -1301,41 +1314,55 @@ async function fetchResumeBooks(limit = 12) {
 
 function renderResumeBooks(books) {
   resumeBooksSection.classList.toggle("hidden", !books.length);
-  if (!books.length) { resumeBooksRow.replaceChildren(); return; }
-  resumeBooksRow.replaceChildren(...books.map((b) => {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "resume-card";
-    const artWrap = document.createElement("div");
-    artWrap.className = "resume-card-art-wrap";
-    const placeholder = document.createElement("div");
-    placeholder.className = "resume-card-placeholder";
-    placeholder.textContent = "📖";
-    artWrap.append(placeholder);
-    const img = document.createElement("img");
-    img.className = "resume-card-art";
-    img.loading = "lazy";
-    img.alt = "";
-    img.addEventListener("load", () => placeholder.classList.add("hidden"));
-    img.addEventListener("error", () => img.classList.add("hidden"));
-    img.src = artworkUrl(b.artItemId);
-    artWrap.append(img);
-    const title = document.createElement("span");
-    title.className = "resume-card-title";
-    title.textContent = b.name;
-    const sub = document.createElement("span");
-    sub.className = "resume-card-sub";
-    sub.textContent = b.positionMs > 0 ? `at ${formatTime(b.positionMs / 1000)}` : (b.author || "");
-    card.append(artWrap, title, sub);
-    card.addEventListener("click", () => openResumeBook(b));
-    return card;
-  }));
+  resumeBooksRow.replaceChildren(...books.map(makeResumeCard));
 }
 
-// Tapping a Continue card opens the book detail (which shows Resume with the
-// exact chapter + position, freshly computed from current UserData).
+// Same shelf on Home. Hidden when there's nothing in progress.
+function renderHomeResume(books) {
+  homeResumeShelf.classList.toggle("hidden", !books.length);
+  homeResumeRow.replaceChildren(...books.map(makeResumeCard));
+}
+
+function makeResumeCard(b) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "resume-card";
+  const artWrap = document.createElement("div");
+  artWrap.className = "resume-card-art-wrap";
+  const placeholder = document.createElement("div");
+  placeholder.className = "resume-card-placeholder";
+  placeholder.textContent = "📖";
+  artWrap.append(placeholder);
+  const img = document.createElement("img");
+  img.className = "resume-card-art";
+  img.loading = "lazy";
+  img.alt = "";
+  img.addEventListener("load", () => placeholder.classList.add("hidden"));
+  img.addEventListener("error", () => img.classList.add("hidden"));
+  img.src = artworkUrl(b.artItemId);
+  artWrap.append(img);
+  const title = document.createElement("span");
+  title.className = "resume-card-title";
+  title.textContent = b.name;
+  const sub = document.createElement("span");
+  sub.className = "resume-card-sub";
+  sub.textContent = b.positionMs > 0 ? `at ${formatTime(b.positionMs / 1000)}` : (b.author || "");
+  card.append(artWrap, title, sub);
+  card.addEventListener("click", () => openResumeBook(b));
+  return card;
+}
+
+// Tapping a Continue card resumes playback immediately — fetch the book's
+// chapters (fresh UserData), compute the resume point, and start there. No
+// navigation; the mini player takes over.
 async function openResumeBook(b) {
-  await openBookDetail({ Id: b.bookId, Name: b.name, _artItemId: b.artItemId }, b.author);
+  let chapters;
+  await withBusy("Resuming…", async () => {
+    chapters = await fetchBookChapters(b.bookId);
+  });
+  if (!chapters?.length) { setMessage("Could not load that book."); return; }
+  const entry = { kind: "book", id: b.bookId, title: b.name, tracks: chapters };
+  playBook(entry, resumeStartIndex(chapters));
 }
 
 async function fetchAuthorBooks(authorId) {
@@ -1373,6 +1400,10 @@ async function fetchBookChapters(bookId) {
     const ud = item.UserData || {};
     track.playbackPositionMs = ud.PlaybackPositionTicks ? Math.round(ud.PlaybackPositionTicks / 10000) : 0;
     track.played = Boolean(ud.Played);
+    // When this chapter was last played, so resume can pick the point you
+    // actually left off at last — not the earliest in book order (handles
+    // listening across devices, and non-linear seeking).
+    track.lastPlayedTs = ud.LastPlayedDate ? Date.parse(ud.LastPlayedDate) || 0 : 0;
     track.isBook = true;
     return track;
   });
@@ -1699,29 +1730,36 @@ async function openBookDetail(book, authorName, backTo = "library") {
   const resumePos = entry.tracks[entry.resumeIndex]?.playbackPositionMs || 0;
   const chapterWord = single ? "1 file" : `${entry.tracks.length} chapters`;
   const resuming = entry.resumeIndex > 0 || resumePos > RESUME_MIN_POSITION_MS;
-  if (resuming) {
-    const parts = [];
-    if (!single) parts.push(`ch. ${entry.resumeIndex + 1}`);
-    if (resumePos > RESUME_MIN_POSITION_MS) parts.push(`at ${formatTime(resumePos / 1000)}`);
-    entry.sub = `${chapterWord} · resume ${parts.join(" ")}`;
-  } else {
-    entry.sub = chapterWord;
-  }
+  // The resume chapter is marked in the chapter list itself, so the subtitle
+  // only needs the position (naming a "ch. N" by list order clashed with
+  // chapters that are themselves titled "00:", "01:", …).
+  entry.sub = resuming && resumePos > RESUME_MIN_POSITION_MS
+    ? `${chapterWord} · resume at ${formatTime(resumePos / 1000)}`
+    : (resuming ? `${chapterWord} · resume` : chapterWord);
   openLibraryDetail(entry);
 }
 
-// Mirrors Android's resumeStartItem: the first chapter with a mid-chapter
-// position; else the first unplayed chapter after the last played one; else
-// the start. Keeps a half-listened book landing where you left off.
+// Where to resume a book. Prefers the MOST RECENTLY PLAYED chapter that still
+// has a mid-chapter position — so listening across devices (car → phone) or
+// out of order lands at the latest point you were at, not the earliest in
+// book order. Falls back to the first unplayed chapter after the most-recently
+// played one, else the start.
 function resumeStartIndex(chapters) {
-  const inProgress = chapters.findIndex((c) => {
+  let best = -1;
+  let bestTs = -1;
+  chapters.forEach((c, i) => {
     const pos = c.playbackPositionMs || 0;
     const dur = c.duration_ms;
-    return pos > RESUME_MIN_POSITION_MS && (!dur || pos < dur - RESUME_END_PADDING_MS);
+    const midChapter = pos > RESUME_MIN_POSITION_MS && (!dur || pos < dur - RESUME_END_PADDING_MS);
+    if (midChapter && (c.lastPlayedTs || 0) >= bestTs) { best = i; bestTs = c.lastPlayedTs || 0; }
   });
-  if (inProgress >= 0) return inProgress;
+  if (best >= 0) return best;
+  // No in-progress chapter: pick up after the most-recently played one.
   let lastPlayed = -1;
-  chapters.forEach((c, i) => { if (c.played) lastPlayed = i; });
+  let lastPlayedTs = -1;
+  chapters.forEach((c, i) => {
+    if (c.played && (c.lastPlayedTs || 0) >= lastPlayedTs) { lastPlayed = i; lastPlayedTs = c.lastPlayedTs || 0; }
+  });
   if (lastPlayed >= 0 && lastPlayed < chapters.length - 1) {
     const nextUnplayed = chapters.findIndex((c, i) => i > lastPlayed && !c.played);
     if (nextUnplayed >= 0) return nextUnplayed;
@@ -1803,6 +1841,7 @@ function renderLibraryDetail(entry) {
       (track) => playBookOrTracks(entry, tracks, tracks.indexOf(track)),
       !isBook,   // no per-row Similar on book chapters
       entry.kind === "playlist" ? (track) => removeFromPlaylist(entry, track) : null,
+      isBook ? (entry.resumeIndex ?? -1) : -1,   // mark + scroll to resume chapter
     );
   }
 }
@@ -2385,9 +2424,10 @@ function embyItemToTrack(item) {
 
 // ── Render helpers ───────────────────────────────────────
 
-function renderTrackList(container, tracks, onPlay, showSimilarBtn, onRemove = null) {
+function renderTrackList(container, tracks, onPlay, showSimilarBtn, onRemove = null, markIndex = -1) {
   if (!tracks.length) { container.replaceChildren(emptyMsg("No results", "li")); return; }
-  container.replaceChildren(...tracks.map((track) => {
+  let markedEl = null;
+  container.replaceChildren(...tracks.map((track, i) => {
     const item = document.createElement("li");
     item.className = "track-item";
 
@@ -2400,6 +2440,14 @@ function renderTrackList(container, tracks, onPlay, showSimilarBtn, onRemove = n
     const name = document.createElement("span");
     name.className = "track-name";
     name.textContent = track.title || "Untitled";
+    if (i === markIndex) {
+      item.classList.add("resume-mark");
+      const tag = document.createElement("span");
+      tag.className = "resume-tag";
+      tag.textContent = "Resume";
+      name.append(" ", tag);
+      markedEl = item;
+    }
     const dur = track.duration_ms ? formatTime(track.duration_ms / 1000) : null;
     const meta = document.createElement("span");
     meta.className = "track-meta";
@@ -2430,6 +2478,8 @@ function renderTrackList(container, tracks, onPlay, showSimilarBtn, onRemove = n
     item.addEventListener("click", () => onPlay(track));
     return item;
   }));
+  // Bring the resume chapter into view without yanking the whole page.
+  if (markedEl) markedEl.scrollIntoView({ block: "nearest" });
 }
 
 function emptyMsg(text, tag = "div") {

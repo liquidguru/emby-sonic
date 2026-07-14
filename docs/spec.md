@@ -1551,12 +1551,17 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     no coordinator call). Authors A–Z → books grid → chapters, reusing the
     M5.36 drill-down and art hydration (author/book covers resolved from a
     chapter's Primary image via the chapter's `AlbumArtists` ids).
-  - Long-form resume mirrors Android's `resumeStartItem`: first mid-chapter
-    position (`UserData.PlaybackPositionTicks` > 10s and not within 5s of the
-    end) → else first unplayed chapter after the last played → else start.
-    The book detail's primary button reads "Resume" (with chapter + timestamp
-    in the subtitle) or "Play". Single-file books resume by seeking within the
-    one item. Resume seek is applied once on `loadedmetadata`.
+  - Long-form resume: among chapters with a mid-chapter position
+    (`PlaybackPositionTicks` > 10s and not within 5s of the end), pick the
+    MOST RECENTLY PLAYED (`UserData.LastPlayedDate`); ties / missing dates
+    break toward the furthest chapter in book order — so cross-device
+    listening (car → phone) and non-linear seeking land at the latest point,
+    not the earliest. Falls back to the first unplayed chapter after the
+    most-recently-played, else the start. The resume chapter is marked with a
+    "Resume" tag in the chapter list and scrolled into view (the subtitle no
+    longer names a "ch. N" by list order — it clashed with chapters titled
+    "00:"/"01:"). Single-file books resume by seeking within the one item;
+    the seek is applied once on `loadedmetadata`.
   - Playback speed (0.75–2×, cycled from a Now Playing chip, applied to
     `<audio>.playbackRate` and kept across chapter changes) and a sleep timer
     (15/30/45/60 min or end-of-chapter, in the same chip row). Both work for
@@ -1565,9 +1570,11 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     `SearchTerm` queries), shown only when an audiobooks library exists; hits
     open the same book/author detail views. Audiobooks stay out of the sonic
     index (never analysed) — this is browse/playback only.
-  - "Continue listening" shelf at the top of the Audiobooks tab: Emby
-    `Filters=IsResumable` audio in the library, most-recently-played first,
-    deduped to their book; a card opens the book at its resume point.
+  - "Continue listening" shelf on both Home (top, above Recent plays) and the
+    Audiobooks tab: Emby `Filters=IsResumable` audio in the library,
+    most-recently-played first, deduped to their book; a card resumes that
+    book immediately at its computed resume point (no navigation). Both shelves
+    hide when nothing is in progress / no audiobooks library exists.
   - Fix (found in testing): `reportStopped` wrote `PositionTicks: 0` for any
     non-completed stop — correct for music (starts fresh) but it wiped an
     audiobook's resume point in Emby on a mid-book stop, so the position also

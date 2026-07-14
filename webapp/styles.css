@@ -1233,3 +1233,20 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   white-space: nowrap;
 }
 .resume-card-sub { font-size: 0.76rem; color: var(--accent); }
+
+/* ── Resume chapter marker in the book chapter list ──────── */
+
+.track-item.resume-mark {
+  background: var(--accent-dim);
+  border-radius: 8px;
+}
+.resume-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #06201b;
+  font-size: 0.66rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
