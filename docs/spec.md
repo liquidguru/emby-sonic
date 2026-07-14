@@ -1545,6 +1545,29 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     by `activeServerUrl()`. Added tests for distinct login DeviceIds, malformed
     DeviceId rejection, and the CSP header directives.
 
+- **M5.38 — Sonic Mixes clustering fix (2026-07-14, verified live on bee):**
+  Mixes were poor — nearly everything collapsed into a "chilled / Mexican"
+  blob with near-identical tempos across mixes (maintainer feedback). Two root
+  causes, found by profiling the live 27k-track index:
+  1. **k-means ran on the raw PCA embedding**, whose L2 norm varies ~3–18×
+     (loud/dense tracks fire PANNs harder), so Euclidean k-means was grouping
+     partly by loudness/density rather than sonic character. Now
+     **L2-normalized** before clustering (cosine / timbral direction, matching
+     the Track Radio / Similar path, which already normalized).
+  2. **The PANNs embedding is a timbre representation with almost no notion of
+     tempo**, so timbre-only clustering left every mix in a ~3 BPM band. Now
+     **standardized tempo + energy are appended as weighted extra dimensions**
+     (`mix_features()`, weight `settings.mix_feature_weight` default 1.0), so
+     k-means also separates fast/slow and calm/energetic. Live rebuild lifted
+     the across-mix tempo spread from ~3 BPM to a genuine ~77–196 BPM range
+     with tight within-mix bands, and diverse genre suffixes (New Age, Rock,
+     Dance, Pop, Club) instead of one blob.
+  - The per-mix **regenerate** endpoint rebuilds the same timbre+tempo+energy
+    feature space and ranks by Euclidean proximity to the stored centroid;
+    centroids from before this change (128-dim) return a 409 asking for a
+    rebuild. Mix naming (relative tempo/energy terciles + dominant artist/genre
+    suffix) is unchanged.
+
 - **M5.37 — Web app audiobooks (2026-07-12, verified live and shipped in
   beta.16):**
   - Audiobooks segment in the Library view (shown only when the user's Views
