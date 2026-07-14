@@ -97,6 +97,11 @@ const resumeBooksSection    = document.querySelector("#resumeBooksSection");
 const resumeBooksRow        = document.querySelector("#resumeBooksRow");
 const homeResumeShelf       = document.querySelector("#homeResumeShelf");
 const homeResumeRow         = document.querySelector("#homeResumeRow");
+const homeView              = document.querySelector("#homeView");
+const recentShelf           = document.querySelector("#recentShelf");
+const stationsShelf         = document.querySelector("#stationsShelf");
+const mixesShelf            = document.querySelector("#mixesShelf");
+const homeLayoutRows        = document.querySelector("#homeLayoutRows");
 const libraryDetailBack     = document.querySelector("#libraryDetailBack");
 const libraryDetailBackLabel = document.querySelector("#libraryDetailBackLabel");
 const libraryDetailArt      = document.querySelector("#libraryDetailArt");
@@ -285,6 +290,7 @@ async function loadSettingsView() {
   if (!state.session) return;
   settingsUserName.textContent = state.session.userName || "Unknown";
   settingsServerUrl.textContent = activeServerUrl();
+  renderHomeLayoutEditor();
   settingsStatusRows.replaceChildren(emptyMsg("Loading status…"));
   try {
     const status = await parseJson(await authedFetch("/sonic/status"));
@@ -318,11 +324,107 @@ async function loadSettingsView() {
 
 // ── Home ─────────────────────────────────────────────────
 
+// ── Home layout (show/hide + reorder sections) ───────────
+
+const HOME_LAYOUT_KEY = "embySonic.homeLayout";
+// id → { label, el }. Order here is the default order.
+const HOME_SECTIONS = [
+  { id: "resume", label: "Continue listening", el: () => homeResumeShelf },
+  { id: "recent", label: "Recent plays", el: () => recentShelf },
+  { id: "stations", label: "Stations", el: () => stationsShelf },
+  { id: "mixes", label: "Sonic mixes", el: () => mixesShelf },
+];
+
+// Persisted [{ id, visible }] in the user's chosen order. Merges with
+// HOME_SECTIONS so a new section added in a later release still appears
+// (appended, visible) even for users with a saved layout.
+function loadHomeLayout() {
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)) || []; } catch { saved = []; }
+  const known = new Map(HOME_SECTIONS.map((s) => [s.id, s]));
+  const layout = [];
+  for (const item of saved) {
+    if (known.has(item.id)) { layout.push({ id: item.id, visible: item.visible !== false }); known.delete(item.id); }
+  }
+  for (const id of known.keys()) layout.push({ id, visible: true });
+  return layout;
+}
+
+function saveHomeLayout(layout) {
+  localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify(layout));
+}
+
+// Reorder the Home sections in the DOM and apply user hide/show. Content-based
+// hiding (e.g. an empty Continue shelf) uses .hidden and composes with this.
+function applyHomeLayout() {
+  const layout = loadHomeLayout();
+  const byId = new Map(HOME_SECTIONS.map((s) => [s.id, s.el()]));
+  for (const { id, visible } of layout) {
+    const el = byId.get(id);
+    if (!el) continue;
+    el.classList.toggle("home-hidden", !visible);
+    homeView.appendChild(el);   // re-append in configured order (after tagline)
+  }
+}
+
 async function loadHomeData() {
   if (!state.session) return;
+  applyHomeLayout();
   loadMixes(false);
   loadRecentPlays();
   loadHomeResume();
+}
+
+// Settings → Home layout editor: a row per section with a show/hide toggle
+// and up/down reordering.
+function renderHomeLayoutEditor() {
+  const layout = loadHomeLayout();
+  const labels = new Map(HOME_SECTIONS.map((s) => [s.id, s.label]));
+  homeLayoutRows.replaceChildren(...layout.map((item, i) => {
+    const row = document.createElement("div");
+    row.className = "home-layout-row";
+
+    const moves = document.createElement("div");
+    moves.className = "home-layout-moves";
+    const up = document.createElement("button");
+    up.type = "button"; up.className = "move-btn"; up.textContent = "▲";
+    up.setAttribute("aria-label", "Move up");
+    up.disabled = i === 0;
+    up.addEventListener("click", () => reorderHome(i, i - 1));
+    const down = document.createElement("button");
+    down.type = "button"; down.className = "move-btn"; down.textContent = "▼";
+    down.setAttribute("aria-label", "Move down");
+    down.disabled = i === layout.length - 1;
+    down.addEventListener("click", () => reorderHome(i, i + 1));
+    moves.append(up, down);
+
+    const label = document.createElement("span");
+    label.className = "home-layout-label";
+    label.textContent = labels.get(item.id) || item.id;
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = `home-layout-toggle${item.visible ? " on" : ""}`;
+    toggle.textContent = item.visible ? "Shown" : "Hidden";
+    toggle.addEventListener("click", () => {
+      const next = loadHomeLayout();
+      next[i].visible = !next[i].visible;
+      saveHomeLayout(next);
+      renderHomeLayoutEditor();
+    });
+
+    row.append(moves, label, toggle);
+    return row;
+  }));
+}
+
+function reorderHome(from, to) {
+  const layout = loadHomeLayout();
+  if (to < 0 || to >= layout.length) return;
+  const [moved] = layout.splice(from, 1);
+  layout.splice(to, 0, moved);
+  saveHomeLayout(layout);
+  renderHomeLayoutEditor();
 }
 
 // "Continue listening" on Home — only shown when the server has an audiobooks

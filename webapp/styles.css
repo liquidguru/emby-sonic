@@ -1250,3 +1250,47 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   font-weight: 700;
   vertical-align: middle;
 }
+
+/* ── Home layout editor (Settings) ───────────────────────── */
+
+.home-hidden { display: none !important; }
+
+.home-layout-hint { margin-bottom: 12px; font-size: 0.82rem; }
+.home-layout-rows { display: flex; flex-direction: column; gap: 8px; }
+.home-layout-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--panel-strong);
+  border-radius: 10px;
+}
+.home-layout-moves { display: flex; flex-direction: column; gap: 2px; }
+.move-btn {
+  width: 26px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.move-btn:disabled { opacity: 0.3; cursor: default; }
+.home-layout-label { flex: 1; font-size: 0.9rem; font-weight: 600; }
+.home-layout-toggle {
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.home-layout-toggle.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}

@@ -66,7 +66,7 @@
           </section>
 
           <!-- Stations 2×3 grid -->
-          <section class="shelf">
+          <section class="shelf" id="stationsShelf">
             <h2 class="shelf-title">Stations</h2>
             <div class="stations-grid">
               <button class="station-card" type="button" data-station="library">
@@ -114,7 +114,7 @@
           </section>
 
           <!-- Sonic Mixes -->
-          <section class="shelf">
+          <section class="shelf" id="mixesShelf">
             <div class="shelf-head">
               <h2 class="shelf-title">Sonic mixes</h2>
               <button id="refreshMixesButton" class="text-btn" type="button">Refresh</button>
@@ -329,6 +329,12 @@
               <span id="settingsServerUrl" class="settings-value settings-value-wrap"></span>
             </div>
             <button id="logoutButton" class="danger-btn" type="button">Log out</button>
+          </div>
+
+          <div class="settings-card">
+            <h3 class="settings-card-title">Home layout</h3>
+            <p class="muted-text home-layout-hint">Show, hide, and reorder the sections on your Home screen.</p>
+            <div id="homeLayoutRows" class="home-layout-rows"></div>
           </div>
 
           <div class="settings-card">

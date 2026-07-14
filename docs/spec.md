@@ -1575,6 +1575,13 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     most-recently-played first, deduped to their book; a card resumes that
     book immediately at its computed resume point (no navigation). Both shelves
     hide when nothing is in progress / no audiobooks library exists.
+  - Home layout customization (Settings → Home layout): show/hide and reorder
+    the Home sections (Continue listening / Recent plays / Stations / Sonic
+    mixes) with per-row toggle + up/down, persisted in `localStorage`. The
+    saved order merges with the known section list so a section added in a
+    later release still appears for users with an existing saved layout.
+    Applied by re-appending the sections in `#homeView` and a `.home-hidden`
+    class that composes with the existing content-based hiding.
   - Fix (found in testing): `reportStopped` wrote `PositionTicks: 0` for any
     non-completed stop — correct for music (starts fresh) but it wiped an
     audiobook's resume point in Emby on a mid-book stop, so the position also
