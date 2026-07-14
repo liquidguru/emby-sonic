@@ -138,6 +138,45 @@ def _dedupe(name: str, used: set[str]) -> str:
     return final
 
 
+def _zscore(vals: list[float | None]) -> "np.ndarray":
+    """Standardize a scalar feature to mean 0 / std 1; missing → 0 (the mean)."""
+    a = np.array([v if v is not None else np.nan for v in vals], dtype=np.float64)
+    m = np.nanmean(a)
+    s = np.nanstd(a)
+    if not np.isfinite(s) or s == 0:
+        s = 1.0
+    a = (a - m) / s
+    a[~np.isfinite(a)] = 0.0
+    return a
+
+
+def mix_features(
+    vecs: "np.ndarray",
+    tempos: list[float | None],
+    energies: list[float | None],
+    weight: float,
+) -> "np.ndarray":
+    """The feature matrix mixes are clustered on. Two ideas:
+
+    1. The PANNs/PCA embedding is a TIMBRE representation (what instruments/
+       textures are present) — it has almost no notion of tempo, so clustering
+       on it alone makes every mix land in the same ~3 BPM band (Kaj: "the
+       tempos don't change"). Its L2 norm also varies ~3–18x (loud/dense
+       tracks activate harder), so raw Euclidean k-means groups by loudness.
+       So: L2-NORMALIZE the embedding (cluster by timbral direction, cosine —
+       matching Track Radio / Similar) …
+    2. … then APPEND standardized tempo + energy as extra dimensions, weighted,
+       so k-means also separates fast/slow and calm/energetic. At weight ~1 the
+       three cut roughly evenly; empirically that lifts the across-mix tempo
+       spread from ~3 BPM to ~28 BPM (range ~69–191) while keeping clusters
+       balanced. Higher weights over-tilt toward tempo and lopside the sizes.
+    """
+    timbre = vecs / np.maximum(np.linalg.norm(vecs, axis=1, keepdims=True), 1e-8)
+    tz = (_zscore(tempos) * weight).astype(np.float32)
+    ez = (_zscore(energies) * weight).astype(np.float32)
+    return np.hstack([timbre, tz[:, None], ez[:, None]]).astype(np.float32)
+
+
 def _cluster_and_name(
     track_ids: list[str],
     vecs: "np.ndarray",
@@ -151,8 +190,9 @@ def _cluster_and_name(
     """CPU-bound k-means + per-cluster track selection + naming. Pure/blocking,
     so it runs in a worker thread (see `_run`)."""
     n_clusters = min(n_clusters, len(vecs))
+    features = mix_features(vecs, tempos, energies, settings.mix_feature_weight)
     km = MiniBatchKMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = km.fit_predict(vecs)
+    labels = km.fit_predict(features)
     centroids = km.cluster_centers_.astype(np.float32)
 
     # Pass 1: pick each cluster's top tracks and gather their naming features.
@@ -161,11 +201,10 @@ def _cluster_and_name(
         mask = np.where(labels == cluster_id)[0]
         if len(mask) == 0:
             continue
-        cluster_vecs = vecs[mask]
-        centroid = centroids[cluster_id]
-        centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
-        scores = cluster_vecs @ centroid_norm
-        top_indices = np.argsort(-scores)[:tracks_per_mix]
+        # Closest to the centroid by Euclidean distance in the same feature
+        # space k-means used (so selection matches cluster assignment).
+        dist = np.linalg.norm(features[mask] - centroids[cluster_id], axis=1)
+        top_indices = np.argsort(dist)[:tracks_per_mix]
 
         sel_tempos = [tempos[mask[i]] for i in top_indices]
         sel_energies = [energies[mask[i]] for i in top_indices]

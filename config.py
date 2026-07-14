@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     mix_exclude_path_markers: list[str] = ["\\Videos\\Audio\\"]
     mix_exclude_extensions: list[str] = [".m4b"]
 
+    # How strongly tempo + energy weigh against the (unit-normalized) timbre
+    # embedding when clustering mixes. The embedding barely encodes tempo, so 0
+    # gives timbre-only mixes that never vary in tempo; ~1 balances the three so
+    # mixes span slow→fast while staying timbrally coherent. See mix_features().
+    mix_feature_weight: float = Field(default=1.0, ge=0.0, le=8.0)
+
     # Refresh (per-mix regenerate) variety. Rather than always returning the
     # strict top-N closest to the centroid (which makes every refresh identical),
     # Refresh samples N tracks from a pool of the closest matches, weighted

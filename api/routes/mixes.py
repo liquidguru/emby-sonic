@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import select, delete, func
 from api.deps import DB, AuthToken
 from api.schemas import MixOut, MixDetail, RegenerateMixRequest, TrackOut
-from analysis.mixes import is_mix_excluded
+from analysis.mixes import is_mix_excluded, mix_features
 from config import settings
 from db.models import Embedding, Mix, MixTrack, Track
 
@@ -94,7 +94,6 @@ async def regenerate_mix(
         raise HTTPException(409, "Mix has no stored centroid — run Build Mixes first")
 
     centroid = np.frombuffer(mix.centroid, dtype=np.float32)
-    centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-8)
 
     # The mix's current tracks, excluded below so a refresh fully turns the mix
     # over. Only the *current* set is excluded (not all history), so tracks are
@@ -109,7 +108,10 @@ async def regenerate_mix(
 
     rows = (
         await db.execute(
-            select(Embedding.track_id, Embedding.vector, Track.file_path)
+            select(
+                Embedding.track_id, Embedding.vector, Embedding.tempo,
+                Embedding.energy, Track.file_path,
+            )
             .join(Track, Track.id == Embedding.track_id)
         )
     ).all()
@@ -125,7 +127,18 @@ async def regenerate_mix(
         [np.frombuffer(r.vector, dtype=np.float32) for r in rows],
         dtype=np.float32,
     )
-    scores = vecs @ centroid_norm
+    # Build the SAME timbre+tempo+energy feature space the mix was clustered in
+    # (mix_features). Library-wide z-stats are recomputed here but are stable, so
+    # they match the build closely enough for ranking.
+    features = mix_features(
+        vecs, [r.tempo for r in rows], [r.energy for r in rows], settings.mix_feature_weight
+    )
+    if centroid.shape[0] != features.shape[1]:
+        # An old 128-dim centroid from before the timbre+tempo/energy change.
+        raise HTTPException(409, "Mix predates the current mix model — run Build Mixes to refresh it")
+    # Rank by proximity to the centroid (closest first); negate distance so the
+    # existing "higher score = better" pool/softmax logic below is unchanged.
+    scores = -np.linalg.norm(features - centroid, axis=1)
     n = min(body.tracks_per_mix, len(scores))
 
     # Candidate pool: the closest matches, then weighted-sample N from them so
@@ -138,8 +151,8 @@ async def regenerate_mix(
     pool_idx = np.argsort(-scores)[:pool_size]
     pool_scores = scores[pool_idx]
     # Scale temperature by the pool's score spread so behaviour is independent of
-    # the raw similarity magnitude (embeddings aren't unit-normalised, so scores
-    # are unbounded dot products, not [0,1] cosine values).
+    # the raw score magnitude (scores are negative Euclidean distances in the mix
+    # feature space, not [0,1] values).
     spread = float(pool_scores.std()) or 1.0
     scale = max(settings.refresh_temperature, 1e-6) * spread
     weights = np.exp((pool_scores - pool_scores.max()) / scale)
