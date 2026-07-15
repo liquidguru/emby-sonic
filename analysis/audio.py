@@ -156,9 +156,8 @@ def measure_loudness(waveform: np.ndarray, sample_rate: int) -> float | None:
 # Where a track's audible music actually starts/ends, so a crossfade can blend
 # on real music instead of a silent tail or a quiet intro (issue #38).
 
-EDGE_SR = 8000        # amplitude envelope only — full bandwidth is pointless here
-_EDGE_FRAME = 1024
-_EDGE_HOP = 256       # 32 ms resolution at 8 kHz — finer than anyone can hear as timing
+_EDGE_FRAME_SECONDS = 0.128
+_EDGE_HOP_SECONDS = 0.032   # 32 ms resolution — far finer than anyone hears as timing
 _EDGE_REF_PERCENTILE = 95
 
 
@@ -170,11 +169,16 @@ def detect_edges(
     Return (effective_start_ms, effective_end_ms) — where audible music begins
     and ends — or (None, None) if it can't be determined.
 
-    Decodes the WHOLE file at a low sample rate rather than seeking to a
-    header-reported duration: `load_windows` documents that duration can be
-    badly wrong for VBR (a 15-minute file reporting 74 minutes), and seeking to
-    a bogus offset would silently produce a nonsense tail. At 8 kHz mono this
-    is cheap next to CNN14 inference.
+    Decodes the WHOLE file rather than seeking to a header-reported duration:
+    `load_windows` documents that duration can be badly wrong for VBR (a
+    15-minute file reporting 74 minutes), and seeking to a bogus offset would
+    silently produce a nonsense tail.
+
+    Decodes at the file's NATIVE rate (`sr=None`). We only need an amplitude
+    envelope, and resampling — not decoding — dominates the cost: profiled on a
+    3.5-minute track, decode+resample to 8 kHz took 3.63 s vs 0.67 s decoding
+    natively, so skipping the resample is ~3x faster across a library backfill.
+    Frame/hop are derived from the actual rate to keep constant time resolution.
 
     The threshold is relative to the track's OWN loud passages (its
     95th-percentile frame RMS), not an absolute level — an absolute floor would
@@ -186,13 +190,15 @@ def detect_edges(
 
     db_below = settings.edge_threshold_db if threshold_db is None else threshold_db
     try:
-        y, _ = librosa.load(file_path, sr=EDGE_SR, mono=True)
+        y, sr = librosa.load(file_path, sr=None, mono=True)
     except Exception:
         return (None, None)
-    if y is None or y.size == 0:
+    if y is None or y.size == 0 or not sr:
         return (None, None)
 
-    rms = librosa.feature.rms(y=y, frame_length=_EDGE_FRAME, hop_length=_EDGE_HOP)[0]
+    hop = max(1, int(sr * _EDGE_HOP_SECONDS))
+    frame = max(hop, int(sr * _EDGE_FRAME_SECONDS))
+    rms = librosa.feature.rms(y=y, frame_length=frame, hop_length=hop)[0]
     if rms.size == 0:
         return (None, None)
 
@@ -205,8 +211,8 @@ def detect_edges(
     if above.size == 0:
         return (None, None)
 
-    def _ms(frame: int) -> int:
-        return int(round(frame * _EDGE_HOP / EDGE_SR * 1000.0))
+    def _ms(frame_index: int) -> int:
+        return int(round(frame_index * hop / sr * 1000.0))
 
     start_ms = _ms(int(above[0]))
     end_ms = _ms(int(above[-1]) + 1)

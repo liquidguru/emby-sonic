@@ -6,20 +6,24 @@ from unittest.mock import patch
 import numpy as np
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from analysis.audio import EDGE_SR, detect_edges
+from analysis.audio import detect_edges
 from api.routes.tracks import tracks_loudness
 from api.schemas import LoudnessRequest
 from db.database import Base
 from db.models import Embedding, Track
 
+# detect_edges decodes at the file's native rate, so the tests pick one and
+# feed synthetic audio at that rate through a patched librosa.load.
+TEST_SR = 8000
+
 
 def _tone(seconds: float, amplitude: float = 0.5) -> np.ndarray:
-    t = np.linspace(0.0, seconds, int(EDGE_SR * seconds), endpoint=False)
+    t = np.linspace(0.0, seconds, int(TEST_SR * seconds), endpoint=False)
     return (amplitude * np.sin(2 * np.pi * 440.0 * t)).astype(np.float32)
 
 
 def _silence(seconds: float) -> np.ndarray:
-    return np.zeros(int(EDGE_SR * seconds), dtype=np.float32)
+    return np.zeros(int(TEST_SR * seconds), dtype=np.float32)
 
 
 class DetectEdgesTests(unittest.TestCase):
@@ -27,7 +31,7 @@ class DetectEdgesTests(unittest.TestCase):
     synthetic audio with known edges."""
 
     def _detect(self, waveform: np.ndarray, **kwargs):
-        with patch("librosa.load", return_value=(waveform, EDGE_SR)):
+        with patch("librosa.load", return_value=(waveform, TEST_SR)):
             return detect_edges("ignored.flac", **kwargs)
 
     def test_finds_music_between_leading_and_trailing_silence(self) -> None:
@@ -45,7 +49,7 @@ class DetectEdgesTests(unittest.TestCase):
 
     def test_threshold_controls_how_far_into_a_fade_out_we_trim(self) -> None:
         # 10s of full-level music, then a 6s linear fade to silence.
-        fade = _tone(6.0) * np.linspace(1.0, 0.0, int(EDGE_SR * 6.0)).astype(np.float32)
+        fade = _tone(6.0) * np.linspace(1.0, 0.0, int(TEST_SR * 6.0)).astype(np.float32)
         audio = np.concatenate([_tone(10.0), fade])
         _, lenient_end = self._detect(audio, threshold_db=-40.0)
         _, aggressive_end = self._detect(audio, threshold_db=-20.0)
