@@ -277,8 +277,16 @@ send you), or build it yourself — see
 the APK to your phone, tap it, and allow "install from unknown sources" when
 prompted.
 
-> The APK is **release-signed and R8-minified** — identical to a Play Store build
-> in everything that matters for playback and security.
+> The APK is a **release build** — R8-minified and resource-shrunk, the same
+> optimised code a Play Store build would run.
+>
+> **Signing caveat (beta):** these beta APKs are signed with Android's **debug
+> key**, not a private release key. The debug key is a placeholder identity that
+> every Android SDK install shares, so the signature proves nothing about who
+> built the APK — only install builds you got directly from me. A real release
+> key is coming; when it lands you'll have to **uninstall and reinstall once**
+> (Android rejects an update signed by a different key). I'll flag it in advance
+> in [issue #8](https://github.com/liquidguru/emby-sonic/issues/8).
 
 > **Want Android Auto?** Sideloaded apps are hidden from Android Auto by default.
 > To use liquidWave in the car, enable AA developer mode once on the phone:
@@ -344,10 +352,17 @@ about your library, listening, or credentials is sent to me or any third party.
   (a plain-HTTP LAN server still works if you type an explicit `http://` URL).
 - **`allowBackup=false`** — your Emby session token is not swept into cloud or `adb`
   backups.
-- The APK is **release-signed and R8-minified** — identical to a Play Store build in everything that matters.
+- The APK is **R8-minified and resource-shrunk**, like a Play Store build.
 
 **Honest beta caveats (transparency):**
 
+- **Beta APKs are signed with Android's debug key, not a private release key.**
+  That key ships with every Android SDK and its password is public, so the
+  signature is not evidence of who built the APK — only install builds you got
+  directly from me. It does not weaken the app's own security (the token
+  encryption below is unaffected), but it is not the Play Store trust model.
+  Moving to a real key will need a **one-time uninstall + reinstall**, announced
+  ahead of time in [issue #8](https://github.com/liquidguru/emby-sonic/issues/8).
 - The Emby token is stored in **app-private storage on the phone, encrypted at rest** using Android Keystore.
 - The coordinator's CORS policy is currently permissive — harmless for a LAN-only
   service, and another reason not to expose `:8765` to the internet.

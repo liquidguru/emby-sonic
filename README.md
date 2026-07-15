@@ -495,7 +495,17 @@ JAVA_HOME="<path-to-jdk17>" ./gradlew :app:assembleDebug
 
 ### Release build
 
-Release builds are R8-minified, resource-shrunk, and signed from local secrets.
+Release builds are R8-minified and resource-shrunk. They are signed with the
+release key **only if** the four properties below are present; **if they are
+absent, `assembleRelease` silently falls back to the debug signing config** so
+contributors can still produce an installable APK without the keystore. Check
+what you actually got before distributing a build:
+
+```bash
+apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk
+# "CN=Android Debug" means the fallback was used — NOT a real release signature.
+```
+
 Put these in `~/.gradle/gradle.properties` or export them as environment
 variables; never commit the keystore or passwords:
 
