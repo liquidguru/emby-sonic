@@ -39,10 +39,19 @@ async def _add_track_genre(conn: AsyncConnection) -> None:
         await conn.execute(text("ALTER TABLE tracks ADD COLUMN genre TEXT"))
 
 
+async def _add_embedding_effective_edges(conn: AsyncConnection) -> None:
+    columns = await _column_names(conn, "embeddings")
+    if "effective_start_ms" not in columns:
+        await conn.execute(text("ALTER TABLE embeddings ADD COLUMN effective_start_ms INTEGER"))
+    if "effective_end_ms" not in columns:
+        await conn.execute(text("ALTER TABLE embeddings ADD COLUMN effective_end_ms INTEGER"))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "add mixes.centroid", _add_mix_centroid),
     Migration(2, "add embeddings.lufs", _add_embedding_lufs),
     Migration(3, "add tracks.genre", _add_track_genre),
+    Migration(4, "add embeddings effective edges", _add_embedding_effective_edges),
 )
 
 _current_schema_version = 0

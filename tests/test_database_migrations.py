@@ -32,10 +32,12 @@ class DatabaseMigrationTests(unittest.IsolatedAsyncioTestCase):
                 row[1] for row in (await conn.execute(text("PRAGMA table_info(mixes)"))).all()
             }
 
-        self.assertEqual(versions, [1, 2, 3])
-        self.assertEqual(current_schema_version(), 3)
+        self.assertEqual(versions, [1, 2, 3, 4])
+        self.assertEqual(current_schema_version(), 4)
         self.assertIn("genre", track_columns)
         self.assertIn("lufs", embedding_columns)
+        self.assertIn("effective_start_ms", embedding_columns)
+        self.assertIn("effective_end_ms", embedding_columns)
         self.assertIn("centroid", mix_columns)
 
     async def test_legacy_database_upgrades_without_losing_data(self) -> None:
@@ -84,7 +86,12 @@ class DatabaseMigrationTests(unittest.IsolatedAsyncioTestCase):
                 await conn.execute(text("SELECT title, genre FROM tracks WHERE id='track-1'"))
             ).one()
             embedding = (
-                await conn.execute(text("SELECT vector, lufs FROM embeddings WHERE track_id='track-1'"))
+                await conn.execute(
+                    text(
+                        "SELECT vector, lufs, effective_start_ms, effective_end_ms "
+                        "FROM embeddings WHERE track_id='track-1'"
+                    )
+                )
             ).one()
             mix = (
                 await conn.execute(text("SELECT name, centroid FROM mixes WHERE id='mix-1'"))
@@ -94,9 +101,10 @@ class DatabaseMigrationTests(unittest.IsolatedAsyncioTestCase):
             ).scalars().all()
 
         self.assertEqual(track, ("Keep me", None))
-        self.assertEqual(embedding, (b"\x01\x02", None))
+        # Legacy row survives, with the new columns added and left NULL.
+        self.assertEqual(embedding, (b"\x01\x02", None, None, None))
         self.assertEqual(mix, ("Keep mix", None))
-        self.assertEqual(versions, [1, 2, 3])
+        self.assertEqual(versions, [1, 2, 3, 4])
 
     async def test_failed_migration_is_not_recorded(self) -> None:
         async def fail_after_ddl(conn) -> None:

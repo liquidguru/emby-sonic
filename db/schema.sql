@@ -26,7 +26,9 @@ CREATE TABLE embeddings (
   arousal REAL,                 -- mood: calm → energetic (Essentia)
   instrumentalness REAL,
   vocals_present INTEGER,        -- boolean (0/1)
-  lufs REAL                     -- integrated loudness (EBU R128 LUFS); drives volume normalisation
+  lufs REAL,                    -- integrated loudness (EBU R128 LUFS); drives volume normalisation
+  effective_start_ms INTEGER,   -- where audible music starts; NULL = unmeasured (crossfade trimming)
+  effective_end_ms INTEGER      -- where audible music ends; NULL = unmeasured (crossfade trimming)
 );
 
 CREATE TABLE mixes (

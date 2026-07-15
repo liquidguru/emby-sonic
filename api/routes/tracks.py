@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 from api.deps import DB, AuthToken
-from api.schemas import SimilarTrack, RadioPlaylist, TrackOut, LoudnessRequest, LoudnessResponse
+from api.schemas import (
+    SimilarTrack, RadioPlaylist, TrackOut, LoudnessRequest, LoudnessResponse, TrackEdges,
+)
 from db.models import Track, Embedding
 from analysis.similarity import get_similar_tracks, build_radio
 
@@ -11,21 +13,40 @@ router = APIRouter(tags=["tracks"])
 @router.post("/tracks/loudness", response_model=LoudnessResponse)
 async def tracks_loudness(body: LoudnessRequest, db: DB, _token: AuthToken) -> LoudnessResponse:
     """
-    Batch lookup of integrated loudness (LUFS) for a set of track ids, so the
-    Android player can apply per-track volume normalisation across a queue in one
-    round-trip. Unknown / unmeasured ids are simply omitted from the response.
+    Batch per-track playback data for a set of track ids, so the Android player
+    can set up a whole queue in one round-trip:
+
+    - `loudness`: integrated loudness (LUFS) for volume normalisation.
+    - `edges`: where audible music starts/ends, for crossfade edge trimming (#38).
+
+    Both are independent and sparse — a track appears in each only if that value
+    was measured. Unknown/unmeasured ids are simply omitted, and clients treat a
+    missing id as "no data" (unity gain / blend against the full duration).
+
+    Kept on the existing /tracks/loudness route rather than a new endpoint so the
+    client still makes ONE call per queue; `edges` is additive, so older clients
+    ignore it.
     """
     ids = [i for i in dict.fromkeys(body.ids) if i]  # de-dupe, drop blanks, keep order
     if not ids:
         return LoudnessResponse(loudness={})
     rows = (
         await db.execute(
-            select(Embedding.track_id, Embedding.lufs).where(
-                Embedding.track_id.in_(ids), Embedding.lufs.is_not(None)
-            )
+            select(
+                Embedding.track_id,
+                Embedding.lufs,
+                Embedding.effective_start_ms,
+                Embedding.effective_end_ms,
+            ).where(Embedding.track_id.in_(ids))
         )
     ).all()
-    return LoudnessResponse(loudness={track_id: lufs for track_id, lufs in rows})
+    loudness = {r.track_id: r.lufs for r in rows if r.lufs is not None}
+    edges = {
+        r.track_id: TrackEdges(start_ms=r.effective_start_ms, end_ms=r.effective_end_ms)
+        for r in rows
+        if r.effective_start_ms is not None and r.effective_end_ms is not None
+    }
+    return LoudnessResponse(loudness=loudness, edges=edges)
 
 
 @router.get("/tracks/{track_id}/similar", response_model=list[SimilarTrack])

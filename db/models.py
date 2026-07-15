@@ -49,6 +49,11 @@ class Embedding(Base):
     # Integrated loudness in LUFS (EBU R128 / BS.1770), measured over the analysis
     # windows. Drives client-side volume normalisation. NULL until measured.
     lufs: Mapped[float | None] = mapped_column(Float)
+    # Where audible music actually starts/ends (ms), so a crossfade blends on
+    # real music instead of a silent tail or quiet intro (issue #38). NULL =
+    # not measured; clients fall back to 0 / the track's full duration.
+    effective_start_ms: Mapped[int | None] = mapped_column(Integer)
+    effective_end_ms: Mapped[int | None] = mapped_column(Integer)
 
     track: Mapped["Track"] = relationship(back_populates="embedding")
 

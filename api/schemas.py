@@ -19,11 +19,21 @@ class LoudnessRequest(BaseModel):
     ids: list[str]  # Emby track ids to look up integrated loudness for
 
 
+class TrackEdges(BaseModel):
+    # Where a track's audible music starts/ends (ms), for crossfade trimming.
+    start_ms: int
+    end_ms: int
+
+
 class LoudnessResponse(BaseModel):
     # Integrated loudness in LUFS, keyed by track id. Only analysed tracks that
     # have a measured value are present; the client treats a missing id as "no
     # data" and leaves that track at unity gain.
     loudness: dict[str, float]
+    # Effective edges keyed by track id, for crossfade edge trimming (#38).
+    # Additive: only ids with BOTH edges measured appear. Older clients ignore
+    # this field; newer ones treat a missing id as "blend against full duration".
+    edges: dict[str, TrackEdges] = {}
 
 
 class WebLoginRequest(BaseModel):
@@ -204,6 +214,10 @@ class WorkerResult(BaseModel):
     instrumentalness: float | None = None
     vocals_present: int | None = None
     lufs: float | None = None      # integrated loudness (EBU R128); None if unmeasured
+    # Where audible music starts/ends (ms) for crossfade edge trimming (#38);
+    # None when unmeasured or detection couldn't determine them.
+    effective_start_ms: int | None = Field(default=None, ge=0)
+    effective_end_ms: int | None = Field(default=None, ge=0)
     error: str | None = None       # set if this track failed on the worker
 
 

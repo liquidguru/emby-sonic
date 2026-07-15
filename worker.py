@@ -30,7 +30,7 @@ import numpy as np
 
 from config import settings
 from analysis import emby
-from analysis.audio import load_windows, extract_features, measure_loudness
+from analysis.audio import load_windows, extract_features, measure_loudness, detect_edges
 from analysis.embeddings import embedder
 
 COORDINATOR = os.environ.get("COORDINATOR_URL", "http://localhost:8765").rstrip("/")
@@ -120,6 +120,15 @@ def _analyse(track: dict) -> dict:
             log.info(f"[worker] feature extraction failed for {track['id']}: {exc}; embedding only")
             feats = dict(_NULL_FEATS)
         lufs = measure_loudness(window_audio, settings.sample_rate)
+        # Where the audible music starts/ends, for crossfade edge trimming
+        # (#38). Like the scalar features above, this is a playback nicety —
+        # a failure must not cost the track its embedding, so it degrades to
+        # nulls (clients then fall back to 0 / full duration).
+        try:
+            effective_start_ms, effective_end_ms = detect_edges(path)
+        except Exception as exc:
+            log.info(f"[worker] edge detection failed for {track['id']}: {exc}; no trim data")
+            effective_start_ms = effective_end_ms = None
         raw = embedder.embed_raw(windows)
         if not np.all(np.isfinite(raw)):
             raise ValueError("non-finite embedding vector — likely silent/corrupt audio")
@@ -135,6 +144,8 @@ def _analyse(track: dict) -> dict:
         "track_id": track["id"],
         "raw_vector": base64.b64encode(raw.tobytes()).decode("ascii"),
         "lufs": lufs,
+        "effective_start_ms": effective_start_ms,
+        "effective_end_ms": effective_end_ms,
         **feats,
     }
 

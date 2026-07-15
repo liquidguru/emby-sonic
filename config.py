@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     mix_exclude_path_markers: list[str] = ["\\Videos\\Audio\\"]
     mix_exclude_extensions: list[str] = [".m4b"]
 
+    # Crossfade edge trimming (issue #38): how far BELOW a track's own loud
+    # passages (95th-percentile frame RMS) audio counts as an inaudible edge.
+    # Near 0 trims aggressively into the music; very negative only trims true
+    # silence and leaves a long mastered fade-out intact. ~-30 dB marks where a
+    # fade has become negligible without amputating endings people want to hear.
+    # This is the taste knob — tune by ear, not by theory.
+    edge_threshold_db: float = Field(default=-30.0, ge=-80.0, le=-6.0)
+
     # How strongly tempo + energy weigh against the (unit-normalized) timbre
     # embedding when clustering mixes. The embedding barely encodes tempo, so 0
     # gives timbre-only mixes that never vary in tempo; ~1 balances the three so

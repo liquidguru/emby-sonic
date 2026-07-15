@@ -152,6 +152,75 @@ def measure_loudness(waveform: np.ndarray, sample_rate: int) -> float | None:
     return lufs
 
 
+# ── Effective edges (crossfade trimming) ─────────────────────────────
+# Where a track's audible music actually starts/ends, so a crossfade can blend
+# on real music instead of a silent tail or a quiet intro (issue #38).
+
+EDGE_SR = 8000        # amplitude envelope only — full bandwidth is pointless here
+_EDGE_FRAME = 1024
+_EDGE_HOP = 256       # 32 ms resolution at 8 kHz — finer than anyone can hear as timing
+_EDGE_REF_PERCENTILE = 95
+
+
+def detect_edges(
+    file_path: str,
+    threshold_db: float | None = None,
+) -> tuple[int | None, int | None]:
+    """
+    Return (effective_start_ms, effective_end_ms) — where audible music begins
+    and ends — or (None, None) if it can't be determined.
+
+    Decodes the WHOLE file at a low sample rate rather than seeking to a
+    header-reported duration: `load_windows` documents that duration can be
+    badly wrong for VBR (a 15-minute file reporting 74 minutes), and seeking to
+    a bogus offset would silently produce a nonsense tail. At 8 kHz mono this
+    is cheap next to CNN14 inference.
+
+    The threshold is relative to the track's OWN loud passages (its
+    95th-percentile frame RMS), not an absolute level — an absolute floor would
+    mis-fire on quiet recordings and on loudness-war masters alike.
+
+    Callers treat None as "no data" and fall back to 0 / the file's duration.
+    """
+    import librosa
+
+    db_below = settings.edge_threshold_db if threshold_db is None else threshold_db
+    try:
+        y, _ = librosa.load(file_path, sr=EDGE_SR, mono=True)
+    except Exception:
+        return (None, None)
+    if y is None or y.size == 0:
+        return (None, None)
+
+    rms = librosa.feature.rms(y=y, frame_length=_EDGE_FRAME, hop_length=_EDGE_HOP)[0]
+    if rms.size == 0:
+        return (None, None)
+
+    reference = float(np.percentile(rms, _EDGE_REF_PERCENTILE))
+    if not np.isfinite(reference) or reference <= 0:
+        return (None, None)   # silent / degenerate
+
+    threshold = reference * (10.0 ** (db_below / 20.0))
+    above = np.flatnonzero(rms > threshold)
+    if above.size == 0:
+        return (None, None)
+
+    def _ms(frame: int) -> int:
+        return int(round(frame * _EDGE_HOP / EDGE_SR * 1000.0))
+
+    start_ms = _ms(int(above[0]))
+    end_ms = _ms(int(above[-1]) + 1)
+    total_ms = _ms(int(rms.size))
+
+    # Sanity: never claim a start past the end, and don't trust a result that
+    # would trim most of the track — that's a broken/odd file, not a fade-out.
+    if end_ms <= start_ms:
+        return (None, None)
+    if (end_ms - start_ms) < total_ms * 0.5:
+        return (None, None)
+    return (start_ms, end_ms)
+
+
 def extract_features(file_path: str, waveform: np.ndarray, sample_rate: int) -> dict:
     """
     Single entry point. Returns the full scalar feature dict.
