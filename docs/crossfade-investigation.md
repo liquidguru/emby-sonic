@@ -103,6 +103,45 @@ Revisit a single-output mixer only if a future Android release demonstrates a
 repeatable two-output failure in the bare floor test. Do not infer one from an
 Emby source/session error.
 
+## Superseded: the shared audio session (2026-07-16)
+
+**The "both players share one generated audio session" decision above is no
+longer true — do not restore it.** It caused an audible dip at the exact moment
+of every transition.
+
+When the primary jumps to the next track it rebuilds its `AudioTrack`. Android
+then reconfigures that session's effect chain, which briefly interrupts *every*
+track in the session — including the helper playing the outgoing song. It was
+mistaken for a crossfade-logic bug for a while; the decisive test was the
+maintainer switching the Equalizer OFF, at which point the dip vanished
+completely (no effect attached → no chain to reconfigure).
+
+Now: the helper has its **own** session, and `AudioEffectsController` mirrors the
+Equalizer onto it (`attachHelper`/`detachHelper`, plus `syncHelper()` on every
+mutation). This keeps the original goal — EQ across both sides of a blend —
+without letting the primary's track change disturb the helper.
+
+The rest of the two-player design stands.
+
+### Also fixed at the same time: helper start latency
+
+The helper is seeked and buffered while paused, so its content position is
+exact — but `play()` takes ~140 ms to produce audio and it silently loses that
+much, landing ~113 ms behind the primary. Two copies of the same track that far
+apart comb-filter rather than reinforce, dipping ~3 dB at the 50/50 handoff
+swap. It is now started EARLY by that latency (learned per session from each
+blend's measured residual): 113 ms → 7 ms on the Pixel 8 Pro.
+
+Do not try to fix this by servoing the players together with corrective seeks —
+that was tried and oscillated (−142 ms, then +58 ms). Every corrective seek
+re-introduces the latency it is correcting, and ExoPlayer reports the *seek
+target* as `currentPosition` before the AudioTrack primes, so a measurement
+taken soon after a seek is simply a lie.
+
+Both artifacts pre-dated #38 (crossfade edge trimming) — they hid inside the
+outgoing track's fade-out, where the music was already quiet. Anchoring the
+blend on audible music moved them into loud audio and exposed them.
+
 ## Repeatable diagnostic
 
 The minimal repro is debug-only (`android/app/src/debug`). It accepts two item
