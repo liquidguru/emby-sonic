@@ -1545,6 +1545,55 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
     by `activeServerUrl()`. Added tests for distinct login DeviceIds, malformed
     DeviceId rejection, and the CSP header directives.
 
+- **M5.39 — Crossfade edge trimming + transition dip fixes (2026-07-16,
+  verified on-device; issue #38):**
+  - **The ask:** the blend started a fixed N seconds before the file's end, so
+    on a track with a mastered fade-out it spent its window mixing near-silence
+    — the "lull" at transitions. It now anchors on where the music actually
+    **ends**, and the incoming track is seeked past its leading silence, so the
+    blend lands on audible music at both ends.
+  - **Detection** (`analysis/audio.py detect_edges`): decodes the whole file at
+    its NATIVE rate (resampling — not decoding — dominates the cost: 3.63 s vs
+    0.67 s on a 3.5-min track) and finds the first/last frame whose RMS is
+    within `settings.edge_threshold_db` (default **−30**) of the track's own
+    95th-percentile RMS. Relative to the track, not an absolute floor, so it
+    behaves the same on quiet recordings and loudness-war masters. Never seeks
+    to a header-reported duration (`load_windows` documents that as unreliable
+    for VBR). Guards: silent/degenerate audio, or a result that would trim >50%
+    of a track, return no data.
+  - **Threshold is a taste call, validated by ear.** At −30 dB, fade-out tracks
+    (Birdy, AC/DC, Clare Bowditch) yield 5–6 s of trimmable tail while
+    cold-ending tracks (Ozomatli, Lorde, DMX) correctly yield ~0 s. −20 dB
+    starts eating audible fade. Maintainer confirmed −30 does not clip fades he
+    wants to hear.
+  - **Pipeline:** migration v4 adds `embeddings.effective_start_ms/_end_ms`
+    (first real use of the M5.35 ledger). The worker measures edges during
+    analysis, degrading to nulls on failure rather than costing a track its
+    embedding. `/tracks/loudness` serves them additively as an `edges` map,
+    keeping ONE call per queue; both maps are sparse and independent.
+    `tools/backfill_edges.py` filled the existing library (25,525 detected, 3
+    skipped, ~9 h). Android: `blendEndMs()`/`blendStartMs()`, Settings →
+    Crossfade → "Skip silent endings" (default on). Any missing data, or the
+    toggle off, falls back to the previous full-duration behaviour.
+  - **Two transition artifacts fixed, both PRE-EXISTING** — trimming did not
+    create them; it moved the blend out of the quiet fade-out and into loud
+    music, where they became obvious. See `docs/crossfade-investigation.md`:
+    1. *Helper start latency.* `play()` takes ~140 ms to produce audio and the
+       helper silently loses exactly that, landing ~113 ms behind; two copies of
+       the same track that far apart comb-filter and dip ~3 dB at the swap. Now
+       started early by that latency, learned per session from each blend's
+       residual: **113 ms → 7 ms**. (Do NOT servo the players with corrective
+       seeks — tried, oscillated; every corrective seek re-introduces the
+       latency, and ExoPlayer reports the seek target as `currentPosition`
+       before the AudioTrack primes, so the measurement lies.)
+    2. *The shared audio session.* Both players shared one session so a single
+       Equalizer covered both (M5.x/2026-06-15). But the primary rebuilding its
+       AudioTrack at a track change makes Android reconfigure that session's
+       effect chain, interrupting the helper mid-blend — an audible dip at the
+       exact moment of transition. Found by the maintainer testing with the EQ
+       OFF, which removed it entirely. The helper now has its own session with a
+       **mirrored** Equalizer, preserving the reason the session was shared.
+
 - **M5.38 — Sonic Mixes clustering fix (2026-07-14, verified live on bee):**
   Mixes were poor — nearly everything collapsed into a "chilled / Mexican"
   blob with near-identical tempos across mixes (maintainer feedback). Two root
