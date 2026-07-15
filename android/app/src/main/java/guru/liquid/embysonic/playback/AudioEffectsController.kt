@@ -59,6 +59,22 @@ class AudioEffectsController @Inject constructor(
     private var sessionId: Int = 0
     private var suppressedForRemotePlayback: Boolean = false
 
+    /**
+     * A second Equalizer for the crossfade helper's OWN audio session.
+     *
+     * The two players used to share one session so a single Equalizer covered
+     * both. That turned out to dip the audio at every blend: when the primary
+     * jumps to the next track it rebuilds its AudioTrack, Android reconfigures
+     * the session's effect chain, and that interrupts everything in the session
+     * — including the helper carrying the outgoing song. Confirmed by the dip
+     * disappearing with the EQ switched off.
+     *
+     * Separate sessions isolate them; mirroring the settings here keeps EQ
+     * applied to both sides of a blend, which is why they were shared to begin
+     * with. Never drives [_state] — the UI reflects the primary only.
+     */
+    private var helperEqualizer: Equalizer? = null
+
     private val _state = MutableStateFlow(EqualizerState())
     val state: StateFlow<EqualizerState> = _state.asStateFlow()
 
@@ -91,8 +107,48 @@ class AudioEffectsController @Inject constructor(
         broadcastOpen()
     }
 
+    /**
+     * Bind a mirrored equalizer to the crossfade helper's own session, so the
+     * outgoing track keeps its EQ through a blend. Called when the helper is
+     * created; [detachHelper] when it is released.
+     */
+    fun attachHelper(audioSessionId: Int) {
+        if (helperEqualizer != null) return
+        val primary = equalizer ?: return   // no EQ on this device — nothing to mirror
+        helperEqualizer = runCatching { Equalizer(EFFECT_PRIORITY, audioSessionId) }
+            .onFailure { Log.w(TAG, "Helper equalizer unavailable", it) }
+            .getOrNull()
+        mirrorToHelper(primary)
+        // Deliberately NOT broadcasting the effect-control-session intent for
+        // this one: a third-party EQ should attach to our real output, not to a
+        // transient blend helper.
+    }
+
+    fun detachHelper() {
+        helperEqualizer?.let { runCatching { it.release() } }
+        helperEqualizer = null
+    }
+
+    /** Copy the primary's live curve + enabled state onto the helper's EQ. */
+    private fun mirrorToHelper(primary: Equalizer) {
+        val helper = helperEqualizer ?: return
+        runCatching {
+            helper.enabled = primary.enabled
+            for (b in 0 until minOf(primary.numberOfBands.toInt(), helper.numberOfBands.toInt())) {
+                helper.setBandLevel(b.toShort(), primary.getBandLevel(b.toShort()))
+            }
+        }
+    }
+
+    /** Re-apply the primary's current settings to the helper, if one is attached. */
+    private fun syncHelper() {
+        val primary = equalizer ?: return
+        if (helperEqualizer != null) mirrorToHelper(primary)
+    }
+
     fun setEnabled(enabled: Boolean) {
         equalizer?.let { runCatching { it.enabled = enabled && !suppressedForRemotePlayback } }
+        syncHelper()
         scope.launch { settings.setEqEnabled(enabled) }
         publish()
     }
@@ -102,6 +158,7 @@ class AudioEffectsController @Inject constructor(
         suppressedForRemotePlayback = suppressed
         val savedEnabled = settings.snapshot().eqEnabled
         equalizer?.let { runCatching { it.enabled = savedEnabled && !suppressed } }
+        syncHelper()
         publish()
     }
 
@@ -111,6 +168,7 @@ class AudioEffectsController @Inject constructor(
             val (min, max) = eq.bandLevelRange.let { it[0].toInt() to it[1].toInt() }
             eq.setBandLevel(index.toShort(), levelMb.coerceIn(min, max).toShort())
         }
+        syncHelper()
         publish()
     }
 
@@ -130,6 +188,7 @@ class AudioEffectsController @Inject constructor(
     fun usePreset(preset: Int) {
         val eq = equalizer ?: return
         runCatching { eq.usePreset(preset.toShort()) }
+        syncHelper()
         scope.launch {
             settings.setEqPreset(preset)
             settings.setEqBandLevels(currentLevels())
@@ -143,6 +202,7 @@ class AudioEffectsController @Inject constructor(
         runCatching {
             for (b in 0 until eq.numberOfBands) eq.setBandLevel(b.toShort(), 0)
         }
+        syncHelper()
         scope.launch {
             settings.setEqPreset(EqualizerState.NO_PRESET)
             settings.setEqBandLevels(currentLevels())

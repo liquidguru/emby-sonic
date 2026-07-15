@@ -115,10 +115,23 @@ class PlaybackController @Inject constructor(
         .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
         .build()
 
-    // Both players share one audio session so a single Equalizer instance covers
-    // normal playback AND the crossfade helper's tail.
-    private val sharedAudioSessionId: Int =
-        (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+    // The primary player's audio session — what the Equalizer and any external
+    // effects app attach to.
+    private val sharedAudioSessionId: Int = audioManager.generateAudioSessionId()
+
+    // The crossfade helper gets its OWN session, NOT the primary's.
+    //
+    // They used to share one, so a single Equalizer covered both. But when the
+    // primary jumps to the next track it rebuilds its AudioTrack, and Android
+    // reconfigures the whole session's effect chain — interrupting every track
+    // in that session, including the helper playing the outgoing song. That was
+    // an audible dip at the exact moment of every transition (proved by it
+    // vanishing with the EQ switched off). Isolating the sessions removes the
+    // interference; AudioEffectsController mirrors the EQ onto this one so the
+    // outgoing track still gets EQ through a blend.
+    private val helperAudioSessionId: Int = audioManager.generateAudioSessionId()
 
     // Per-track volume normalisation. Each player gets its own gain processor in
     // its audio sink so the primary (incoming track) and the crossfade helper
@@ -165,7 +178,7 @@ class PlaybackController @Inject constructor(
             .setAudioAttributes(mediaAudioAttributes, /* handleAudioFocus= */ false)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
-            .also { it.audioSessionId = sharedAudioSessionId }
+            .also { it.audioSessionId = helperAudioSessionId }
             .also { secondary ->
                 secondary.addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -179,10 +192,17 @@ class PlaybackController @Inject constructor(
                     }
                 })
                 fadePlayer = secondary
+                // Mirror the EQ onto the helper's own session — the outgoing
+                // track would otherwise lose EQ for the length of a blend.
+                audioEffects.attachHelper(helperAudioSessionId)
             }
 
     /** Stop and fully release the crossfade helper so it holds no decoder. */
     private fun releaseFadePlayer() {
+        // Drop the mirrored EQ first: releasing an effect after its session's
+        // player is gone is pointless, and leaking one would stack up an
+        // Equalizer per blend.
+        audioEffects.detachHelper()
         fadePlayer?.release()
         fadePlayer = null
         fadePlayerReady = false
@@ -200,6 +220,11 @@ class PlaybackController @Inject constructor(
     // Precisely-timed fire scheduled once the helper's tail is buffered; non-null
     // means a fire is pending (or ran) for the armed index.
     private var crossfadeFireJob: Job? = null
+
+    // How long after play() the helper actually starts producing audio, learned
+    // from each blend's measured residual (see learnHelperStartLatency). Device/
+    // codec dependent, so the initial value is only a starting guess.
+    private var helperStartLatencyMs = HELPER_START_LATENCY_INITIAL_MS
 
     // The outgoing track + blend length while a crossfade is firing, published in
     // state so Now Playing can dissolve the artwork in sync with the audio.
@@ -1949,6 +1974,45 @@ class PlaybackController @Inject constructor(
     }
 
     /**
+     * Drag the helper onto the primary's playhead while it is still MUTED.
+     *
+     * Both are playing the same outgoing track, but the helper starts ~110 ms
+     * behind: warming its AudioTrack is exactly what makes it lose that time,
+     * and nothing corrected for it. At the handoff swap the two copies then
+     * comb-filter instead of reinforcing, partially cancelling into a ~3 dB dip
+     * at the 50/50 point. That dip used to hide inside the outgoing track's
+     * fade-out; anchoring the blend on the music (#38) moved it into loud audio
+     * and made it obvious.
+     *
+     * Correcting by seeking is only safe here because the helper is silent, so
+     * a re-buffer costs nothing audible. Each seek itself takes time, during
+     * which the primary moves on, so this converges rather than fixing it in
+     * one shot — and gives up rather than fighting a helper that will not
+     * settle (an out-of-sync blend still beats no blend).
+     */
+    /**
+     * Learn the helper's start latency from what actually happened.
+     *
+     * The helper is seeked and buffered at an exact position while paused, so
+     * its content position is not in doubt — the ONLY error is that `play()`
+     * takes time to produce audio, and it silently loses exactly that much
+     * ground. So rather than servo the two players together with corrective
+     * seeks (which re-introduce the very latency they correct, and oscillated
+     * badly in practice), start the helper that much EARLIER and let it land
+     * aligned by construction.
+     *
+     * [offsetMs] is the residual measured at the swap: positive = helper still
+     * behind = we started it too late. Smoothed because it varies a little per
+     * transition, and clamped so one bad reading can't wreck later blends.
+     */
+    private fun learnHelperStartLatency(offsetMs: Long) {
+        val corrected = helperStartLatencyMs + offsetMs
+        val smoothed = helperStartLatencyMs + ((corrected - helperStartLatencyMs) * HELPER_LATENCY_SMOOTHING).toLong()
+        helperStartLatencyMs = smoothed.coerceIn(0L, HELPER_LATENCY_MAX_MS)
+        Log.d(TAG, "Helper start latency: residual=${offsetMs}ms -> estimate=${helperStartLatencyMs}ms")
+    }
+
+    /**
      * Waits out the exact time to the blend point, then fires. Re-reads the live
      * position after every sleep so a stall/rebuffer during the wait can't make
      * the blend fire early; a pause cancels the job via cancelCrossfade.
@@ -1958,15 +2022,19 @@ class PlaybackController @Inject constructor(
         // (Main.immediate would otherwise execute a no-wait fire synchronously
         // inside launch). endCrossfade owns cancelling/clearing the reference.
         val job = scope.launch(start = CoroutineStart.LAZY) {
-            // Phase 1: start the helper MUTED a little before the blend point.
-            // A cold AudioTrack takes tens of ms to emit its first samples, so
-            // swapping it in cold left a brief hole in the outgoing track at
-            // the transition; rendering silently through the preroll makes the
-            // volume swap at the blend point symmetric and instant.
+            // Phase 1: start the helper MUTED before the blend point, so its
+            // AudioTrack is warm and already rendering when we swap to it.
+            //
+            // Start EARLY by the measured start latency: play() doesn't produce
+            // audio instantly, and the helper silently loses exactly that much
+            // ground, landing behind the primary. Two copies of the same track
+            // a hundred-odd ms apart comb-filter instead of reinforcing, which
+            // dips the level at the swap — the artifact #38 exposed by moving
+            // the blend out of the fade-out and into loud music.
             while (isActive) {
                 if (player.duration == C.TIME_UNSET) break
                 val wait = (blendEndMs - player.currentPosition) - crossfadeMs -
-                    CROSSFADE_HELPER_PREROLL_MS
+                    CROSSFADE_HELPER_PREROLL_MS - helperStartLatencyMs
                 if (wait <= 0) break
                 delay(wait)
             }
@@ -2050,16 +2118,20 @@ class PlaybackController @Inject constructor(
         // actually running in case the fire happened before phase 1 could start
         // it (a late fire inside the blend window).
         if (!helper.isPlaying) helper.play()
-        // Decoder offset between the two copies of the outgoing track — the
-        // helper's AudioTrack start latency. The micro-swap below masks it.
+        // Residual offset between the two copies of the outgoing track. Near
+        // zero means the swap below sums cleanly; a large value means they
+        // comb-filter and the swap dips. Feed it back so the next blend starts
+        // the helper by a better-calibrated amount.
         val helperOffsetMs = player.currentPosition - helper.currentPosition
         Log.d(TAG, "Crossfade fired durationMs=$blendDurationMs helperOffsetMs=$helperOffsetMs")
+        learnHelperStartLatency(helperOffsetMs)
         crossfadeJob?.cancel()
         crossfadeJob = scope.launch {
             // Micro-crossfade the outgoing track from the primary to the warm
-            // helper. Both are playing the same content a few tens of ms apart,
-            // so a short equal-power swap hides the handoff and the offset —
-            // a hard cut here was audible as a brief dip at the transition.
+            // helper. alignHelperToPrimary() has already dragged the two copies
+            // onto the same playhead, so this swap is between (near-)identical
+            // signals and stays at constant level; a hard cut here was instead
+            // audible as a hole at the transition.
             val swapSteps = (CROSSFADE_SWAP_MS / CROSSFADE_RAMP_STEP_MS).toInt().coerceAtLeast(1)
             for (step in 1..swapSteps) {
                 val f = step.toFloat() / swapSteps
@@ -2415,10 +2487,18 @@ class PlaybackController @Inject constructor(
         // precisely-timed fire. Must exceed the helper preroll so phase 1 can
         // start the muted helper on time; kept short so playback stalls can't
         // accrue much drift between scheduling and firing (re-checked anyway).
-        const val CROSSFADE_FIRE_LEAD_MS = 800L
+        // How far ahead of the blend the fire is scheduled. Must exceed the
+        // preroll + start latency so phase 1 can start the helper on time.
+        const val CROSSFADE_FIRE_LEAD_MS = 1_800L
         // Muted helper run-up before the blend point, warming its AudioTrack so
-        // the handoff swap has no cold-start hole in the outgoing audio.
-        const val CROSSFADE_HELPER_PREROLL_MS = 500L
+        // the swap has no cold-start hole. Must stay under CROSSFADE_FIRE_LEAD_MS
+        // with room for helperStartLatencyMs on top.
+        const val CROSSFADE_HELPER_PREROLL_MS = 800L
+        // Helper start latency (see learnHelperStartLatency). Initial guess only
+        // — measured at ~110-190ms on a Pixel 8 Pro — then learned per session.
+        const val HELPER_START_LATENCY_INITIAL_MS = 120L
+        const val HELPER_LATENCY_SMOOTHING = 0.6      // favour the new reading, but damp noise
+        const val HELPER_LATENCY_MAX_MS = 600L        // a wild reading must not break later blends
         // Length of the equal-power handoff swap from primary to helper.
         const val CROSSFADE_SWAP_MS = 100L
         // Only skip an incoming track's intro if it's worth a seek — trimming a
