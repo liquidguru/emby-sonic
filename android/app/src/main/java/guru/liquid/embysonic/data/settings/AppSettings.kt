@@ -16,6 +16,10 @@ data class AppSettings(
     val deviceId: String,
     val crossfadeEnabled: Boolean = false,
     val crossfadeDurationMs: Int = 6_000,
+    // Skip a track's silent tail / quiet intro when blending, so the crossfade
+    // lands on audible music. Falls back to full-duration blending for tracks
+    // the coordinator hasn't measured.
+    val crossfadeTrimEdges: Boolean = true,
     val eqEnabled: Boolean = false,
     // Per-band gains in millibels, indexed by equalizer band; empty = flat/default.
     val eqBandLevels: List<Int> = emptyList(),

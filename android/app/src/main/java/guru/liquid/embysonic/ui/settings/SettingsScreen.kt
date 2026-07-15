@@ -161,6 +161,26 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Skip silent endings", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "Blend on the music instead of a song's silent tail or quiet " +
+                                        "intro. Needs analysed tracks; others blend as before.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = state.crossfadeTrimEdges,
+                                onCheckedChange = viewModel::setCrossfadeTrimEdges,
+                                enabled = !state.isCasting,
+                            )
+                        }
                     }
                 }
             }

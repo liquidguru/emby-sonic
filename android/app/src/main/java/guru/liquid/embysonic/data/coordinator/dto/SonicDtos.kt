@@ -130,8 +130,23 @@ data class LoudnessRequestDto(
     @SerialName("ids") val ids: List<String>,
 )
 
-/** Response of `POST /sonic/tracks/loudness` — integrated loudness (LUFS) by track id. */
+/**
+ * Response of `POST /sonic/tracks/loudness` — per-track playback data for a queue.
+ *
+ * [loudness] drives volume normalisation; [edges] drives crossfade edge trimming.
+ * Both maps are sparse and independent — a track appears only if that value was
+ * measured — so a missing id means "no data" (unity gain / blend against the
+ * full duration), not an error.
+ */
 @Serializable
 data class LoudnessResponseDto(
     @SerialName("loudness") val loudness: Map<String, Float> = emptyMap(),
+    @SerialName("edges") val edges: Map<String, TrackEdgesDto> = emptyMap(),
+)
+
+/** Where a track's audible music starts/ends, so a blend lands on music not dead air. */
+@Serializable
+data class TrackEdgesDto(
+    @SerialName("start_ms") val startMs: Long,
+    @SerialName("end_ms") val endMs: Long,
 )

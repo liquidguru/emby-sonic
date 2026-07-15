@@ -34,6 +34,7 @@ data class SettingsUiState(
     val analysisStatus: AnalysisStatusUiState = AnalysisStatusUiState.Loading,
     val crossfadeEnabled: Boolean = false,
     val crossfadeSeconds: Int = 6,
+    val crossfadeTrimEdges: Boolean = true,
     val volumeNormalizationEnabled: Boolean = true,
     val prefetchAheadCount: Int = 3,
     val generatedMixTracks: Int = 25,
@@ -62,6 +63,7 @@ class SettingsViewModel @Inject constructor(
                 castServerUrl = snap.castServerUrl.orEmpty(),
                 userName = snap.userName.orEmpty(),
                 crossfadeEnabled = snap.crossfadeEnabled,
+                crossfadeTrimEdges = snap.crossfadeTrimEdges,
                 crossfadeSeconds = snap.crossfadeDurationMs / 1000,
                 volumeNormalizationEnabled = snap.volumeNormalizationEnabled,
                 prefetchAheadCount = snap.prefetchAheadCount,
@@ -85,6 +87,11 @@ class SettingsViewModel @Inject constructor(
     fun setCrossfadeEnabled(value: Boolean) {
         _state.update { it.copy(crossfadeEnabled = value) }
         viewModelScope.launch { settings.setCrossfadeEnabled(value) }
+    }
+
+    fun setCrossfadeTrimEdges(value: Boolean) {
+        _state.update { it.copy(crossfadeTrimEdges = value) }
+        viewModelScope.launch { settings.setCrossfadeTrimEdges(value) }
     }
 
     fun setCrossfadeSeconds(seconds: Int) {

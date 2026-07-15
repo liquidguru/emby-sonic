@@ -53,6 +53,7 @@ class SettingsRepository @Inject constructor(
         val PLAYBACK_REPEAT_MODE = stringPreferencesKey("playback_repeat_mode")
         val CROSSFADE_ENABLED = booleanPreferencesKey("crossfade_enabled")
         val CROSSFADE_DURATION_MS = intPreferencesKey("crossfade_duration_ms")
+        val CROSSFADE_TRIM_EDGES = booleanPreferencesKey("crossfade_trim_edges")
         val EQ_ENABLED = booleanPreferencesKey("eq_enabled")
         val EQ_BAND_LEVELS = stringPreferencesKey("eq_band_levels")
         val EQ_PRESET = intPreferencesKey("eq_preset")
@@ -100,6 +101,14 @@ class SettingsRepository @Inject constructor(
     /** Crossfade overlap length in milliseconds (both tracks audible together). */
     val crossfadeDurationMs: Flow<Int> =
         context.dataStore.data.map { it[Keys.CROSSFADE_DURATION_MS] ?: DEFAULT_CROSSFADE_MS }
+
+    /**
+     * Whether a crossfade skips a track's silent tail / quiet intro, blending on
+     * the audible music instead (needs the coordinator's measured edges; without
+     * them a track just blends against its full duration as before).
+     */
+    val crossfadeTrimEdges: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.CROSSFADE_TRIM_EDGES] ?: true }
 
     /** Shared track-count choice for generated sonic mixes and genre mixes. */
     val generatedMixTracks: Flow<Int> =
@@ -150,6 +159,11 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setCrossfadeEnabled(value: Boolean) {
         context.dataStore.edit { it[Keys.CROSSFADE_ENABLED] = value }
+        refreshCache()
+    }
+
+    suspend fun setCrossfadeTrimEdges(value: Boolean) {
+        context.dataStore.edit { it[Keys.CROSSFADE_TRIM_EDGES] = value }
         refreshCache()
     }
 
@@ -254,6 +268,7 @@ class SettingsRepository @Inject constructor(
             deviceId = deviceId,
             crossfadeEnabled = this[Keys.CROSSFADE_ENABLED] ?: false,
             crossfadeDurationMs = this[Keys.CROSSFADE_DURATION_MS] ?: DEFAULT_CROSSFADE_MS,
+            crossfadeTrimEdges = this[Keys.CROSSFADE_TRIM_EDGES] ?: true,
             eqEnabled = this[Keys.EQ_ENABLED] ?: false,
             eqBandLevels = this[Keys.EQ_BAND_LEVELS]
                 ?.splitCsv()

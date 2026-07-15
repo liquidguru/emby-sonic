@@ -46,6 +46,7 @@ import guru.liquid.embysonic.BuildConfig
 import guru.liquid.embysonic.MainActivity
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.LoudnessRequestDto
+import guru.liquid.embysonic.data.coordinator.dto.TrackEdgesDto
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
 import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.download.DownloadProgressStore
@@ -249,6 +250,13 @@ class PlaybackController @Inject constructor(
     private var normalizationEnabled = true
     private var lastNormalizedTrackId: String? = null
 
+    // Crossfade edge trimming (#38): where each track's audible music actually
+    // starts/ends, fetched alongside loudness. Missing id = no data = blend
+    // against the full duration (previous behaviour).
+    private val edgesByTrackId = mutableMapOf<String, TrackEdgesDto>()
+    @Volatile
+    private var trimEdgesEnabled = true
+
     // How many upcoming tracks to pre-cache; driven by the user setting (collected
     // in init). The prefetch cache keeps this many (plus headroom) so a larger
     // value isn't immediately self-evicted.
@@ -345,6 +353,16 @@ class PlaybackController @Inject constructor(
                     audiobookSpeed = speed
                     applyPlaybackSpeed()
                     publishState()
+                }
+        }
+        scope.launch {
+            settings.crossfadeTrimEdges
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    trimEdgesEnabled = enabled
+                    // Any armed blend was planned against the old anchor; drop it
+                    // so the next one is planned with the new setting.
+                    cancelCrossfade()
                 }
         }
         scope.launch {
@@ -1878,8 +1896,12 @@ class PlaybackController @Inject constructor(
         if (next.isLongForm) return
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: return
         val crossfadeMs = snap.crossfadeDurationMs.toLong()
-        val tailFromMs = (duration - crossfadeMs).coerceAtLeast(0)
-        val remaining = duration - player.currentPosition.coerceAtLeast(0)
+        // Anchor the blend on where the music actually ENDS, not the file's
+        // nominal end — otherwise a mastered fade-out means the blend spends
+        // its window mixing near-silence (the "lull" at transitions, #38).
+        val blendEnd = blendEndMs(current.id, duration)
+        val tailFromMs = (blendEnd - crossfadeMs).coerceAtLeast(0)
+        val remaining = blendEnd - player.currentPosition.coerceAtLeast(0)
 
         if (!crossfadeArmed && remaining in 1..(crossfadeMs + CROSSFADE_PRELOAD_MS)) {
             armCrossfade(current, tailFromMs, index)
@@ -1893,7 +1915,7 @@ class PlaybackController @Inject constructor(
             // lag replays audio the primary has already played past that mark —
             // heard as a stutter at the start of the blend.
             helperHasTailBuffered && remaining - crossfadeMs <= CROSSFADE_FIRE_LEAD_MS ->
-                scheduleCrossfadeFire(crossfadeMs)
+                scheduleCrossfadeFire(crossfadeMs, blendEnd)
             !helperHasTailBuffered && remaining <= MIN_CROSSFADE_START_MS -> {
                 Log.w(TAG, "Crossfade helper was not ready; preserving normal transition")
                 cancelCrossfade()
@@ -1902,11 +1924,36 @@ class PlaybackController @Inject constructor(
     }
 
     /**
+     * Where the outgoing track's blend should complete: its measured effective
+     * end (skipping a silent tail / the inaudible part of a fade-out), else the
+     * file's full duration — which is also the fallback whenever the coordinator
+     * hasn't measured the track or the user turned trimming off.
+     */
+    private fun blendEndMs(trackId: String, duration: Long): Long {
+        if (!trimEdgesEnabled) return duration
+        val end = edgesByTrackId[trackId]?.endMs ?: return duration
+        // Never blend past the file, and ignore a degenerate value that would
+        // leave no room for the blend.
+        return end.coerceIn(1L, duration)
+    }
+
+    /**
+     * Where the INCOMING track should start: past its leading silence, so the
+     * blend fades in on music rather than dead air. 0 (the file's start) unless
+     * a meaningful intro was measured — a sub-second trim isn't worth a seek.
+     */
+    private fun blendStartMs(trackId: String?): Long {
+        if (!trimEdgesEnabled || trackId == null) return 0L
+        val start = edgesByTrackId[trackId]?.startMs ?: return 0L
+        return if (start >= CROSSFADE_MIN_INTRO_TRIM_MS) start else 0L
+    }
+
+    /**
      * Waits out the exact time to the blend point, then fires. Re-reads the live
      * position after every sleep so a stall/rebuffer during the wait can't make
      * the blend fire early; a pause cancels the job via cancelCrossfade.
      */
-    private fun scheduleCrossfadeFire(crossfadeMs: Long) {
+    private fun scheduleCrossfadeFire(crossfadeMs: Long, blendEndMs: Long) {
         // Lazy start so the job reference is assigned before the body can run
         // (Main.immediate would otherwise execute a no-wait fire synchronously
         // inside launch). endCrossfade owns cancelling/clearing the reference.
@@ -1917,8 +1964,8 @@ class PlaybackController @Inject constructor(
             // the transition; rendering silently through the preroll makes the
             // volume swap at the blend point symmetric and instant.
             while (isActive) {
-                val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: break
-                val wait = (duration - player.currentPosition) - crossfadeMs -
+                if (player.duration == C.TIME_UNSET) break
+                val wait = (blendEndMs - player.currentPosition) - crossfadeMs -
                     CROSSFADE_HELPER_PREROLL_MS
                 if (wait <= 0) break
                 delay(wait)
@@ -1930,16 +1977,16 @@ class PlaybackController @Inject constructor(
             }
             // Phase 2: precise wait to the blend point itself.
             while (isActive) {
-                val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: break
-                val wait = (duration - player.currentPosition) - crossfadeMs
+                if (player.duration == C.TIME_UNSET) break
+                val wait = (blendEndMs - player.currentPosition) - crossfadeMs
                 if (wait <= 0) break
                 delay(wait)
             }
             if (!crossfadeArmed) return@launch
-            val duration = player.duration.takeIf { it != C.TIME_UNSET }
-            val remaining = duration?.let { it - player.currentPosition } ?: 0L
+            val remaining = blendEndMs - player.currentPosition
             if (remaining <= 0) {
-                // The track ended under us; let the normal transition stand.
+                // The track ended (or ran past its effective end) under us; let
+                // the normal transition stand.
                 cancelCrossfade()
                 return@launch
             }
@@ -2040,8 +2087,15 @@ class PlaybackController @Inject constructor(
             // Advance the primary; the helper keeps the outgoing track audible
             // while the next decoder becomes ready. Skip the seek if the track
             // ended naturally during the swap (the player already advanced).
+            // Start the incoming track past its leading silence so the blend
+            // fades in on music rather than dead air (#38).
             if (player.currentMediaItemIndex == crossfadeFromIndex) {
-                player.seekToNextMediaItem()
+                val introMs = blendStartMs(queue.getOrNull(crossfadeTargetIndex)?.id)
+                if (introMs > 0 && crossfadeTargetIndex in queue.indices) {
+                    player.seekTo(crossfadeTargetIndex, introMs)
+                } else {
+                    player.seekToNextMediaItem()
+                }
             }
             // Do not spend the fade duration while the incoming decoder is
             // buffering. The outgoing helper remains at full volume meanwhile.
@@ -2146,8 +2200,11 @@ class PlaybackController @Inject constructor(
         scope.launch {
             val response = runCatching { coordinator.loudness(LoudnessRequestDto(unknown)) }.getOrNull()
                 ?: return@launch
-            if (response.loudness.isEmpty()) return@launch
+            // One call returns both loudness (volume normalisation) and edges
+            // (crossfade trimming); either map may be empty independently, so
+            // don't bail early on one being absent.
             lufsByTrackId.putAll(response.loudness)
+            edgesByTrackId.putAll(response.edges)
             // Re-apply for whatever is playing now that its loudness may be known.
             lastReportedState.currentTrack?.let { applyNormalizationGain(it.id) }
         }
@@ -2364,6 +2421,9 @@ class PlaybackController @Inject constructor(
         const val CROSSFADE_HELPER_PREROLL_MS = 500L
         // Length of the equal-power handoff swap from primary to helper.
         const val CROSSFADE_SWAP_MS = 100L
+        // Only skip an incoming track's intro if it's worth a seek — trimming a
+        // couple of hundred ms costs a rebuffer for something nobody hears.
+        const val CROSSFADE_MIN_INTRO_TRIM_MS = 500L
         const val MIN_CROSSFADE_START_MS = 2_000L
         const val CROSSFADE_COMPLETION_SLACK_MS = 1_000L
         // Fraction of the blend spent easing each edge (incoming in at the
