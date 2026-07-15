@@ -9,15 +9,27 @@ measures these during analysis; tracks embedded *before* that have NULLs. This
 script fills them in without re-embedding: it streams each track's audio from
 Emby, detects the edges, and writes them straight into the embeddings table.
 
-It is CPU-only and never loads the neural model, so it's far cheaper than a
+It is CPU-only and never loads the neural model, so it is FAR cheaper than a
 re-analysis and safe to run on the always-on coordinator box (e.g. coordinator-host).
 It's resumable: only rows still missing an edge are touched, so re-running picks
-up where it left off.
+up where it left off, and it's safe to stop at any time.
 
-Note it decodes the WHOLE file (at a low sample rate) rather than sampled
-windows — the edges are precisely the parts sampled windows skip. That makes it
-slower per track than the loudness backfill, so expect it to take a while over a
-large library; it's safe to stop and re-run.
+It decodes the WHOLE file rather than sampled windows — the edges are precisely
+the parts sampled windows skip — so it costs more per track than the loudness
+backfill, but nothing like a re-analysis.
+
+Measured throughput (Intel N100 / coordinator-host, streaming from Emby over LAN):
+
+    ~42 tracks/minute  (~1.4 s/track)
+    25,528 tracks -> ~10 hours       (0.01% undetectable)
+
+    1,000 tracks  ~25 min
+    5,000 tracks  ~2 hours
+    20,000 tracks ~8 hours
+
+Dominated by decode, so a faster CPU helps; a slow link to Emby will bound it
+instead. Audiobooks are skipped (never crossfaded). Newly-analysed tracks get
+their edges from the worker automatically — this is only for the back catalogue.
 
 Usage:
     python tools/backfill_edges.py                  # whole library

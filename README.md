@@ -150,6 +150,26 @@ multiple workers in parallel for faster scanning.
 > out with `python tools/purge_audiobooks.py` (dry-run by default; `--apply` to
 > delete; rebuilds on the next coordinator restart).
 
+### Backfilling a library analysed before a feature landed
+
+Some playback features read a per-track measurement the worker now takes during
+analysis. Tracks embedded *before* that feature have nothing to read, so they
+fall back to the old behaviour. These scripts fill them in **without
+re-embedding** — CPU-only, the neural model never loads, and resumable (only
+rows still missing the value are touched, so stopping and re-running is safe):
+
+```bash
+python tools/backfill_loudness.py   # volume normalisation (integrated LUFS)
+python tools/backfill_edges.py      # crossfade edge trimming (effective start/end)
+```
+
+Measured on an Intel N100 streaming from Emby over LAN, `backfill_edges.py` runs
+at **~42 tracks/minute** (~1,000 tracks ≈ 25 min, ~25,000 ≈ 10 hours) — it
+decodes each file in full, since a track's edges are precisely what the analyser's
+sampled windows skip. `backfill_loudness.py` is quicker (sampled windows only).
+Both skip audiobooks where the feature doesn't apply. Newly-analysed tracks get
+these from the worker automatically.
+
 ### Broken-track maintenance
 
 Tracks that fail analysis are left with `analysis_status='error'` so workers do

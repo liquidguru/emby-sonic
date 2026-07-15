@@ -247,6 +247,25 @@ wait for 100 %. For hands-off operation later, install the worker as a service
 (Windows scheduled task or Linux systemd) — see
 [README → Automatic analysis](../README.md#automatic-analysis-worker-as-a-service).
 
+### Already analysed before beta.18? (crossfade edge trimming)
+
+Crossfade can now skip a song's silent tail so the blend lands on the music. That
+needs one extra measurement per track. **New music picks it up automatically** —
+this is only to fill in a library analysed before beta.18:
+
+```bash
+python tools/backfill_edges.py            # whole library, resumable
+python tools/backfill_edges.py --limit 50 # try a small batch first
+```
+
+It is **not** a re-analysis — the neural model never loads, so it's ~10× cheaper.
+Measured on an Intel N100 streaming from Emby over LAN: **~42 tracks/minute**
+(~1,000 tracks ≈ 25 min, ~5,000 ≈ 2 h, ~25,000 ≈ 10 h). Safe to stop and re-run;
+it only touches tracks that still need it, and skips audiobooks.
+
+Entirely optional: without it, crossfade simply behaves as it did before. The
+transition-glitch fixes in beta.18 are in the app and need no backfill.
+
 ---
 
 ## 5. Install the Android app (liquidWave)
@@ -358,6 +377,12 @@ Once some of your library is analysed:
   quiet track and a loud one back to back, then toggle it off and replay: with it on
   they sit at a similar volume; off, the loud one jumps. (Needs the backend, since it
   uses the loudness measured during analysis.)
+- **Crossfade** (Settings → Crossfade) — blends one song into the next. Most songs
+  fade out at the end, so a blend that starts a fixed 6 s before the file ends spends
+  much of that mixing near-silence. With **Skip silent endings** on (default), the
+  blend instead lands on where the music actually stops — see the backfill note under
+  [Analyse your library](#4-analyse-your-library) if your library was analysed before
+  this landed.
 - **Cast** to a Chromecast/Android TV/SHIELD if you have one.
 
 **Please report:** what you tried, what device/Android version, what you expected vs.
