@@ -163,19 +163,23 @@ python tools/backfill_loudness.py   # volume normalisation (integrated LUFS)
 python tools/backfill_edges.py      # crossfade edge trimming (effective start/end)
 ```
 
-> **On Docker, run these in the WORKER container with the data volume attached
-> — not the coordinator** (#40). They need librosa *and* the database, and no
-> single container has both by default: the coordinator image deliberately ships
+> **On Docker, run these as a one-off WORKER container on the coordinator's
+> host, with the data volume attached — not the coordinator, and not a separate
+> worker box** (#40). They need librosa *and* the database, and no single
+> container has both by default: the coordinator image deliberately ships
 > without librosa (that split is what keeps it small and ARM-buildable), while
-> the worker has librosa but doesn't normally mount the DB. So attach it:
+> the worker has librosa but doesn't normally mount the DB. And because a Docker
+> named volume is local to its host, this must run wherever the volume lives —
+> i.e. the coordinator's host, even if your long-running worker is elsewhere:
 >
 > ```bash
 > docker compose run --rm -v emby-sonic-data:/app/data \
 >     worker python tools/backfill_edges.py
 > ```
 >
-> Bare metal: run them wherever you installed the full `requirements.txt` (not
-> `requirements-coordinator.txt`), pointing `--db` at the coordinator's database.
+> Bare metal: run them on the coordinator's host, wherever you installed the full
+> `requirements.txt` (not `requirements-coordinator.txt`), pointing `--db` at the
+> database.
 
 Measured on an Intel N100 streaming from Emby over LAN, `backfill_edges.py` runs
 at **~42 tracks/minute** (~1,000 tracks ≈ 25 min, ~25,000 ≈ 10 hours) — it

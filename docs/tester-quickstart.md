@@ -277,6 +277,11 @@ python tools/backfill_edges.py --limit 50 # try a small batch first
 > worker has librosa but doesn't normally mount the database. Attaching the volume
 > to the worker gives it both. Running it in the coordinator fails with
 > `ModuleNotFoundError: librosa`.
+>
+> **Coordinator and worker on different hosts?** A Docker named volume only
+> exists on its own host, so run this one-off container **on the coordinator's
+> host** (where the database volume is), not on your separate worker box — even
+> though your long-running worker lives elsewhere.
 
 It is **not** a re-analysis — the neural model never loads, so it's ~10× cheaper.
 Measured on an Intel N100 streaming from Emby over LAN: **~42 tracks/minute**

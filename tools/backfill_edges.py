@@ -13,18 +13,25 @@ It is CPU-only and never loads the neural model, so it is FAR cheaper than a
 re-analysis. It's resumable: only rows still missing an edge are touched, so
 re-running picks up where it left off, and it's safe to stop at any time.
 
-WHERE TO RUN IT — this needs BOTH librosa AND the coordinator's database:
+WHERE TO RUN IT — it needs BOTH librosa AND the coordinator's database, and
+must run ON THE HOST WHERE THE DATABASE LIVES. A Docker named volume is local
+to its host, so it cannot be reached from a worker on a different machine (#40).
 
-  Docker:      run it in the WORKER container with the data volume attached.
-               The coordinator image deliberately has no librosa (that is the
-               point of the coordinator/worker split — a small, ARM-buildable
-               image), and the worker doesn't normally mount the database:
+  Docker:      run a one-off WORKER container ON THE COORDINATOR'S HOST, with
+               the data volume attached — NOT on a separate worker box. The
+               coordinator image deliberately has no librosa (that is the point
+               of the coordinator/worker split — a small, ARM-buildable image),
+               and the worker image doesn't normally mount the database:
 
                  docker compose run --rm -v emby-sonic-data:/app/data \
                      worker python tools/backfill_edges.py
 
-  Bare metal:  run it wherever you installed requirements.txt (the full set,
-                 not requirements-coordinator.txt), pointing --db at the DB.
+               (Split hosts: the worker service may live elsewhere, but this
+               one-off container must run where the volume is.)
+
+  Bare metal:  run it on the coordinator's host, wherever you installed
+               requirements.txt (the full set, not requirements-coordinator.txt),
+               pointing --db at the database.
 
 It decodes the WHOLE file rather than sampled windows — the edges are precisely
 the parts sampled windows skip — so it costs more per track than the loudness
