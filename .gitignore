@@ -20,5 +20,9 @@ dist/
 *.p12
 android/keystores/
 
+# Release artifacts staged in the repo root for upload (see README -> Release build)
+*.apk
+*.aab
+
 # Codex remote session attachments (not part of the project)
 .codex-remote-attachments/
