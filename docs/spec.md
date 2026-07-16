@@ -1912,6 +1912,7 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 | Android language | Kotlin / Jetpack Compose | Modern Android standard |
 | API auth | Emby token passthrough | No second auth system; worker routes use shared API key |
 | MVP scope | All discovery features together | No point shipping without the features that make it valuable |
+| App signing key | Our own RSA 4096 key (`CN=liquidguru`), kept outside the repo | Debug-signed builds identify nobody; see Resolved Decisions — **if we ever enrol in Play, upload THIS key, don't let Play generate one** (a new key = a second forced reinstall for every tester) |
 
 ---
 
@@ -2056,6 +2057,68 @@ User-Agent headers so Emby can transcode unsupported codecs such as WMA/ASF.
   artists now have play actions wired to the playback queue.
 - Shuffle and repeat modes are visible in Now Playing (not just toggles).
 - App rebranded to **liquidWave** (custom logo with animated bars).
+
+### App signing: our own key, destined to become the Play app signing key
+
+Decided 2026-07-16, shipped in release beta.19 (app `0.1.0-beta.8`, versionCode 7).
+
+**What was wrong.** Every APK from beta.1 to app beta.7 (releases up to beta.18)
+was signed with the **Android debug key**. `android/app/build.gradle.kts` selects
+the release `signingConfig` only when `LIQUIDWAVE_RELEASE_STORE_FILE` resolves,
+and otherwise falls back to the debug config. The maintainer's machine had no
+keystore, so ~14 betas shipped debug-signed while `docs/tester-quickstart.md`
+claimed they were "release-signed ... identical to a Play Store build". The R8
+half of that claim was true; the signing half was false. The debug key is shared
+by every Android SDK install and its password is public, so those signatures
+identified nobody.
+
+**The key.** RSA 4096, valid ~2053, `CN=liquidguru, O=liquidguru, C=AU`, alias
+`liquidwave`, PKCS12. Held at `C:\Users\liqui\keys\liquidwave-release.jks` on
+dev-pc (**outside** the repo) plus a NAS backup. Password is the
+maintainer's alone — never in the repo, never in an agent's context. Supplied to
+Gradle via the four `LIQUIDWAVE_RELEASE_*` **environment variables**
+(`~/.gradle/gradle.properties` also works; env vars were chosen because a
+properties file kept getting surfaced to agents by tooling diffs). Certificate
+SHA-256: `a1e5a40f632e145e653df26ab7834fb32cf46c40f8c4a1a3ec881e3ca27e00c7`.
+
+**⚠ The expensive-to-rediscover part — Google Play.** The DN is pseudonymous by
+design (keeps the maintainer's real name out of every APK forever, consistent
+with the pre-open-beta history scrub) and the crypto params were chosen to
+satisfy Play's requirements for an **uploaded** app signing key (RSA ≥2048;
+valid past 2033-10-22). **If liquidWave ever enrols in Google Play, upload THIS
+key as the app signing key via the PEPK tool — do NOT accept Play's default of
+generating a new one.** Reasons, in order:
+
+1. Play's key would force a **second** uninstall/reinstall on every tester, on
+   top of the one beta.19 already cost them.
+2. Play-distributed builds would stop being signature-compatible with the
+   GitHub-release APKs. For a self-hosted app whose users sideload by nature,
+   signature parity across both channels is a feature, not an accident — it lets
+   a user move between them, or off Play entirely, without reinstalling.
+
+The trade-off accepted: Google holds a copy of the app signing key. A separate
+upload key can be registered later without disturbing any of the above.
+
+**Losing the keystore is unrecoverable** — no existing install could ever be
+updated again. Back it up; the password belongs in a password manager, not
+beside the file.
+
+**The fallback stays, but is loud.** `assembleRelease` still falls back to the
+debug key when the env vars are absent (contributors build without the keystore;
+no CI workflow builds the app at all), but now prints a banner and fails fast on
+a half-configured key. Silence is what let this run for 14 betas. Always confirm
+before distributing — this needs no password:
+
+```
+apksigner verify --print-certs <apk>     # must NOT say CN=Android Debug
+```
+
+**Migration.** Changing signing key forced a one-time uninstall for all ~10
+testers (Android refuses an update signed by a different key), losing logins and
+offline downloads; server-side state (playlists, history, resume) was unaffected.
+Done deliberately while the tester count was small. App source was **byte-identical**
+to beta.7 — `git diff v0.1.0-beta.18..HEAD -- android/app/src/` was empty — so the
+release changed only the signature and version.
 
 ---
 
