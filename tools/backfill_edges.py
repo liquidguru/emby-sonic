@@ -65,8 +65,19 @@ import argparse
 import os
 import sqlite3
 import sys
+import warnings
 from contextlib import closing
 from pathlib import Path
+
+# librosa emits a FutureWarning about its internal __audioread_load path for
+# every track it decodes via the audioread fallback — cosmetic noise that
+# alarmed a tester (#40) during a long run. Silence ONLY that specific one, so
+# real warnings still surface.
+warnings.filterwarnings(
+    "ignore",
+    message="librosa.core.audio.__audioread_load",
+    category=FutureWarning,
+)
 
 # Import the shared analysis helpers (these pull in librosa lazily, never torch).
 # Run from the repo root so `analysis`/`config` are importable.

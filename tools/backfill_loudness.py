@@ -46,8 +46,17 @@ import argparse
 import os
 import sqlite3
 import sys
+import warnings
 from contextlib import closing
 from pathlib import Path
+
+# Silence ONLY librosa's cosmetic __audioread_load FutureWarning (per track,
+# alarmed a tester on a long run, #40) — real warnings still surface.
+warnings.filterwarnings(
+    "ignore",
+    message="librosa.core.audio.__audioread_load",
+    category=FutureWarning,
+)
 
 # Import the shared analysis helpers (these pull in librosa + pyloudnorm lazily,
 # never torch). Run from the repo root so `analysis`/`config` are importable.
