@@ -163,12 +163,27 @@ python tools/backfill_loudness.py   # volume normalisation (integrated LUFS)
 python tools/backfill_edges.py      # crossfade edge trimming (effective start/end)
 ```
 
+> **On Docker, run these in the WORKER container with the data volume attached
+> — not the coordinator** (#40). They need librosa *and* the database, and no
+> single container has both by default: the coordinator image deliberately ships
+> without librosa (that split is what keeps it small and ARM-buildable), while
+> the worker has librosa but doesn't normally mount the DB. So attach it:
+>
+> ```bash
+> docker compose run --rm -v emby-sonic-data:/app/data \
+>     worker python tools/backfill_edges.py
+> ```
+>
+> Bare metal: run them wherever you installed the full `requirements.txt` (not
+> `requirements-coordinator.txt`), pointing `--db` at the coordinator's database.
+
 Measured on an Intel N100 streaming from Emby over LAN, `backfill_edges.py` runs
 at **~42 tracks/minute** (~1,000 tracks ≈ 25 min, ~25,000 ≈ 10 hours) — it
 decodes each file in full, since a track's edges are precisely what the analyser's
 sampled windows skip. `backfill_loudness.py` is quicker (sampled windows only).
-Both skip audiobooks where the feature doesn't apply. Newly-analysed tracks get
-these from the worker automatically.
+Both skip audiobooks where the feature doesn't apply, and both are safe to run
+against a live coordinator. Newly-analysed tracks get these from the worker
+automatically — these scripts are only for the back catalogue.
 
 ### Broken-track maintenance
 

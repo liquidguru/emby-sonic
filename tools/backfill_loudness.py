@@ -9,9 +9,21 @@ track's audio from Emby, measures EBU R128 loudness over the same sampled window
 the analyser uses, and writes it straight into the embeddings table.
 
 It is CPU-only and never loads the neural model, so it's far cheaper than a
-re-analysis and safe to run on the always-on coordinator box (e.g. coordinator-host).
-It's resumable: only rows with lufs IS NULL are touched, so re-running picks up
-where it left off (and retries any that errored to None).
+re-analysis. It's resumable: only rows with lufs IS NULL are touched, so
+re-running picks up where it left off (and retries any that errored to None).
+
+WHERE TO RUN IT — this needs BOTH librosa AND the coordinator's database:
+
+  Docker:      run it in the WORKER container with the data volume attached.
+               The coordinator image deliberately has no librosa (that is the
+               point of the coordinator/worker split — a small, ARM-buildable
+               image), and the worker doesn't normally mount the database:
+
+                 docker compose run --rm -v emby-sonic-data:/app/data \
+                     worker python tools/backfill_loudness.py
+
+  Bare metal:  run it wherever you installed requirements.txt (the full set,
+                 not requirements-coordinator.txt), pointing --db at the DB.
 
 Usage:
     python tools/backfill_loudness.py                 # whole library, in batches
@@ -39,6 +51,8 @@ from analysis import emby  # noqa: E402
 from analysis.audio import load_windows, measure_loudness  # noqa: E402
 
 import numpy as np  # noqa: E402
+
+DB_TIMEOUT_SECONDS = 120.0
 
 
 def _pending(conn: sqlite3.Connection, limit: int | None) -> list[tuple[str, str | None]]:
@@ -84,7 +98,10 @@ def main() -> int:
         print("pyloudnorm not installed — run: pip install pyloudnorm", file=sys.stderr)
         return 2
 
-    with closing(sqlite3.connect(args.db)) as conn:
+    # Generous timeout: the coordinator is normally live on this same DB, and
+    # SQLite only allows one writer at a time. The default 5s can raise
+    # "database is locked" mid-run against a busy coordinator.
+    with closing(sqlite3.connect(args.db, timeout=DB_TIMEOUT_SECONDS)) as conn:
         pending = _pending(conn, args.limit)
         total = len(pending)
         print(f"backfill: {total} track(s) need loudness")

@@ -10,9 +10,21 @@ script fills them in without re-embedding: it streams each track's audio from
 Emby, detects the edges, and writes them straight into the embeddings table.
 
 It is CPU-only and never loads the neural model, so it is FAR cheaper than a
-re-analysis and safe to run on the always-on coordinator box (e.g. coordinator-host).
-It's resumable: only rows still missing an edge are touched, so re-running picks
-up where it left off, and it's safe to stop at any time.
+re-analysis. It's resumable: only rows still missing an edge are touched, so
+re-running picks up where it left off, and it's safe to stop at any time.
+
+WHERE TO RUN IT — this needs BOTH librosa AND the coordinator's database:
+
+  Docker:      run it in the WORKER container with the data volume attached.
+               The coordinator image deliberately has no librosa (that is the
+               point of the coordinator/worker split — a small, ARM-buildable
+               image), and the worker doesn't normally mount the database:
+
+                 docker compose run --rm -v emby-sonic-data:/app/data \
+                     worker python tools/backfill_edges.py
+
+  Bare metal:  run it wherever you installed requirements.txt (the full set,
+                 not requirements-coordinator.txt), pointing --db at the DB.
 
 It decodes the WHOLE file rather than sampled windows — the edges are precisely
 the parts sampled windows skip — so it costs more per track than the loudness
@@ -56,6 +68,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import settings  # noqa: E402
 from analysis import emby  # noqa: E402
 from analysis.audio import detect_edges  # noqa: E402
+
+DB_TIMEOUT_SECONDS = 120.0
 
 
 def _pending(conn: sqlite3.Connection, limit: int | None) -> list[tuple[str, str | None]]:
@@ -112,7 +126,10 @@ def main() -> int:
     if not args.db.exists():
         raise SystemExit(f"DB not found: {args.db}")
 
-    with closing(sqlite3.connect(args.db)) as conn:
+    # Generous timeout: the coordinator is normally live on this same DB, and
+    # SQLite only allows one writer at a time. The default 5s can raise
+    # "database is locked" mid-run against a busy coordinator.
+    with closing(sqlite3.connect(args.db, timeout=DB_TIMEOUT_SECONDS)) as conn:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(embeddings)")}
         if not {"effective_start_ms", "effective_end_ms"} <= columns:
             print(

@@ -253,15 +253,36 @@ Crossfade can now skip a song's silent tail so the blend lands on the music. Tha
 needs one extra measurement per track. **New music picks it up automatically** —
 this is only to fill in a library analysed before beta.18:
 
+**Docker** — run it in the **worker** container, with the database volume attached:
+
+```bash
+docker compose run --rm -v emby-sonic-data:/app/data \
+    worker python tools/backfill_edges.py
+
+# try a small batch first:
+docker compose run --rm -v emby-sonic-data:/app/data \
+    worker python tools/backfill_edges.py --limit 50
+```
+
+**Bare metal** — run it wherever you installed `requirements.txt`:
+
 ```bash
 python tools/backfill_edges.py            # whole library, resumable
 python tools/backfill_edges.py --limit 50 # try a small batch first
 ```
 
+> **Why the worker and not the coordinator?** (#40) It needs librosa *and* the
+> database, and neither container has both: the coordinator image ships without
+> librosa on purpose — that's what keeps it small enough for an ARM NAS — and the
+> worker has librosa but doesn't normally mount the database. Attaching the volume
+> to the worker gives it both. Running it in the coordinator fails with
+> `ModuleNotFoundError: librosa`.
+
 It is **not** a re-analysis — the neural model never loads, so it's ~10× cheaper.
 Measured on an Intel N100 streaming from Emby over LAN: **~42 tracks/minute**
 (~1,000 tracks ≈ 25 min, ~5,000 ≈ 2 h, ~25,000 ≈ 10 h). Safe to stop and re-run;
-it only touches tracks that still need it, and skips audiobooks.
+it only touches tracks that still need it, skips audiobooks, and is safe to run
+while the coordinator is live.
 
 Entirely optional: without it, crossfade simply behaves as it did before. The
 transition-glitch fixes in beta.18 are in the app and need no backfill.
