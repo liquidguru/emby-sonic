@@ -1887,11 +1887,49 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
   pause, skip, seek, stop, shuffle, and new-queue actions.
 
 ### Phase 4 — iOS App
-*Feature parity, separate timeline.*
+*Not started. Asked by a tester 2026-07-17 (#8); scoped below so the answer isn't
+re-derived. **Gated on hardware, not enthusiasm.***
 
-- Swift / SwiftUI
-- AVPlayer for audio
+- Swift / SwiftUI, AVFoundation for audio
 - **Deliverable:** TestFlight → App Store
+
+**The backend is free.** The coordinator is plain HTTP — mixes, radio, adventure,
+similar, loudness all work identically from Swift. Browse/search/playlists/sonic
+features are UI work, not new thinking. Emby's own API likewise.
+
+**The playback engine is the project.** Almost none of Phase 3's hard-won audio work
+ports; it is Media3/ExoPlayer and Android audio internals throughout:
+
+- Dual-player crossfade with the **per-device start-latency correction** (~113ms →
+  ~7ms, learned per session) and a **separate audio session per player** with the EQ
+  mirrored — see `docs/crossfade-investigation.md`, and note both of those bugs were
+  found by ear, not by reading code.
+- `GainAudioProcessor` doing LUFS normalisation inside `DefaultAudioSink`, decoupled
+  from `player.volume` (which the crossfade owns).
+- The equalizer (`audiofx`), offline downloads, Android Auto, the widget.
+
+An AVAudioEngine rebuild means rediscovering an equivalent set of gotchas from
+scratch. **Kotlin Multiplatform does not rescue this**: it would share the models and
+networking (the easy half) and none of the audio.
+
+**Hard prerequisites / blockers:**
+
+1. **A Mac.** Xcode is macOS-only, there is no honest workaround, and the dev machine
+   is Windows. This is the actual gate.
+2. **CarPlay forces the App Store.** A CarPlay *audio* app needs an entitlement Apple
+   grants **by request, only to App Store apps**. iOS has no sideload path — no APK
+   equivalent, no "unknown sources". So CarPlay ⇒ $99/yr + review + a **public
+   developer identity**, which lands straight in [`project_emby_sonic_launch_prep`]'s
+   territory: same identity question as Google Play, but stricter and non-optional.
+   Self-hosted clients are well precedented there (Emby's own app, Infuse), so it is
+   not risky — just a real commitment. **CarPlay is an App Store decision wearing a
+   technical hat.**
+
+**The current iOS answer is the web app (#19)** — add-to-home-screen gives browse,
+sonic features and playback today. It cannot give CarPlay, crossfade (iOS Safari
+ignores JS volume changes, so a blend degrades to a clean cut) or normalisation, but
+it ships and costs nothing. Closing that gap is cheaper than a native app for
+everything except the car.
 
 ---
 
