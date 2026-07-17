@@ -1,6 +1,7 @@
 package guru.liquid.embysonic.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -34,6 +35,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,6 +56,12 @@ fun SettingsScreen(
     if (state.loggedOut) {
         onLoggedOut()
     }
+
+    // Features that need measurements from the coordinator. A URL always exists
+    // (login derives one from the Emby host), so its presence proves nothing —
+    // only a failed status fetch tells us the backend really isn't there. Loading
+    // and Ready both count as available, so the controls never flash on open.
+    val backendAvailable = state.analysisStatus !is AnalysisStatusUiState.Error
 
     Scaffold(
         topBar = {
@@ -169,8 +178,12 @@ fun SettingsScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Skip silent endings", style = MaterialTheme.typography.bodyMedium)
                                 Text(
-                                    "Blend on the music instead of a song's silent tail or quiet " +
-                                        "intro. Needs analysed tracks; others blend as before.",
+                                    if (backendAvailable) {
+                                        "Blend on the music instead of a song's silent tail or quiet " +
+                                            "intro. Needs analysed tracks; others blend as before."
+                                    } else {
+                                        NEEDS_BACKEND
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -178,7 +191,7 @@ fun SettingsScreen(
                             Switch(
                                 checked = state.crossfadeTrimEdges,
                                 onCheckedChange = viewModel::setCrossfadeTrimEdges,
-                                enabled = !state.isCasting,
+                                enabled = !state.isCasting && backendAvailable,
                             )
                         }
                     }
@@ -198,7 +211,11 @@ fun SettingsScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Volume normalisation", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Levels tracks to a consistent loudness so quiet songs and loud masters play at a similar volume. Uses the sonic analysis backend.",
+                                if (backendAvailable) {
+                                    "Levels tracks to a consistent loudness so quiet songs and loud masters play at a similar volume. Uses the sonic analysis backend."
+                                } else {
+                                    NEEDS_BACKEND
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -206,6 +223,7 @@ fun SettingsScreen(
                         Switch(
                             checked = state.volumeNormalizationEnabled,
                             onCheckedChange = viewModel::setVolumeNormalizationEnabled,
+                            enabled = backendAvailable,
                         )
                     }
                 }
@@ -297,6 +315,7 @@ fun SettingsScreen(
                         onValueChange = viewModel::onCoordinatorUrlChange,
                         label = { Text("Coordinator URL") },
                         singleLine = true,
+                        keyboardOptions = URL_KEYBOARD,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Button(onClick = viewModel::saveCoordinatorUrl, modifier = Modifier.fillMaxWidth()) {
@@ -311,6 +330,7 @@ fun SettingsScreen(
                             Text("Direct local Emby URL for casting. Leave blank to use the main server URL.")
                         },
                         singleLine = true,
+                        keyboardOptions = URL_KEYBOARD,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Button(onClick = viewModel::saveCastServerUrl, modifier = Modifier.fillMaxWidth()) {
@@ -455,3 +475,27 @@ private fun CastUnavailableHint(deviceName: String?) {
         }
     }
 }
+
+/**
+ * Shown in place of a feature's normal description when the coordinator can't be
+ * reached, so a disabled switch says WHY — a greyed control whose subtitle still
+ * describes the working feature is worse than leaving it on.
+ *
+ * Reachability, not URL presence, is the signal: login always derives a coordinator
+ * URL from the Emby host, so a saved URL proves nothing. It's safe to key off the
+ * status because it's fetched once when Settings opens (and on Refresh), not watched
+ * continuously — so it can't flap mid-session. A track that simply isn't analysed yet
+ * must NOT disable these; those features work per-track and say so themselves.
+ */
+private const val NEEDS_BACKEND =
+    "Can't reach the sonic analysis backend — see Analysis status below."
+
+/**
+ * For URL fields. KeyboardType.Uri alone is only a hint — Gboard still capitalises
+ * the first letter, producing "Https://..." which is a valid URL but was rejected on
+ * login until the scheme match was made case-insensitive. Stop it at the source.
+ */
+private val URL_KEYBOARD = KeyboardOptions(
+    keyboardType = KeyboardType.Uri,
+    capitalization = KeyboardCapitalization.None,
+)
