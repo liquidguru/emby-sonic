@@ -1919,6 +1919,31 @@ Media3 ExoPlayer + DataStore (token/server URL). minSdk 26.
 ## Open Questions
 
 - **Incremental scan:** webhook/poll fallback for setups without the plugin (the plugin already fires a scan on `ItemAdded`)?
+- **"Adventure from here"** — a one-tap Sonic Adventure: A is the currently playing
+  track, B is chosen automatically, instead of today's two-track picker.
+  *Parked 2026-07-17 — revisit when the beta is larger and gauge tester interest
+  before building.* The reasoning, so it isn't re-derived:
+  - **The journey is the point; B is the parameter users care least about** — yet
+    picking it costs the entire interaction (a dedicated screen + two searches).
+    It's also exactly why Adventure can't exist in Android Auto: a browse tree
+    walks a tree and plays one tapped item, with no way to hold "picked A, now
+    picking B" (`AdventureRequestDto` needs `from_id` AND `to_id`). One tap makes
+    it car-viable, and is arguably the better phone interaction too.
+  - **The trap:** if B lands sonically close to A, the walk is short and uniform —
+    that's just Track Radio with extra steps. B must be far enough to be a journey,
+    so "pick a random track" is not good enough.
+  - **Likely fix:** draw B from a *different* Sonic Mix. The mix clusters already
+    are regions of the embedding space, so this structurally guarantees a real
+    journey and lands somewhere coherent.
+  - **Client-side vs server-side:** the app could pick B itself and call the
+    existing `POST /sonic/adventure` — no coordinator change, works against every
+    deployed backend. Server-side (make `to_id` optional) is smarter, since the
+    coordinator knows which cluster A is in and the app doesn't, but needs everyone
+    to update. Unresolved: without cluster awareness the app might pick A's own
+    mix and degrade to Track Radio anyway — which may force the server-side version.
+  - Also open: what happens when nothing is playing (disable, or random A =
+    "Surprise Adventure"?), and where it lives on the phone (Now Playing overflow
+    vs track long-press).
 
 ---
 
