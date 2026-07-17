@@ -73,6 +73,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
@@ -336,6 +337,7 @@ private fun HomeContent(
                         item(key = "stations") {
                             StationsRow(
                                 genres = state.genres,
+                                backendAvailable = state.backendAvailable,
                                 onPlayStation = onPlayStation,
                                 onOpenGenre = { onOpenItem(it.id, it.title, DetailKind.GENRE_TRACKS) },
                                 onOpenAdventure = onOpenAdventure,
@@ -434,6 +436,7 @@ private fun HomeContent(
 @Composable
 private fun StationsRow(
     genres: List<LibraryItem>,
+    backendAvailable: Boolean,
     onPlayStation: (HomeStation, Int?) -> Unit,
     onOpenGenre: (LibraryItem) -> Unit,
     onOpenAdventure: () -> Unit,
@@ -447,6 +450,17 @@ private fun StationsRow(
             modifier = Modifier.padding(horizontal = 20.dp),
             style = MaterialTheme.typography.titleLarge,
         )
+        // Say why the two greyed cards are greyed. Radio/Decade/Genres are pure
+        // Emby and keep working, so this must not read as "Stations are broken".
+        if (!backendAvailable) {
+            Text(
+                "Sonic Adventure and the Artist Mix Creator need the sonic analysis " +
+                    "backend — it isn't reachable. The radios below still work.",
+                modifier = Modifier.padding(horizontal = 20.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         // All stations visible at once: a 3-per-row grid (3 + 3) whose cards fill
         // the row width evenly, so nothing hides behind a horizontal scroll.
         FlowRow(
@@ -463,8 +477,21 @@ private fun StationsRow(
             }
             StationCard(Icons.Default.DateRange, "Decade\nRadio", modifier = Modifier.weight(1f)) { decadePicker = true }
             StationCard(Icons.Default.Category, "Genres", modifier = Modifier.weight(1f)) { genrePicker = true }
-            StationCard(Icons.Default.Explore, "Sonic\nAdventure", modifier = Modifier.weight(1f), onClick = onOpenAdventure)
-            StationCard(Icons.Default.Groups, "Artist Mix\nCreator", modifier = Modifier.weight(1f), onClick = onOpenArtistMix)
+            // These two are the only Stations that need the coordinator.
+            StationCard(
+                Icons.Default.Explore,
+                "Sonic\nAdventure",
+                modifier = Modifier.weight(1f),
+                enabled = backendAvailable,
+                onClick = onOpenAdventure,
+            )
+            StationCard(
+                Icons.Default.Groups,
+                "Artist Mix\nCreator",
+                modifier = Modifier.weight(1f),
+                enabled = backendAvailable,
+                onClick = onOpenArtistMix,
+            )
         }
     }
     if (decadePicker) {
@@ -493,10 +520,14 @@ private fun StationCard(
     icon: ImageVector,
     label: String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Card(
-        modifier = modifier.height(112.dp).clickable(onClick = onClick),
+        modifier = modifier
+            .height(112.dp)
+            .alpha(if (enabled) 1f else 0.45f)
+            .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {

@@ -152,6 +152,15 @@ fun ArtistMixBuilderScreen(
                 }
             }
 
+            state.gridNotice?.let { notice ->
+                Text(
+                    notice,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+
             Box(modifier = Modifier.fillMaxSize()) {
                 ArtistGrid(items = state.grid, onSelect = viewModel::selectArtist)
                 if (state.loadingGrid && state.grid.isEmpty()) {

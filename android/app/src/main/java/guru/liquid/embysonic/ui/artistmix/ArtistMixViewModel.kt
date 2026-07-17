@@ -33,6 +33,13 @@ data class ArtistMixUiState(
     // Artists currently offered in the grid (similars of the last pick, search
     // results, or the recently-played starting set).
     val grid: List<LibraryItem> = emptyList(),
+    /**
+     * Why the grid isn't showing similar artists, when it isn't. The A-Z fallback is
+     * useful — you can still build a mix mid-scan — but unexplained it looks like a
+     * random junk grid, so it has to say which of these happened. Null = the grid is
+     * genuinely what it claims to be.
+     */
+    val gridNotice: String? = null,
     val loadingGrid: Boolean = false,
     val building: Boolean = false,
 ) {
@@ -99,12 +106,13 @@ class ArtistMixViewModel @Inject constructor(
             reseedFromLastOrStart()
             return
         }
-        // Instant local filter against the loaded artist list.
+        // Instant local filter against the loaded artist list. These are real search
+        // results, so any fallback notice no longer applies.
         val matches = allArtists
             .filter { it.title.contains(query, ignoreCase = true) }
             .excludeSelected()
             .take(GRID_LIMIT)
-        _state.update { it.copy(grid = matches, loadingGrid = false) }
+        _state.update { it.copy(grid = matches, gridNotice = null, loadingGrid = false) }
     }
 
     fun selectArtist(item: LibraryItem) {
@@ -128,15 +136,40 @@ class ArtistMixViewModel @Inject constructor(
         _state.update { it.copy(loadingGrid = true) }
         gridJob?.cancel()
         gridJob = viewModelScope.launch {
-            val names = runCatching {
+            // Keep the failure rather than swallowing it: a dead coordinator and an
+            // unanalysed artist both yield "no similars", but they are not the same
+            // thing and the user can only act on one of them.
+            val outcome = runCatching {
                 val seedTrackId = repository.playableItems(item.id, DetailKind.ARTIST_ALBUMS)
                     .firstOrNull()?.id ?: return@runCatching emptyList<String>()
                 coordinator.similarArtists(seedTrackId, GRID_LIMIT).map { it.artist }
-            }.getOrDefault(emptyList())
-            val similar = resolveNames(names)
-            // If the artist isn't analysed yet (no similars), fall back to A–Z.
-            val grid = similar.ifEmpty { allArtists.take(GRID_LIMIT) }
-            _state.update { it.copy(grid = grid.excludeSelected(), loadingGrid = false) }
+            }
+            val names = outcome.getOrNull()
+            val similar = names?.let { resolveNames(it) }.orEmpty()
+            if (similar.isNotEmpty()) {
+                _state.update {
+                    it.copy(grid = similar.excludeSelected(), gridNotice = null, loadingGrid = false)
+                }
+                return@launch
+            }
+            // No similars. Still fall back to A–Z — a mix can be built regardless,
+            // and mid-first-scan that's the normal state — but never silently: an
+            // unexplained alphabet reads as a broken random grid.
+            val notice = when {
+                outcome.isFailure ->
+                    "Can't reach the sonic analysis backend — showing all artists."
+                names.isNullOrEmpty() ->
+                    "${item.title} isn't analysed yet — showing all artists."
+                else ->
+                    "No similar artists found for ${item.title} — showing all artists."
+            }
+            _state.update {
+                it.copy(
+                    grid = allArtists.take(GRID_LIMIT).excludeSelected(),
+                    gridNotice = notice,
+                    loadingGrid = false,
+                )
+            }
         }
     }
 
@@ -149,9 +182,11 @@ class ArtistMixViewModel @Inject constructor(
                 runCatching { repository.recentlyPlayedArtistNames(it, GRID_LIMIT) }.getOrDefault(emptyList())
             }.orEmpty()
             val recent = resolveNames(recentNames)
-            // Fall back to a plain A–Z list if nothing's been played yet.
+            // Fall back to a plain A–Z list if nothing's been played yet. No notice:
+            // nothing has been picked, so the grid isn't claiming to be similar to
+            // anything — it's just a starting point.
             val grid = recent.ifEmpty { allArtists.take(GRID_LIMIT) }
-            _state.update { it.copy(grid = grid.excludeSelected(), loadingGrid = false) }
+            _state.update { it.copy(grid = grid.excludeSelected(), gridNotice = null, loadingGrid = false) }
         }
     }
 

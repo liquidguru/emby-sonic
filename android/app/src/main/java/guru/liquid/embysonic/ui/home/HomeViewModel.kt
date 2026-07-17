@@ -44,6 +44,13 @@ data class HomeUiState(
     // True when the Emby server is unreachable (e.g. airplane mode). Used to hide
     // rows whose tiles can only play online, like Recent plays.
     val offline: Boolean = false,
+    /**
+     * Whether the coordinator answered. Gates the Stations that need it (Sonic
+     * Adventure, Artist Mix Creator) — the other four are pure Emby. Defaults true
+     * so the cards never flash greyed while the probe is in flight. Note an empty
+     * [sonicMixes] can't stand in for this: a new user simply hasn't built any yet.
+     */
+    val backendAvailable: Boolean = true,
     val compactCards: Boolean = false,
     val sectionPreferences: List<HomeSectionPreference> = HomeSectionKind.defaultPreferences(),
     val resumeAudiobooks: List<LibraryItem> = emptyList(),
@@ -279,6 +286,13 @@ class HomeViewModel @Inject constructor(
                         musicLibrary?.let { repository.genres(it.id) }.orEmpty()
                     }
                     _state.update { it.copy(genres = items) }
+                }
+                // Does the coordinator answer at all? Its own probe, because the
+                // mixes call below can legitimately return an empty list on a
+                // healthy backend (nothing built yet) — so it can't tell us this.
+                async {
+                    val reachable = runCatching { coordinator.status() }.isSuccess
+                    _state.update { it.copy(backendAvailable = reachable) }
                 }
                 // Sonic mixes live on the coordinator (a separate host that may
                 // be down), so this never gates Emby-backed rows.
