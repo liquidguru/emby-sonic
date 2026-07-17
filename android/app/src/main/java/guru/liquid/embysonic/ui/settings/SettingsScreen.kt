@@ -314,6 +314,13 @@ fun SettingsScreen(
                         value = state.coordinatorUrl,
                         onValueChange = viewModel::onCoordinatorUrlChange,
                         label = { Text("Coordinator URL") },
+                        placeholder = { Text("http://192.168.1.10:8765") },
+                        supportingText = {
+                            Text(
+                                "The sonic analysis backend. Leave blank until you've set one " +
+                                    "up — the app works as an Emby player without it.",
+                            )
+                        },
                         singleLine = true,
                         keyboardOptions = URL_KEYBOARD,
                         modifier = Modifier.fillMaxWidth(),

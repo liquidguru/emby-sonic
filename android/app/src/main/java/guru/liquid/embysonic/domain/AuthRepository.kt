@@ -8,9 +8,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Default port the coordinator listens on; used to derive its URL from the Emby host. */
-private const val DEFAULT_COORDINATOR_PORT = 8765
-
 @Singleton
 class AuthRepository @Inject constructor(
     private val embyApi: EmbyApi,
@@ -36,7 +33,7 @@ class AuthRepository @Inject constructor(
             accessToken = "",
             userId = "",
             userName = "",
-            coordinatorUrl = deriveCoordinatorUrl(serverUrl),
+            coordinatorUrl = existingCoordinatorUrl(),
         )
 
         val resp = embyApi.authenticateByName(AuthenticateRequest(username, password))
@@ -46,18 +43,28 @@ class AuthRepository @Inject constructor(
             accessToken = resp.accessToken,
             userId = resp.user.id,
             userName = resp.user.name,
-            coordinatorUrl = deriveCoordinatorUrl(serverUrl),
+            coordinatorUrl = existingCoordinatorUrl(),
         )
     }
+
+    /**
+     * The coordinator URL is NOT guessed from the Emby host. It used to be derived as
+     * `scheme://embyhost:8765`, which is only right when the coordinator runs on the
+     * Emby box AND you signed in over the LAN. For anyone using an external address
+     * it produced a confidently wrong value — and a *pre-filled* wrong value is worse
+     * than an empty one: an empty field asks to be filled, whereas a plausible one
+     * reads as already configured, so the user leaves it alone and concludes the app
+     * is broken. Blank is a state the app handles honestly (BaseUrlInterceptor throws
+     * "No server URL configured", which the UI reports as "can't reach the backend"),
+     * so leave it blank until the user has a coordinator to point at.
+     *
+     * Keeps any URL already saved, so re-authenticating doesn't wipe a working setup.
+     */
+    private fun existingCoordinatorUrl(): String = settings.snapshot().coordinatorUrl.orEmpty()
 
     suspend fun logout() {
         library.invalidateBrowseCache()
         settings.clearSession()
-    }
-
-    private fun deriveCoordinatorUrl(serverUrl: String): String {
-        val url = serverUrl.toHttpUrlOrNull() ?: return serverUrl
-        return "${url.scheme}://${url.host}:$DEFAULT_COORDINATOR_PORT"
     }
 
     /**
