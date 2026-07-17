@@ -132,6 +132,12 @@ private const val RECENT_PLAYS_SCAN = 100
 /** Default length of a generated radio/station queue. */
 private const val RADIO_QUEUE_LIMIT = 60
 
+/**
+ * Decades offered by Decade Radio, as [decadeRadio] start years. Shared so the
+ * phone's picker and the Android Auto browse tree can't drift apart.
+ */
+val STATION_DECADES = listOf(1960, 1970, 1980, 1990, 2000, 2010, 2020)
+
 /** Max results for a track search. */
 private const val SEARCH_LIMIT = 60
 private const val GENRE_ID_SEPARATOR = "|"

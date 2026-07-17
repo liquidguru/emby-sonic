@@ -85,6 +85,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
+import guru.liquid.embysonic.data.emby.STATION_DECADES
 import guru.liquid.embysonic.ui.library.Artwork
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -528,7 +529,7 @@ private fun DecadePickerDialog(onDismiss: () -> Unit, onPick: (Int) -> Unit) {
         title = { Text("Pick a decade") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(1960, 1970, 1980, 1990, 2000, 2010, 2020).chunked(3).forEach { row ->
+                STATION_DECADES.chunked(3).forEach { row ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),

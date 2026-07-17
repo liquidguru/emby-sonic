@@ -18,6 +18,7 @@ import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.emby.STATION_DECADES
 import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
@@ -144,8 +145,11 @@ class SonicPlaybackService : MediaLibraryService() {
     private suspend fun childrenFor(parentId: String): List<MediaItem> =
         when (parentId) {
             ROOT_ID -> listOf(
+                // Zero-effort "just play something" nodes first — they're what's
+                // actually usable while driving.
                 browsableItem(RECENT_ID, "Recent plays"),
                 browsableItem(MIXES_ID, "Sonic Mixes"),
+                browsableItem(STATIONS_ID, "Stations"),
                 browsableItem(ALBUMS_ID, "Albums"),
                 browsableItem(ARTISTS_ID, "Artists"),
                 browsableItem(PLAYLISTS_ID, "Playlists"),
@@ -156,6 +160,18 @@ class SonicPlaybackService : MediaLibraryService() {
                 browsableItem(AUDIOBOOK_BOOKS_ID, "Books"),
                 browsableItem(AUDIOBOOK_AUTHORS_ID, "Authors"),
             )
+            // Library/Random Album are playable (one tap = music). Decade and Genres
+            // need a choice, so they browse one level deeper. Sonic Adventure and the
+            // Artist Mix Creator are deliberately absent: both need a multi-item
+            // selection that a browse tree can't express (and shouldn't, at speed).
+            STATIONS_ID -> listOf(
+                stationItem(STATION_LIBRARY_ID, "Library Radio"),
+                stationItem(STATION_RANDOM_ALBUM_ID, "Random Album Radio"),
+                browsableItem(DECADES_ID, "Decade Radio"),
+                browsableItem(GENRES_ID, "Genres"),
+            )
+            DECADES_ID -> STATION_DECADES.map { stationItem(DECADE_PREFIX + it, "${it}s") }
+            GENRES_ID -> library.genres(musicLibraryId()).map { it.autoItem(GENRE_PREFIX, "Genre") }
             RECENT_ID -> recentPlays.recentPlays.first().map { it.autoItem() }
             MIXES_ID -> coordinator.mixes().map { it.autoItem() }
             ALBUMS_ID -> library.albums(musicLibraryId()).map { it.autoItem(ALBUM_PREFIX, "Album") }
@@ -203,6 +219,24 @@ class SonicPlaybackService : MediaLibraryService() {
                 playback.playQueue(items, first, PlaybackSource("artist:$artistId", first.subtitle ?: "Artist", "Artist", first.imageUrl))
                 return true
             }
+            mediaId == STATION_LIBRARY_ID ->
+                return playStationQueue(library.libraryRadio(musicLibraryId()), STATION_LIBRARY_ID, "Library Radio")
+            mediaId == STATION_RANDOM_ALBUM_ID ->
+                return playStationQueue(library.randomAlbumRadio(musicLibraryId()), STATION_RANDOM_ALBUM_ID, "Random Album Radio")
+            mediaId.startsWith(DECADE_PREFIX) -> {
+                val decade = mediaId.removePrefix(DECADE_PREFIX).toIntOrNull() ?: return false
+                return playStationQueue(library.decadeRadio(musicLibraryId(), decade), mediaId, "${decade}s")
+            }
+            mediaId.startsWith(GENRE_PREFIX) -> {
+                val genreId = Uri.decode(mediaId.removePrefix(GENRE_PREFIX))
+                val items = library.playableItems(genreId, DetailKind.GENRE_TRACKS)
+                val first = items.firstOrNull() ?: return false
+                // Genre tracks don't carry the genre's name, so look it up for the label.
+                val name = runCatching { library.genres(musicLibraryId()).firstOrNull { it.id == genreId }?.title }
+                    .getOrNull() ?: "Genre"
+                playback.playQueue(items, first, PlaybackSource("genre:$name", name, "Genre", first.imageUrl))
+                return true
+            }
             mediaId.startsWith(PLAYLIST_PREFIX) -> {
                 val playlistId = Uri.decode(mediaId.removePrefix(PLAYLIST_PREFIX))
                 val items = library.playableItems(playlistId, DetailKind.PLAYLIST_TRACKS)
@@ -233,6 +267,13 @@ class SonicPlaybackService : MediaLibraryService() {
         return false
     }
 
+    /** Stations are generated queues, so the source label is the station, not a track. */
+    private fun playStationQueue(items: List<LibraryItem>, key: String, label: String): Boolean {
+        val first = items.firstOrNull() ?: return false
+        playback.playQueue(items, first, PlaybackSource("station:$key", label, "Station", first.imageUrl))
+        return true
+    }
+
     private suspend fun playAudiobookBook(bookId: String): Boolean {
         val items = library.playableItems(bookId, DetailKind.BOOK_CHAPTERS)
         val first = items.resumeStartItem() ?: items.firstOrNull() ?: return false
@@ -261,6 +302,11 @@ class SonicPlaybackService : MediaLibraryService() {
             ALBUMS_ID -> browsableItem(ALBUMS_ID, "Albums")
             ARTISTS_ID -> browsableItem(ARTISTS_ID, "Artists")
             PLAYLISTS_ID -> browsableItem(PLAYLISTS_ID, "Playlists")
+            STATIONS_ID -> browsableItem(STATIONS_ID, "Stations")
+            DECADES_ID -> browsableItem(DECADES_ID, "Decade Radio")
+            GENRES_ID -> browsableItem(GENRES_ID, "Genres")
+            STATION_LIBRARY_ID -> stationItem(STATION_LIBRARY_ID, "Library Radio")
+            STATION_RANDOM_ALBUM_ID -> stationItem(STATION_RANDOM_ALBUM_ID, "Random Album Radio")
             AUDIOBOOKS_ID -> browsableItem(AUDIOBOOKS_ID, "Audiobooks")
             AUDIOBOOK_RESUME_ID -> browsableItem(AUDIOBOOK_RESUME_ID, "Resume audiobooks")
             AUDIOBOOK_BOOKS_ID -> browsableItem(AUDIOBOOK_BOOKS_ID, "Books")
@@ -285,6 +331,14 @@ class SonicPlaybackService : MediaLibraryService() {
             mediaId.startsWith(ARTIST_PREFIX) -> {
                 val artistId = Uri.decode(mediaId.removePrefix(ARTIST_PREFIX))
                 library.artists(musicLibraryId()).firstOrNull { it.id == artistId }?.autoItem(ARTIST_PREFIX, "Artist")
+            }
+            mediaId.startsWith(DECADE_PREFIX) -> {
+                val decade = mediaId.removePrefix(DECADE_PREFIX).toIntOrNull()
+                decade?.takeIf { it in STATION_DECADES }?.let { stationItem(mediaId, "${it}s") }
+            }
+            mediaId.startsWith(GENRE_PREFIX) -> {
+                val genreId = Uri.decode(mediaId.removePrefix(GENRE_PREFIX))
+                library.genres(musicLibraryId()).firstOrNull { it.id == genreId }?.autoItem(GENRE_PREFIX, "Genre")
             }
             mediaId.startsWith(PLAYLIST_PREFIX) -> {
                 val playlistId = Uri.decode(mediaId.removePrefix(PLAYLIST_PREFIX))
@@ -333,6 +387,10 @@ class SonicPlaybackService : MediaLibraryService() {
 
     private fun SonicMixDto.displayTitle(): String =
         (name?.takeIf { it.isNotBlank() } ?: "Sonic mix").replace(""" \(\d+\)$""".toRegex(), "")
+
+    /** A station tile: playable on one tap, with no artwork of its own. */
+    private fun stationItem(mediaId: String, title: String): MediaItem =
+        playableItem(mediaId = mediaId, title = title, subtitle = "Station", artworkUrl = null)
 
     private fun browsableItem(mediaId: String, title: String): MediaItem =
         MediaItem.Builder()
@@ -400,6 +458,11 @@ class SonicPlaybackService : MediaLibraryService() {
         const val ALBUMS_ID = "auto:albums"
         const val ARTISTS_ID = "auto:artists"
         const val PLAYLISTS_ID = "auto:playlists"
+        const val STATIONS_ID = "auto:stations"
+        const val DECADES_ID = "auto:stations:decades"
+        const val GENRES_ID = "auto:stations:genres"
+        const val STATION_LIBRARY_ID = "auto:station:library"
+        const val STATION_RANDOM_ALBUM_ID = "auto:station:randomalbum"
         const val AUDIOBOOKS_ID = "auto:audiobooks"
         const val AUDIOBOOK_RESUME_ID = "auto:audiobooks:resume"
         const val AUDIOBOOK_BOOKS_ID = "auto:audiobooks:books"
@@ -409,6 +472,8 @@ class SonicPlaybackService : MediaLibraryService() {
         const val ALBUM_PREFIX = "auto:album:"
         const val ARTIST_PREFIX = "auto:artist:"
         const val PLAYLIST_PREFIX = "auto:playlist:"
+        const val DECADE_PREFIX = "auto:decade:"
+        const val GENRE_PREFIX = "auto:genre:"
         const val AUDIOBOOK_RESUME_PREFIX = "auto:audiobook:resume:"
         const val BOOK_PREFIX = "auto:book:"
         const val AUTHOR_PREFIX = "auto:author:"
