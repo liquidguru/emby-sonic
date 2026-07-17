@@ -187,6 +187,13 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
 .view-header {
   padding: 16px 20px 12px;
 }
+/* Mixes header carries a Build action; keep it on the baseline, pushed right. */
+#mixesView .view-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
 .view-header .eyebrow { margin-bottom: 2px; }
 .view-header h2 { font-size: 1.5rem; font-weight: 700; }
 

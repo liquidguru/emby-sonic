@@ -32,6 +32,7 @@ const pageContent     = document.querySelector("#pageContent");
 const mixesRow           = document.querySelector("#mixesRow");
 const recentRow          = document.querySelector("#recentRow");
 const refreshMixesButton = document.querySelector("#refreshMixesButton");
+const buildMixesButton = document.querySelector("#buildMixesButton");
 const decadePicker       = document.querySelector("#decadePicker");
 const genrePicker        = document.querySelector("#genrePicker");
 const genreLoading       = document.querySelector("#genreLoading");
@@ -714,7 +715,7 @@ async function loadMixesView() {
 
 function renderMixesList() {
   if (!state.mixes.length) {
-    mixesList.replaceChildren(emptyMsg("No mixes yet — run a worker to analyse your library.", "li"));
+    mixesList.replaceChildren(emptyMsg("No mixes yet — analyse your library, then tap Build mixes.", "li"));
     return;
   }
   mixesList.replaceChildren(...state.mixes.map((mix) => {
@@ -799,6 +800,62 @@ regenerateMixButton.addEventListener("click", async () => {
     renderMixRow();
   });
 });
+
+// Build the whole Sonic Mixes set from scratch (initial clustering). The Android
+// app has always had this; the web app only regenerated individual mixes, so an
+// iOS-only user on a fresh coordinator had no way to create the set (issue #44).
+buildMixesButton.addEventListener("click", async () => {
+  const existing = state.mixes.length;
+  if (existing && !window.confirm(
+    `This replaces all ${existing} existing Sonic Mixes with a fresh set. Continue?`,
+  )) return;
+  await withBusy("Building Sonic Mixes…", async () => {
+    // Coordinator defaults, matching the Android app (30 mixes, 50 tracks each).
+    const resp = await authedFetch("/sonic/library/build-mixes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ n_clusters: 30, tracks_per_mix: 50 }),
+    });
+    if (resp.status === 409) {
+      // Already running (e.g. triggered from Android) — just wait it out.
+      setMessage("A mix build is already running — waiting for it to finish…");
+    } else if (!resp.ok) {
+      await parseJson(resp);   // throw with the coordinator's detail
+    }
+    await waitForBuildToFinish();
+    state.mixes = await parseJson(await authedFetch("/sonic/mixes"));
+    renderMixesList();
+    renderMixRow();
+    setMessage(state.mixes.length
+      ? `Built ${state.mixes.length} Sonic Mixes.`
+      : "Build finished, but no mixes were created — is your library analysed yet?");
+  });
+});
+
+/**
+ * Poll build-state until the background clustering finishes.
+ *
+ * build_mixes flips `running` true as its first step, but it runs as a background
+ * task AFTER the POST returns — so for a beat build-state can still read false.
+ * Don't trust a false as "done" until we've either seen it go true, or waited out
+ * a short grace period (a small/fast library can finish before we ever catch it).
+ */
+async function waitForBuildToFinish() {
+  const graceUntil = Date.now() + 4000;
+  const deadline = Date.now() + 5 * 60 * 1000;
+  let sawRunning = false;
+  while (Date.now() < deadline) {
+    const running = (await parseJson(await authedFetch("/sonic/library/build-state"))).running;
+    if (running) sawRunning = true;
+    else if (sawRunning || Date.now() > graceUntil) return;
+    await delay(1500);
+  }
+  throw new Error("Mix build is still running — the list will update once it finishes.");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function playMixById(mixId) {
   await withBusy("Loading mix…", async () => {
