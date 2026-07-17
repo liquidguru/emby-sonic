@@ -83,7 +83,7 @@ class ArtistMixViewModel @Inject constructor(
                 .firstOrNull { it.kind == LibraryKind.MUSIC }?.id
             val libId = musicLibraryId
             if (libId != null) {
-                allArtists = runCatching { repository.artists(libId, ARTIST_INDEX_LIMIT) }
+                allArtists = runCatching { repository.artists(libId) }
                     .getOrDefault(emptyList())
                 // First occurrence of a normalized name wins (collapses dup tags).
                 artistIndex = allArtists.associateByNormalizedName()
@@ -226,6 +226,5 @@ class ArtistMixViewModel @Inject constructor(
 
     private companion object {
         const val GRID_LIMIT = 24
-        const val ARTIST_INDEX_LIMIT = 5000
     }
 }

@@ -270,7 +270,7 @@ class HomeViewModel @Inject constructor(
                 }
                 async {
                     val items = section {
-                        musicLibrary?.let { repository.artists(it.id, HOME_SECTION_LIMIT) }.orEmpty()
+                        musicLibrary?.let { repository.artists(it.id).take(HOME_SECTION_LIMIT) }.orEmpty()
                     }
                     _state.update { it.copy(artists = items) }
                 }

@@ -257,13 +257,21 @@ class LibraryRepository @Inject constructor(
             AudioLibrary(id = id, name = v.name.orEmpty(), kind = kind)
         }
 
+    /**
+     * All album artists in [libraryId]. Callers wanting a short list must `take()`
+     * from the result — do NOT reintroduce a `limit` parameter. It used to have one
+     * while the cache key stayed `artists:$libraryId`, so the first caller's limit
+     * silently became everyone's: Home asked for 12 (it loads first, being the
+     * landing screen) and the Artist Mix Creator's request for the full index then
+     * hit that cache and got 12 artists, making its search look broken. One key, one
+     * list, shared by Home / Library / Artist Mix — like every other browse here.
+     */
     suspend fun artists(
         libraryId: String,
-        limit: Int = BROWSE_LIMIT,
         forceRefresh: Boolean = false,
     ): List<LibraryItem> =
         cachedBrowse("artists:$libraryId", forceRefresh) {
-            embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = limit)
+            embyApi.getAlbumArtists(userId(), parentId = libraryId, limit = BROWSE_LIMIT)
                 .items.map { it.toCollectionItem() }
         }
 
