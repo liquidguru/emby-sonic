@@ -72,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -159,11 +160,7 @@ fun NowPlayingScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF06111F), MaterialTheme.colorScheme.background),
-                    ),
-                )
+                .background(Brush.verticalGradient(playerVignette()))
                 .padding(padding),
         ) {
             state.currentTrack?.let { track ->
@@ -1057,3 +1054,24 @@ private fun formatSpeed(speed: Float): String =
 
 private val SleepTimerMinutes = listOf(5, 10, 15, 30, 45, 60)
 private val AudiobookSpeeds = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+
+/**
+ * The player's top-to-bottom vignette. The dark value is hand-tuned to sit just
+ * BELOW each dark palette's background, giving a subtle shade at the top — so it
+ * can't be expressed as a Material token (every scheme token is lighter than the
+ * background, not darker).
+ *
+ * That was fine while every palette was dark, but the Dynamic theme now follows the
+ * system and can be light, where a near-black top would fade to white and look
+ * broken. So key off the scheme's own luminance rather than assuming.
+ */
+@Composable
+private fun playerVignette(): List<Color> {
+    val background = MaterialTheme.colorScheme.background
+    val top = if (background.luminance() > 0.5f) {
+        MaterialTheme.colorScheme.surfaceVariant
+    } else {
+        Color(0xFF06111F)
+    }
+    return listOf(top, background)
+}

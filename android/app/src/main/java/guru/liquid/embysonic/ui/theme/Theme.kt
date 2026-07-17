@@ -1,19 +1,27 @@
 package guru.liquid.embysonic.ui.theme
 
 import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import guru.liquid.embysonic.data.settings.ThemeChoice
 
-// Emby Sonic is dark-first (Plexamp-style). Every theme is a dark palette; a
-// light theme is intentionally omitted until one is actually designed. DYNAMIC
-// pulls Material You colours from the system on Android 12+ and falls back to
-// the liquidWave palette below that.
+// Emby Sonic is dark-first (Plexamp-style). Every hand-tuned palette is dark; a
+// light version of those is intentionally omitted until one is actually designed.
+//
+// DYNAMIC is the exception: it hands theming to the system on Android 12+, so it
+// follows both the wallpaper AND the light/dark setting — Material generates both
+// palettes, so this needs no design work from us. It falls back to the liquidWave
+// palette below Android 12.
+//
+// Anything drawing its own colours must therefore not assume dark. See the player's
+// top vignette in NowPlayingScreen for the one place that does.
 
 private val LiquidWaveColors = darkColorScheme(
     primary = Color(0xFF4FC3F7),
@@ -84,8 +92,14 @@ fun EmbySonicTheme(
     val colorScheme = when (themeChoice) {
         ThemeChoice.DYNAMIC ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                dynamicDarkColorScheme(context)
+                if (isSystemInDarkTheme()) {
+                    dynamicDarkColorScheme(context)
+                } else {
+                    dynamicLightColorScheme(context)
+                }
             } else {
+                // No dynamic colour below Android 12, and no light palette of our
+                // own to offer, so this stays dark whatever the system says.
                 LiquidWaveColors
             }
         ThemeChoice.LIQUID_WAVE -> LiquidWaveColors

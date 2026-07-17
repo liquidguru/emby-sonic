@@ -645,13 +645,13 @@ class PlaybackController @Inject constructor(
                         lastWidgetArtUrl = snapshot.imageUrl
                         lastWidgetArtUri = snapshot.imageUrl?.let { loadWidgetArt(it) }
                     }
-                    val palette = WidgetTheme.paletteFor(context, theme)
+                    val palettes = WidgetTheme.palettesFor(context, theme)
                     // Always send a complete RemoteViews tree with the artwork
                     // URI. Pixel Launcher can lose or ignore art after a fresh
                     // app process when progress-only partial updates become the
                     // latest host state; the URI payload is cheap enough to
                     // reassert on every widget tick.
-                    NowPlayingWidget.render(context, snapshot, lastWidgetArtUri, palette)
+                    NowPlayingWidget.render(context, snapshot, lastWidgetArtUri, palettes)
                 }
         }
     }
@@ -660,8 +660,8 @@ class PlaybackController @Inject constructor(
     fun refreshWidget() {
         val snapshot = NowPlayingWidget.snapshotFrom(state.value)
         val art = if (snapshot.imageUrl == lastWidgetArtUrl) lastWidgetArtUri else null
-        val palette = WidgetTheme.paletteFor(context, settings.snapshot().themeChoice)
-        NowPlayingWidget.render(context, snapshot, art, palette)
+        val palettes = WidgetTheme.palettesFor(context, settings.snapshot().themeChoice)
+        NowPlayingWidget.render(context, snapshot, art, palettes)
     }
 
     /**

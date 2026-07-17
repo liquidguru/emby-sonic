@@ -59,12 +59,47 @@ object NowPlayingWidget {
     }
 
     /** Full widget update, including the artwork (a FileProvider URI). */
-    fun render(context: Context, snapshot: Snapshot, artUri: Uri?, palette: WidgetPalette) {
+    fun render(context: Context, snapshot: Snapshot, artUri: Uri?, palettes: WidgetPalettes) {
         val manager = AppWidgetManager.getInstance(context) ?: return
         val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidgetProvider::class.java))
         if (ids.isEmpty()) return
         if (artUri != null) grantArtToHost(context, artUri)
-        manager.updateAppWidget(ids, buildViews(context, snapshot, artUri, palette))
+        manager.updateAppWidget(ids, buildViews(context, snapshot, artUri, palettes))
+    }
+
+    /**
+     * Set a colour that follows the system appearance. On API 31+ both variants go
+     * to the host, which picks per configuration and re-picks when it changes — so
+     * the widget tracks light/dark without us repainting (see [WidgetPalettes]).
+     * Below that, everything is dark anyway, so paint the single value.
+     */
+    private fun RemoteViews.setThemedColor(
+        viewId: Int,
+        methodName: String,
+        palettes: WidgetPalettes,
+        select: (WidgetPalette) -> Int,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            setColorInt(viewId, methodName, select(palettes.day), select(palettes.night))
+        } else {
+            setInt(viewId, methodName, select(palettes.fallback))
+        }
+    }
+
+    /** As [setThemedColor], for the tint-list setters (API 31+ only, as before). */
+    private fun RemoteViews.setThemedTint(
+        viewId: Int,
+        methodName: String,
+        palettes: WidgetPalettes,
+        select: (WidgetPalette) -> Int,
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        setColorStateList(
+            viewId,
+            methodName,
+            ColorStateList.valueOf(select(palettes.day)),
+            ColorStateList.valueOf(select(palettes.night)),
+        )
     }
 
     /**
@@ -82,34 +117,24 @@ object NowPlayingWidget {
         }
     }
 
-    private fun applyProgress(views: RemoteViews, snapshot: Snapshot, palette: WidgetPalette) {
+    private fun applyProgress(views: RemoteViews, snapshot: Snapshot, palettes: WidgetPalettes) {
         val duration = snapshot.durationSec
         val position = if (duration > 0) snapshot.positionSec.coerceAtMost(duration) else snapshot.positionSec
         val progress = if (duration > 0) ((position * 1000L) / duration).toInt() else 0
         views.setProgressBar(R.id.widget_progress, 1000, progress, false)
         views.setTextViewText(R.id.widget_position, formatTime(position))
         views.setTextViewText(R.id.widget_duration, if (duration > 0) formatTime(duration) else "--:--")
-        views.setTextColor(R.id.widget_position, palette.textSecondary)
-        views.setTextColor(R.id.widget_duration, palette.textSecondary)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            views.setColorStateList(
-                R.id.widget_progress,
-                "setProgressTintList",
-                ColorStateList.valueOf(palette.accent),
-            )
-            views.setColorStateList(
-                R.id.widget_progress,
-                "setProgressBackgroundTintList",
-                ColorStateList.valueOf(palette.textSecondary),
-            )
-        }
+        views.setThemedColor(R.id.widget_position, "setTextColor", palettes) { it.textSecondary }
+        views.setThemedColor(R.id.widget_duration, "setTextColor", palettes) { it.textSecondary }
+        views.setThemedTint(R.id.widget_progress, "setProgressTintList", palettes) { it.accent }
+        views.setThemedTint(R.id.widget_progress, "setProgressBackgroundTintList", palettes) { it.textSecondary }
     }
 
     fun buildViews(
         context: Context,
         snapshot: Snapshot,
         artUri: Uri?,
-        palette: WidgetPalette,
+        palettes: WidgetPalettes,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_now_playing)
 
@@ -124,28 +149,20 @@ object NowPlayingWidget {
         )
 
         // Progress bar + elapsed/total times.
-        applyProgress(views, snapshot, palette)
+        applyProgress(views, snapshot, palettes)
 
-        // Recolour to match the in-app theme. setColorFilter works on all API
+        // Recolour to match the in-app theme. Text/filter colours work on all API
         // levels; background tinting (rounded shapes) needs API 31+.
-        views.setTextColor(R.id.widget_title, palette.textPrimary)
-        views.setTextColor(R.id.widget_artist, palette.textSecondary)
-        views.setInt(R.id.widget_previous, "setColorFilter", palette.textPrimary)
-        views.setInt(R.id.widget_next, "setColorFilter", palette.textPrimary)
-        views.setInt(R.id.widget_play_pause, "setColorFilter", palette.accent)
-        views.setInt(R.id.widget_cast, "setColorFilter", if (snapshot.isCasting) palette.accent else palette.textSecondary)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            views.setColorStateList(
-                R.id.widget_root,
-                "setBackgroundTintList",
-                ColorStateList.valueOf(palette.surface),
-            )
-            views.setColorStateList(
-                R.id.widget_art_frame,
-                "setBackgroundTintList",
-                ColorStateList.valueOf(palette.artBackground),
-            )
+        views.setThemedColor(R.id.widget_title, "setTextColor", palettes) { it.textPrimary }
+        views.setThemedColor(R.id.widget_artist, "setTextColor", palettes) { it.textSecondary }
+        views.setThemedColor(R.id.widget_previous, "setColorFilter", palettes) { it.textPrimary }
+        views.setThemedColor(R.id.widget_next, "setColorFilter", palettes) { it.textPrimary }
+        views.setThemedColor(R.id.widget_play_pause, "setColorFilter", palettes) { it.accent }
+        views.setThemedColor(R.id.widget_cast, "setColorFilter", palettes) {
+            if (snapshot.isCasting) it.accent else it.textSecondary
         }
+        views.setThemedTint(R.id.widget_root, "setBackgroundTintList", palettes) { it.surface }
+        views.setThemedTint(R.id.widget_art_frame, "setBackgroundTintList", palettes) { it.artBackground }
 
         if (artUri != null) {
             // A FileProvider URI the launcher loads from disk; replayable across
@@ -158,7 +175,7 @@ object NowPlayingWidget {
             views.setViewVisibility(R.id.widget_art_placeholder, View.VISIBLE)
             views.setImageViewResource(R.id.widget_art_placeholder, R.drawable.ic_widget_placeholder)
             // Tint only the placeholder glyph — never real artwork.
-            views.setInt(R.id.widget_art_placeholder, "setColorFilter", palette.accent)
+            views.setThemedColor(R.id.widget_art_placeholder, "setColorFilter", palettes) { it.accent }
         }
 
         views.setImageViewResource(
