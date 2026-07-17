@@ -25,7 +25,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.io.IOException
 import javax.inject.Inject
 
 /** Backs the Playlists tab of the Mixes screen: lists the user's Emby playlists. */
@@ -67,8 +70,26 @@ class PlaylistsViewModel @Inject constructor(
 
     init {
         observeGeneratedMixTracks()
+        observeCoordinatorUrl()
         load()
         loadSonicMixes()
+    }
+
+    /**
+     * Reload when the coordinator URL changes. Fixing a wrong URL in Settings used to
+     * leave this tab sitting on its old error until you found the refresh button —
+     * which is exactly the moment a new user has just corrected it and expects it to
+     * work. `drop(1)` skips the current value replayed on collect, so this only fires
+     * on an actual change and never double-loads over the init call above.
+     */
+    private fun observeCoordinatorUrl() {
+        viewModelScope.launch {
+            settings.settings
+                .map { it.coordinatorUrl }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { loadSonicMixes() }
+        }
     }
 
     private fun observeGeneratedMixTracks() {
@@ -127,9 +148,21 @@ class PlaylistsViewModel @Inject constructor(
                     lastList = list
                     _sonicState.value = list
                 },
-                onFailure = { _sonicState.value = SonicMixesState.Error(it.message ?: "Failed to load mixes") },
+                onFailure = { _sonicState.value = SonicMixesState.Error(it.mixesErrorMessage()) },
             )
         }
+    }
+
+    /**
+     * A dead coordinator surfaces here as a raw OkHttp exception ("Failed to connect
+     * to <host>/<ip>:8765"), which tells a user nothing they can act on. Sonic Mixes
+     * only exist with the backend, so name that and point at the fix.
+     */
+    private fun Throwable.mixesErrorMessage(): String = when (this) {
+        is IOException ->
+            "Can't reach the sonic analysis backend, so Sonic Mixes aren't available. " +
+                "Check the coordinator URL in Settings."
+        else -> message ?: "Failed to load mixes"
     }
 
     fun openSonicMix(mix: SonicMixDto) {
