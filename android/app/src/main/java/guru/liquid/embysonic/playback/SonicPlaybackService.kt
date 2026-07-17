@@ -148,6 +148,7 @@ class SonicPlaybackService : MediaLibraryService() {
                 browsableItem(MIXES_ID, "Sonic Mixes"),
                 browsableItem(ALBUMS_ID, "Albums"),
                 browsableItem(ARTISTS_ID, "Artists"),
+                browsableItem(PLAYLISTS_ID, "Playlists"),
                 browsableItem(AUDIOBOOKS_ID, "Audiobooks"),
             )
             AUDIOBOOKS_ID -> listOf(
@@ -159,6 +160,8 @@ class SonicPlaybackService : MediaLibraryService() {
             MIXES_ID -> coordinator.mixes().map { it.autoItem() }
             ALBUMS_ID -> library.albums(musicLibraryId()).map { it.autoItem(ALBUM_PREFIX, "Album") }
             ARTISTS_ID -> library.artists(musicLibraryId()).map { it.autoItem(ARTIST_PREFIX, "Artist") }
+            // Playlists span libraries, so unlike albums/artists there's no library id to scope by.
+            PLAYLISTS_ID -> library.playlists().map { it.autoItem(PLAYLIST_PREFIX, "Playlist") }
             AUDIOBOOK_RESUME_ID -> library.resumeAudiobooks(audiobookLibraryId(), AUTO_RESUME_LIMIT)
                 .map { it.autoItem(AUDIOBOOK_RESUME_PREFIX, "Resume") }
             AUDIOBOOK_BOOKS_ID -> library.books(parentId = audiobookLibraryId())
@@ -198,6 +201,17 @@ class SonicPlaybackService : MediaLibraryService() {
                 val items = library.playableItems(artistId, DetailKind.ARTIST_ALBUMS)
                 val first = items.firstOrNull() ?: return false
                 playback.playQueue(items, first, PlaybackSource("artist:$artistId", first.subtitle ?: "Artist", "Artist", first.imageUrl))
+                return true
+            }
+            mediaId.startsWith(PLAYLIST_PREFIX) -> {
+                val playlistId = Uri.decode(mediaId.removePrefix(PLAYLIST_PREFIX))
+                val items = library.playableItems(playlistId, DetailKind.PLAYLIST_TRACKS)
+                val first = items.firstOrNull() ?: return false
+                // A playlist's tracks don't carry its name (unlike album tracks), so
+                // look it up for the "playing from" label.
+                val name = runCatching { library.playlists().firstOrNull { it.id == playlistId }?.title }
+                    .getOrNull() ?: "Playlist"
+                playback.playQueue(items, first, PlaybackSource("playlist:$playlistId", name, "Playlist", first.imageUrl))
                 return true
             }
             mediaId.startsWith(AUDIOBOOK_RESUME_PREFIX) -> {
@@ -246,6 +260,7 @@ class SonicPlaybackService : MediaLibraryService() {
             MIXES_ID -> browsableItem(MIXES_ID, "Sonic Mixes")
             ALBUMS_ID -> browsableItem(ALBUMS_ID, "Albums")
             ARTISTS_ID -> browsableItem(ARTISTS_ID, "Artists")
+            PLAYLISTS_ID -> browsableItem(PLAYLISTS_ID, "Playlists")
             AUDIOBOOKS_ID -> browsableItem(AUDIOBOOKS_ID, "Audiobooks")
             AUDIOBOOK_RESUME_ID -> browsableItem(AUDIOBOOK_RESUME_ID, "Resume audiobooks")
             AUDIOBOOK_BOOKS_ID -> browsableItem(AUDIOBOOK_BOOKS_ID, "Books")
@@ -270,6 +285,10 @@ class SonicPlaybackService : MediaLibraryService() {
             mediaId.startsWith(ARTIST_PREFIX) -> {
                 val artistId = Uri.decode(mediaId.removePrefix(ARTIST_PREFIX))
                 library.artists(musicLibraryId()).firstOrNull { it.id == artistId }?.autoItem(ARTIST_PREFIX, "Artist")
+            }
+            mediaId.startsWith(PLAYLIST_PREFIX) -> {
+                val playlistId = Uri.decode(mediaId.removePrefix(PLAYLIST_PREFIX))
+                library.playlists().firstOrNull { it.id == playlistId }?.autoItem(PLAYLIST_PREFIX, "Playlist")
             }
             mediaId.startsWith(AUDIOBOOK_RESUME_PREFIX) -> {
                 val bookId = Uri.decode(mediaId.removePrefix(AUDIOBOOK_RESUME_PREFIX))
@@ -380,6 +399,7 @@ class SonicPlaybackService : MediaLibraryService() {
         const val MIXES_ID = "auto:mixes"
         const val ALBUMS_ID = "auto:albums"
         const val ARTISTS_ID = "auto:artists"
+        const val PLAYLISTS_ID = "auto:playlists"
         const val AUDIOBOOKS_ID = "auto:audiobooks"
         const val AUDIOBOOK_RESUME_ID = "auto:audiobooks:resume"
         const val AUDIOBOOK_BOOKS_ID = "auto:audiobooks:books"
@@ -388,6 +408,7 @@ class SonicPlaybackService : MediaLibraryService() {
         const val MIX_PREFIX = "auto:mix:"
         const val ALBUM_PREFIX = "auto:album:"
         const val ARTIST_PREFIX = "auto:artist:"
+        const val PLAYLIST_PREFIX = "auto:playlist:"
         const val AUDIOBOOK_RESUME_PREFIX = "auto:audiobook:resume:"
         const val BOOK_PREFIX = "auto:book:"
         const val AUTHOR_PREFIX = "auto:author:"
