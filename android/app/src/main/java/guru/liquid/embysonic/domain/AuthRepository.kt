@@ -65,15 +65,28 @@ class AuthRepository @Inject constructor(
      * unparseable. Defaults to **https** for a bare host so credentials aren't sent
      * in cleartext by accident; a local server without TLS still works if the user
      * types an explicit `http://` URL.
+     *
+     * Scheme matching is case-INSENSITIVE: schemes are case-insensitive per RFC 3986,
+     * and Android's keyboard capitalises the first letter of a field by default, so
+     * "Https://host" is what a phone actually produces. Matching case-sensitively
+     * sent it down the no-scheme path and built "https://Https://host", which failed
+     * to parse — the URL was rejected for being valid.
      */
     private fun normalizeUrl(raw: String): String? {
         val trimmed = raw.trim().trimEnd('/')
         if (trimmed.isEmpty()) return null
-        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        val withScheme = if (
+            trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true)
+        ) {
             trimmed
         } else {
             "https://$trimmed"
         }
-        return if (withScheme.toHttpUrlOrNull() != null) withScheme else null
+        val url = withScheme.toHttpUrlOrNull() ?: return null
+        // Re-render from the parsed URL so the stored value is canonical whatever the
+        // keyboard did to it ("HTTPS://example.com" -> "https://example.com").
+        // HttpUrl always renders a root path, hence the trailing-slash trim.
+        return url.toString().trimEnd('/')
     }
 }

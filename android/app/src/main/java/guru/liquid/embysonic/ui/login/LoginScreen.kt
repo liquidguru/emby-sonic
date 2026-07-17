@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -57,7 +58,12 @@ fun LoginScreen(
                 Text("Defaults to HTTPS. Local server without HTTPS? Enter http:// explicitly, e.g. http://192.168.1.50:8096")
             },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            // KeyboardType.Uri alone is only a hint — Gboard still capitalises the
+            // first letter, so a hand-typed URL arrives as "Https://...".
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                capitalization = KeyboardCapitalization.None,
+            ),
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
