@@ -36,6 +36,8 @@ interface TrackProgress {
         state: PlaybackUiState,
         onSeek: (Long) -> Unit,
         modifier: Modifier,
+        // Shorter, tighter seek bar for a constrained pane (split-screen).
+        compact: Boolean = false,
     )
 }
 
@@ -76,26 +78,36 @@ object SliderTrackProgress : TrackProgress {
         state: PlaybackUiState,
         onSeek: (Long) -> Unit,
         modifier: Modifier,
+        compact: Boolean,
     ) {
         val duration = state.durationMs.coerceAtLeast(0)
         val fraction = remember(state.positionMs, duration) {
             if (duration <= 0) 0f else (state.positionMs.toFloat() / duration).coerceIn(0f, 1f)
         }
+        val barHeight = if (compact) 6.dp else 12.dp
+        val timeStyle = if (compact) {
+            MaterialTheme.typography.labelSmall
+        } else {
+            MaterialTheme.typography.bodyMedium
+        }
 
         Card(
-            modifier = modifier.height(96.dp),
-            shape = RoundedCornerShape(14.dp),
+            modifier = modifier.height(if (compact) 50.dp else 96.dp),
+            shape = RoundedCornerShape(if (compact) 10.dp else 14.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.04f)),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.32f)),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
+                modifier = Modifier.padding(
+                    horizontal = if (compact) 16.dp else 24.dp,
+                    vertical = if (compact) 7.dp else 14.dp,
+                ),
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(30.dp)
+                        .height(if (compact) 18.dp else 30.dp)
                         .pointerInput(duration) {
                             detectTapGestures { offset ->
                                 if (duration > 0) {
@@ -109,16 +121,16 @@ object SliderTrackProgress : TrackProgress {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(12.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .height(barHeight)
+                            .clip(RoundedCornerShape(barHeight / 2))
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                     )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(fraction)
-                            .height(12.dp)
+                            .height(barHeight)
                             .widthIn(min = 4.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(barHeight / 2))
                             .background(MaterialTheme.colorScheme.primary),
                     )
                 }
@@ -126,8 +138,8 @@ object SliderTrackProgress : TrackProgress {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(formatTime(state.positionMs), style = MaterialTheme.typography.bodyMedium)
-                    Text("-${formatTime((duration - state.positionMs).coerceAtLeast(0))}", style = MaterialTheme.typography.bodyMedium)
+                    Text(formatTime(state.positionMs), style = timeStyle)
+                    Text("-${formatTime((duration - state.positionMs).coerceAtLeast(0))}", style = timeStyle)
                 }
             }
         }

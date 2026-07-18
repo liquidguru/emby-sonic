@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -45,6 +47,8 @@ import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +81,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -103,6 +109,9 @@ fun NowPlayingScreen(
     val radio by viewModel.radio.collectAsStateWithLifecycle()
     val similar by viewModel.similar.collectAsStateWithLifecycle()
     val progress = remember { SliderTrackProgress }
+    // In a short pane (split-screen / AppPair on the bike) the full chrome pushes the
+    // transport controls below the fold — so slim the top bar and cap the art there.
+    val compact = LocalConfiguration.current.screenHeightDp < COMPACT_HEIGHT_DP
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var queueFocusRequest by remember { mutableIntStateOf(0) }
     var sleepTimerDialogOpen by rememberSaveable { mutableStateOf(false) }
@@ -117,7 +126,18 @@ fun NowPlayingScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
+        topBar = topBar@{
+            if (compact) {
+                CompactNowPlayingBar(
+                    hasTrack = state.currentTrack != null,
+                    hasQueue = state.queue.isNotEmpty(),
+                    onCollapse = onCollapse,
+                    onOpenSleepTimer = { sleepTimerDialogOpen = true },
+                    onOpenQueue = { selectedTab = 0; queueFocusRequest += 1 },
+                    onStop = viewModel::stopPlayback,
+                )
+                return@topBar
+            }
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onCollapse) {
@@ -266,6 +286,16 @@ private fun PlayerContent(
             }
         }
     }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    // In a short pane, reserve enough height for the player core (title, progress,
+    // transport) and give the art the rest, so the controls always stay on-screen
+    // without scrolling. The compact hero below also trims the title/album/spacers.
+    // Tall panes keep the normal width-based art, so portrait is unchanged.
+    val compact = maxHeight < 560.dp
+    val artSize = minOf(
+        maxWidth * (if (compact) 0.58f else 0.74f),
+        maxHeight - (if (compact) 232.dp else 300.dp),
+    ).coerceIn(88.dp, 340.dp)
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -278,7 +308,7 @@ private fun PlayerContent(
             // artwork (and title) dissolve across in step with the audio instead
             // of hard-cutting. Only active when a real blend is firing.
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                NowPlayingHero(track)
+                NowPlayingHero(track, artSize, compact)
                 val fromTrack = state.crossfadeFromTrack
                 if (fromTrack != null && fromTrack.id != track.id) {
                     val outgoingAlpha = crossfadeOutgoingAlpha(
@@ -288,12 +318,12 @@ private fun PlayerContent(
                         elapsedMs = state.positionMs,
                     )
                     Box(modifier = Modifier.graphicsLayer { alpha = outgoingAlpha }) {
-                        NowPlayingHero(fromTrack)
+                        NowPlayingHero(fromTrack, artSize, compact)
                     }
                 }
             }
-            Spacer(Modifier.height(22.dp))
-            progress.Render(state, onSeek, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(if (compact) 10.dp else 22.dp))
+            progress.Render(state, onSeek, Modifier.fillMaxWidth(), compact)
             state.playbackError?.let { message ->
                 Text(
                     message,
@@ -355,6 +385,7 @@ private fun PlayerContent(
             1 -> radioContent(radio, onPlayRadioAll, onPlayRadioTrack, onRefreshRadio)
             else -> similarContent(similar, onPlaySimilarAll, onPlaySimilarTrack, onRefreshSimilar)
         }
+    }
     }
 }
 
@@ -668,16 +699,21 @@ private fun RadioRow(item: LibraryItem, onClick: () -> Unit) {
 
 /** Artwork + title/artist/album block, rendered once per track (and overlaid during a crossfade). */
 @Composable
-private fun NowPlayingHero(track: PlaybackTrack) {
+private fun NowPlayingHero(track: PlaybackTrack, artSize: Dp, compact: Boolean) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        NowPlayingArtwork(track)
-        Spacer(Modifier.height(20.dp))
+        NowPlayingArtwork(track, artSize)
+        Spacer(Modifier.height(if (compact) 10.dp else 20.dp))
         Text(
             track.title,
-            style = MaterialTheme.typography.headlineLarge,
+            // Smaller title in a short pane so it doesn't push the controls off.
+            style = if (compact) {
+                MaterialTheme.typography.titleLarge
+            } else {
+                MaterialTheme.typography.headlineLarge
+            },
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -685,32 +721,38 @@ private fun NowPlayingHero(track: PlaybackTrack) {
         track.artist?.let {
             Text(
                 it,
-                style = MaterialTheme.typography.titleMedium,
+                style = if (compact) {
+                    MaterialTheme.typography.bodyMedium
+                } else {
+                    MaterialTheme.typography.titleMedium
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = if (compact) 2.dp else 8.dp),
             )
         }
-        track.album?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp),
-            )
+        // Album line is chrome; drop it in a short pane to reclaim height for controls.
+        if (!compact) {
+            track.album?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun NowPlayingArtwork(track: PlaybackTrack) {
+private fun NowPlayingArtwork(track: PlaybackTrack, artSize: Dp) {
     Box(
         modifier = Modifier
-            .fillMaxWidth(0.74f)
-            .aspectRatio(1f)
+            .size(artSize)
             .clip(RoundedCornerShape(28.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
@@ -1054,6 +1096,59 @@ private fun formatSpeed(speed: Float): String =
 
 private val SleepTimerMinutes = listOf(5, 10, 15, 30, 45, 60)
 private val AudiobookSpeeds = listOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+
+/** Below this pane height, Now Playing switches to its space-saving compact chrome. */
+private const val COMPACT_HEIGHT_DP = 540
+
+/**
+ * Slim top bar for a short pane (split-screen / AppPair): drops the "Now Playing"
+ * title and folds the secondary actions (Sleep timer, Queue) into a "⋮" overflow,
+ * keeping only the collapse chevron, Cast, and Stop visible — so the top strip stops
+ * eating the vertical room the transport controls need.
+ */
+@Composable
+private fun CompactNowPlayingBar(
+    hasTrack: Boolean,
+    hasQueue: Boolean,
+    onCollapse: () -> Unit,
+    onOpenSleepTimer: () -> Unit,
+    onOpenQueue: () -> Unit,
+    onStop: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onCollapse) {
+            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Collapse")
+        }
+        Spacer(Modifier.weight(1f))
+        CastButton()
+        Box {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = "More")
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("Sleep timer") },
+                    enabled = hasTrack,
+                    leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                    onClick = { menuOpen = false; onOpenSleepTimer() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Queue") },
+                    enabled = hasQueue,
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null) },
+                    onClick = { menuOpen = false; onOpenQueue() },
+                )
+            }
+        }
+        IconButton(onClick = onStop, enabled = hasTrack) {
+            Icon(Icons.Default.Close, contentDescription = "Stop playback")
+        }
+    }
+}
 
 /**
  * The player's top-to-bottom vignette. The dark value is hand-tuned to sit just
