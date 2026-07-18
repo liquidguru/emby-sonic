@@ -304,15 +304,9 @@ the APK to your phone, tap it, and allow "install from unknown sources" when
 prompted.
 
 > The APK is a **release build** — R8-minified and resource-shrunk, the same
-> optimised code a Play Store build would run.
->
-> **Signing caveat (beta):** these beta APKs are signed with Android's **debug
-> key**, not a private release key. The debug key is a placeholder identity that
-> every Android SDK install shares, so the signature proves nothing about who
-> built the APK — only install builds you got directly from me. A real release
-> key is coming; when it lands you'll have to **uninstall and reinstall once**
-> (Android rejects an update signed by a different key). I'll flag it in advance
-> in [issue #8](https://github.com/liquidguru/emby-sonic/issues/8).
+> optimised code a Play Store build would run — and since **beta.19** it's signed
+> with a **private release key** (`CN=liquidguru`). Verify with
+> `apksigner verify --print-certs <apk>`. Only install builds you got directly from me.
 
 > **Want Android Auto?** Sideloaded apps are hidden from Android Auto by default.
 > To use liquidWave in the car, enable AA developer mode once on the phone:
@@ -379,16 +373,26 @@ about your library, listening, or credentials is sent to me or any third party.
 - **`allowBackup=false`** — your Emby session token is not swept into cloud or `adb`
   backups.
 - The APK is **R8-minified and resource-shrunk**, like a Play Store build.
+- Since **beta.19** the APK is **signed with a private release key** (`CN=liquidguru`,
+  RSA 4096), not the Android debug key. Verify any build yourself — no password needed:
+  `apksigner verify --print-certs <apk>` should show `CN=liquidguru` (earlier betas
+  showed `CN=Android Debug`).
+
+**Permissions — what the app asks for, and why:**
+
+- liquidWave requests only: **internet + network state** (reach Emby), **foreground
+  service + wake lock** (keep playback and the media notification alive), and
+  **notifications**. **No location, no contacts, no microphone** — nothing like that.
+- **Notifications** are requested **only when you start a download**, so the app can
+  tell you when the download finishes. Say no and downloads still work — you just
+  won't get the "download complete" message. (The playback controls in your shade /
+  lock screen / car are a foreground-service notification and appear either way.)
+- On **Android 16** you may see a **"Local network"** permission. That's the system's
+  new local-network access — liquidWave uses it to reach your Emby server on your LAN.
+  It is **not** GPS/location; the app declares no location permission at all.
 
 **Honest beta caveats (transparency):**
 
-- **Beta APKs are signed with Android's debug key, not a private release key.**
-  That key ships with every Android SDK and its password is public, so the
-  signature is not evidence of who built the APK — only install builds you got
-  directly from me. It does not weaken the app's own security (the token
-  encryption below is unaffected), but it is not the Play Store trust model.
-  Moving to a real key will need a **one-time uninstall + reinstall**, announced
-  ahead of time in [issue #8](https://github.com/liquidguru/emby-sonic/issues/8).
 - The Emby token is stored in **app-private storage on the phone, encrypted at rest** using Android Keystore.
 - The coordinator's CORS policy is currently permissive — harmless for a LAN-only
   service, and another reason not to expose `:8765` to the internet.
