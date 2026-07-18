@@ -7,9 +7,13 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import android.os.Bundle
 import dagger.hilt.android.AndroidEntryPoint
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
@@ -28,7 +32,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -66,6 +72,8 @@ class SonicPlaybackService : MediaLibraryService() {
         sessionPlayer = player
         mediaSession = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setSessionActivity(sessionActivity)
+            // Shuffle + repeat buttons for Android Auto and the notification shade.
+            .setCustomLayout(buildCustomLayout())
             .build()
         serviceScope.launch {
             playback.activePlayer.collect { active ->
@@ -74,6 +82,41 @@ class SonicPlaybackService : MediaLibraryService() {
                 mediaSession?.setPlayer(next)
             }
         }
+        // Keep the shuffle/repeat button icons in sync when the mode changes from
+        // anywhere (the phone UI, the buttons themselves), so the car shows it live.
+        serviceScope.launch {
+            playback.state
+                .map { it.shuffleEnabled to it.repeatMode }
+                .distinctUntilChanged()
+                .collect { mediaSession?.setCustomLayout(buildCustomLayout()) }
+        }
+    }
+
+    /**
+     * The custom control-row buttons AA and the notification render beyond the
+     * native play/prev/next. Icons reflect the live state: shuffle on/off (a press
+     * reshuffles — [PlaybackController.shuffleQueue] is one-shot, not a toggle) and
+     * repeat off/all/one.
+     */
+    private fun buildCustomLayout(): ImmutableList<CommandButton> {
+        val s = playback.state.value
+        val shuffle = CommandButton.Builder(
+            if (s.shuffleEnabled) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF,
+        )
+            .setSessionCommand(SessionCommand(ACTION_SHUFFLE, Bundle.EMPTY))
+            .setDisplayName("Shuffle")
+            .build()
+        val repeat = CommandButton.Builder(
+            when (s.repeatMode) {
+                PlaybackRepeatMode.ONE -> CommandButton.ICON_REPEAT_ONE
+                PlaybackRepeatMode.ALL -> CommandButton.ICON_REPEAT_ALL
+                else -> CommandButton.ICON_REPEAT_OFF
+            },
+        )
+            .setSessionCommand(SessionCommand(ACTION_REPEAT, Bundle.EMPTY))
+            .setDisplayName("Repeat")
+            .build()
+        return ImmutableList.of(shuffle, repeat)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
@@ -87,6 +130,43 @@ class SonicPlaybackService : MediaLibraryService() {
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
+        // Grant the shuffle/repeat custom commands on top of the defaults, else the
+        // custom-layout buttons stay disabled and never appear.
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult {
+            val default = super.onConnect(session, controller)
+            val commands = default.availableSessionCommands.buildUpon()
+                .add(SessionCommand(ACTION_SHUFFLE, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_REPEAT, Bundle.EMPTY))
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(commands)
+                .setCustomLayout(buildCustomLayout())
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            // Callbacks run on the main thread, so touching the player here is safe.
+            when (customCommand.customAction) {
+                ACTION_SHUFFLE -> playback.shuffleQueue()
+                ACTION_REPEAT -> playback.cycleRepeatMode()
+                else -> return Futures.immediateFuture(
+                    SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED),
+                )
+            }
+            // The state collector will also refresh, but update now so the icon
+            // flips immediately on tap rather than one state-emission later.
+            mediaSession?.setCustomLayout(buildCustomLayout())
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
@@ -478,5 +558,7 @@ class SonicPlaybackService : MediaLibraryService() {
         const val BOOK_PREFIX = "auto:book:"
         const val AUTHOR_PREFIX = "auto:author:"
         const val AUTO_RESUME_LIMIT = 50
+        const val ACTION_SHUFFLE = "guru.liquid.embysonic.SHUFFLE"
+        const val ACTION_REPEAT = "guru.liquid.embysonic.REPEAT"
     }
 }
