@@ -36,6 +36,7 @@ class PlaylistDownloader @Inject constructor(
     private val settings: SettingsRepository,
     private val store: DownloadStore,
     private val progress: DownloadProgressStore,
+    private val notifier: DownloadNotifier,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobsMutex = Mutex()
@@ -126,10 +127,12 @@ class PlaylistDownloader @Inject constructor(
         // local progress so it isn't masked by a previous download's leftover.
         progress.clear(tracks.map { it.id })
 
+        var completed = 0
         for (track in tracks) {
             currentCoroutineContext().ensureActive()
             if (store.isTrackDownloaded(track.id)) {
                 store.updateTrack(playlistId, track.id, DownloadState.COMPLETE)
+                completed++
                 continue
             }
             store.updateTrack(playlistId, track.id, DownloadState.DOWNLOADING)
@@ -149,7 +152,15 @@ class PlaylistDownloader @Inject constructor(
                 if (size > 0) DownloadState.COMPLETE else DownloadState.FAILED,
                 size.takeIf { it > 0 },
             )
+            if (size > 0) completed++
         }
+        // Reached only on a normal finish — a cancel throws out of the loop above and
+        // never notifies, which is what we want.
+        notifier.notifyDownloadFinished(
+            name = name,
+            completed = completed,
+            total = tracks.size,
+        )
     }
 
     /** Fetch the original source file with auth; returns bytes written, or -1 on failure. */

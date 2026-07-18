@@ -1,17 +1,13 @@
 package guru.liquid.embysonic
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
@@ -30,15 +26,17 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var castManager: CastManager
 
-    // Android 13+ blocks ALL notifications — including the Media3 playback
-    // notification in the shade — until the user grants POST_NOTIFICATIONS.
-    private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
+    // No runtime POST_NOTIFICATIONS request. The only notification liquidWave posts
+    // is the media playback one, which is a foreground-service notification and is
+    // EXEMPT from POST_NOTIFICATIONS — it shows in the shade / lock screen / car
+    // whether or not the permission is granted (verified on device: the notification
+    // is live while the permission reads denied). Asking for it therefore changes
+    // nothing today, so we don't. If a NON-foreground notification is ever added
+    // (e.g. "download complete"), request the permission contextually at that point,
+    // for that reason.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        requestNotificationPermissionIfNeeded()
         castManager.initialize(this)
         val startLoggedIn = settings.snapshot().isLoggedIn
         setContent {
@@ -50,15 +48,6 @@ class MainActivity : AppCompatActivity() {
                     AppNavHost(startLoggedIn = startLoggedIn)
                 }
             }
-        }
-    }
-
-    private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT < 33) return
-        val granted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

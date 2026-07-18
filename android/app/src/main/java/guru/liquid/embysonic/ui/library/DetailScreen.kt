@@ -1,5 +1,12 @@
 package guru.liquid.embysonic.ui.library
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,6 +92,24 @@ fun DetailScreen(
     var removeDownloadOpen by remember { mutableStateOf(false) }
     val download by viewModel.downloadState.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+    // Ask for notification permission the moment a download starts — the honest,
+    // in-context reason liquidWave needs it (we'll tell you when it finishes). The
+    // download proceeds regardless of the answer; only the completion notification
+    // depends on it.
+    val startDownload: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        viewModel.downloadForOffline()
+    }
+
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
@@ -152,7 +177,7 @@ fun DetailScreen(
                         if (viewModel.isDownloadable) {
                             val dl = download
                             when {
-                                dl == null -> IconButton(onClick = viewModel::downloadForOffline) {
+                                dl == null -> IconButton(onClick = startDownload) {
                                     Icon(Icons.Default.Download, contentDescription = "Download for offline")
                                 }
                                 dl.isDownloading -> IconButton(onClick = { removeDownloadOpen = true }) {
