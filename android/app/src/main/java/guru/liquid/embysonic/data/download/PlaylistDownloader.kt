@@ -1,8 +1,10 @@
 package guru.liquid.embysonic.data.download
 
+import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.BuildConfig
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
@@ -13,6 +15,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -32,6 +38,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class PlaylistDownloader @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val library: LibraryRepository,
     private val settings: SettingsRepository,
     private val store: DownloadStore,
@@ -41,6 +48,13 @@ class PlaylistDownloader @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobsMutex = Mutex()
     private val activeJobs = mutableMapOf<String, Job>()
+
+    // Playlist ids with a live download coroutine. Drives the foreground service
+    // (which keeps the process alive so a background download isn't killed, #45).
+    // Based on the running job, not DownloadStore's PENDING/DOWNLOADING states —
+    // those linger after a cancel, which would keep the service up forever.
+    private val _activeDownloads = MutableStateFlow<Set<String>>(emptySet())
+    val activeDownloads: StateFlow<Set<String>> = _activeDownloads.asStateFlow()
 
     /** True while a download for this playlist is queued or running. */
     suspend fun isActive(playlistId: String): Boolean =
@@ -56,6 +70,10 @@ class PlaylistDownloader @Inject constructor(
         coverUrl: String?,
         detailKind: DetailKind = DetailKind.PLAYLIST_TRACKS,
     ) {
+        // Start the foreground service from the caller (foreground, on the user's
+        // tap) — starting a FGS from the background coroutine below would be blocked.
+        // It self-stops when activeDownloads empties, so a redundant start is safe.
+        DownloadService.start(context)
         scope.launch {
             val start = jobsMutex.withLock {
                 if (activeJobs.containsKey(playlistId)) {
@@ -66,12 +84,14 @@ class PlaylistDownloader @Inject constructor(
                 }
             }
             if (!start) return@launch
+            _activeDownloads.update { it + playlistId }
             try {
                 runDownload(playlistId, name, coverUrl, detailKind)
             } catch (e: Exception) {
                 Log.w(TAG, "Download of $playlistId stopped: ${e.message}")
             } finally {
                 jobsMutex.withLock { activeJobs.remove(playlistId) }
+                _activeDownloads.update { it - playlistId }
             }
         }
     }
