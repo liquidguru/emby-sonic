@@ -324,32 +324,22 @@ private fun PlayerContent(
             }
             Spacer(Modifier.height(if (compact) 10.dp else 22.dp))
             progress.Render(state, onSeek, Modifier.fillMaxWidth(), compact)
-            state.playbackError?.let { message ->
-                Text(
-                    message,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 10.dp),
+
+            // Error text + status chips (sleep/speed/offline-buffer) + cast rows are
+            // conditional, so in a compact pane they render BELOW the transport —
+            // otherwise a chip appearing (e.g. "Offline buffer ready") pushes the
+            // play controls off-screen. Normal pane keeps them above, as before.
+            if (!compact) {
+                PlayerStatusExtras(
+                    state = state,
+                    compact = false,
+                    onCancelSleepTimer = onCancelSleepTimer,
+                    onOpenSpeedDialog = onOpenSpeedDialog,
+                    onCastVolumeChange = onCastVolumeChange,
                 )
             }
-            Spacer(Modifier.height(18.dp))
-            PlaybackStatusChips(
-                state = state,
-                onCancelSleepTimer = onCancelSleepTimer,
-                onOpenSpeedDialog = onOpenSpeedDialog,
-            )
-            if (state.isCasting) {
-                Spacer(Modifier.height(12.dp))
-                CastingIndicator(deviceName = state.castVolume.deviceName)
-            }
-            if (state.castVolume.available) {
-                Spacer(Modifier.height(12.dp))
-                CastVolumeControl(
-                    volume = state.castVolume,
-                    onVolumeChange = onCastVolumeChange,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
+
+            Spacer(Modifier.height(if (compact) 12.dp else 8.dp))
             TransportControls(state, onPrevious, onToggle, onNext)
             Spacer(Modifier.height(8.dp))
             PlaybackModeControls(
@@ -357,6 +347,15 @@ private fun PlayerContent(
                 onShuffleQueue = onShuffleQueue,
                 onCycleRepeat = onCycleRepeat,
             )
+            if (compact) {
+                PlayerStatusExtras(
+                    state = state,
+                    compact = true,
+                    onCancelSleepTimer = onCancelSleepTimer,
+                    onOpenSpeedDialog = onOpenSpeedDialog,
+                    onCastVolumeChange = onCastVolumeChange,
+                )
+            }
             Spacer(Modifier.height(18.dp))
             GuestDjRow(state, onGuestDjChange)
             Spacer(Modifier.height(20.dp))
@@ -386,6 +385,46 @@ private fun PlayerContent(
             else -> similarContent(similar, onPlaySimilarAll, onPlaySimilarTrack, onRefreshSimilar)
         }
     }
+    }
+}
+
+/**
+ * Playback error + status chips + cast rows. Positioned above the transport in a
+ * normal pane and below it in a compact one (see PlayerContent) so that these
+ * conditional rows can't push the play controls off a short screen.
+ */
+@Composable
+private fun PlayerStatusExtras(
+    state: PlaybackUiState,
+    compact: Boolean,
+    onCancelSleepTimer: () -> Unit,
+    onOpenSpeedDialog: () -> Unit,
+    onCastVolumeChange: (Float) -> Unit,
+) {
+    state.playbackError?.let { message ->
+        Text(
+            message,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+    }
+    Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
+    PlaybackStatusChips(
+        state = state,
+        onCancelSleepTimer = onCancelSleepTimer,
+        onOpenSpeedDialog = onOpenSpeedDialog,
+    )
+    if (state.isCasting) {
+        Spacer(Modifier.height(12.dp))
+        CastingIndicator(deviceName = state.castVolume.deviceName)
+    }
+    if (state.castVolume.available) {
+        Spacer(Modifier.height(12.dp))
+        CastVolumeControl(
+            volume = state.castVolume,
+            onVolumeChange = onCastVolumeChange,
+        )
     }
 }
 
