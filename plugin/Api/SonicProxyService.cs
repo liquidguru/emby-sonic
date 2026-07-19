@@ -47,7 +47,12 @@ public class PostSonicBuildMixes : IReturn<object> { }
 /// </summary>
 public class SonicProxyService : IService, IRequiresRequest
 {
-    private static readonly HttpClient _http = new();
+    // A 15s timeout matters here because Forward() blocks an Emby server thread on
+    // this call (sync-over-async). Without it the client defaults to 100s, so a
+    // HUNG coordinator (accepts the socket but never replies) would tie up an Emby
+    // API thread for that long; the SendAsync catch below turns the timeout into a
+    // clean 502 instead. Matches the HttpClient in ServerEntryPoint.
+    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     public IRequest Request { get; set; } = null!;
 
