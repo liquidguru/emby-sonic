@@ -13,6 +13,9 @@ data class PlaybackTrack(
     val durationMs: Long?,
     val playbackPositionMs: Long = 0,
     val contentKind: ContentKind = ContentKind.UNKNOWN,
+    // Source container (e.g. "mp3", "wma"); null if unknown. Drives the crossfade
+    // direct-play gate — a track Emby will transcode is skipped for crossfade.
+    val container: String? = null,
 )
 
 enum class PlaybackRepeatMode {
@@ -116,4 +119,5 @@ fun LibraryItem.toPlaybackTrack(): PlaybackTrack = PlaybackTrack(
     durationMs = durationMs,
     playbackPositionMs = playbackPositionMs,
     contentKind = contentKind,
+    container = container,
 )

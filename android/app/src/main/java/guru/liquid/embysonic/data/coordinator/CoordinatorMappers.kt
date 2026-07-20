@@ -20,6 +20,7 @@ fun TrackOutDto.toLibraryItem(): LibraryItem = LibraryItem(
     // Sonic features (mixes/radio/adventure/similar) are music-only — the
     // coordinator excludes spoken-word/audiobooks from analysis.
     contentKind = ContentKind.MUSIC,
+    container = container,
 )
 
 private fun formatTrackDuration(ms: Long?): String? {

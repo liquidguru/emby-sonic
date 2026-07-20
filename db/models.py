@@ -29,6 +29,17 @@ class Track(Base):
 
     embedding: Mapped["Embedding | None"] = relationship(back_populates="track", uselist=False)
 
+    @property
+    def container(self) -> str | None:
+        """Source container from the file extension (e.g. 'wma', 'mp3'), or None.
+        Lets the client tell whether Emby will transcode a track — a transcoded
+        track can't be crossfaded reliably, so the app excludes it from crossfade.
+        Read by TrackOut via from_attributes."""
+        path = self.file_path
+        if not path or "." not in path:
+            return None
+        return path.rsplit(".", 1)[1].lower()
+
 
 class Embedding(Base):
     __tablename__ = "embeddings"

@@ -31,6 +31,7 @@ data class PersistedTrack(
     val durationMs: Long? = null,
     val playbackPositionMs: Long = 0,
     val contentKind: String = "UNKNOWN",
+    val container: String? = null,
 )
 
 /**

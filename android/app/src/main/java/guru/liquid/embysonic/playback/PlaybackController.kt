@@ -216,6 +216,8 @@ class PlaybackController @Inject constructor(
     private var fadePlayerReady = false
     private var crossfadeArmedIndex = -1
     private var crossfadeTargetIndex = -1
+    // Log a transcode-skip once per queue index, not every poll.
+    private var transcodeSkipLoggedIndex = -1
     private var crossfadeJob: Job? = null
     // Precisely-timed fire scheduled once the helper's tail is buffered; non-null
     // means a fire is pending (or ran) for the armed index.
@@ -821,6 +823,7 @@ class PlaybackController @Inject constructor(
         durationMs = durationMs,
         playbackPositionMs = playbackPositionMs,
         contentKind = contentKind.name,
+        container = container,
     )
 
     private fun PersistedTrack.toPlaybackTrack(): PlaybackTrack = PlaybackTrack(
@@ -832,6 +835,7 @@ class PlaybackController @Inject constructor(
         durationMs = durationMs,
         playbackPositionMs = playbackPositionMs,
         contentKind = runCatching { ContentKind.valueOf(contentKind) }.getOrDefault(ContentKind.UNKNOWN),
+        container = container,
     )
 
     /**
@@ -1919,6 +1923,23 @@ class PlaybackController @Inject constructor(
         if (nextIndex == C.INDEX_UNSET) return
         val next = queue.getOrNull(nextIndex) ?: return
         if (next.isLongForm) return
+        // Crossfade needs BOTH tracks to direct-play. A track Emby transcodes (e.g.
+        // WMA) can't be blended: the helper's second transcode races the primary's
+        // stream and can restart it — heard as the first track looping until you
+        // skip. Do a clean cut instead. (Unknown container -> assume direct-play, so
+        // this never regresses the common case.)
+        if (current.willTranscode() || next.willTranscode()) {
+            if (crossfadeArmed && crossfadeArmedIndex == index) cancelCrossfade()
+            if (transcodeSkipLoggedIndex != index) {
+                transcodeSkipLoggedIndex = index
+                Log.w(
+                    TAG,
+                    "Crossfade skipped (transcode): ${current.title} (${current.container}) " +
+                        "-> ${next.title} (${next.container})",
+                )
+            }
+            return
+        }
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: return
         val crossfadeMs = snap.crossfadeDurationMs.toLong()
         // Anchor the blend on where the music actually ENDS, not the file's
@@ -1954,6 +1975,16 @@ class PlaybackController @Inject constructor(
      * file's full duration — which is also the fallback whenever the coordinator
      * hasn't measured the track or the user turned trimming off.
      */
+    /**
+     * Whether Emby will transcode this track (so it can't be crossfaded reliably —
+     * see the direct-play gate in the blend loop). A null/unknown container is
+     * assumed direct-play so the common case never regresses.
+     */
+    private fun PlaybackTrack.willTranscode(): Boolean {
+        val c = container?.lowercase() ?: return false
+        return c !in DIRECT_PLAY_CONTAINERS
+    }
+
     private fun blendEndMs(trackId: String, duration: Long): Long {
         if (!trimEdgesEnabled) return duration
         val end = edgesByTrackId[trackId]?.endMs ?: return duration
@@ -2465,6 +2496,14 @@ class PlaybackController @Inject constructor(
     }
 
     private companion object {
+        // Containers Emby can direct-play to this client — MIRRORS the "Container"
+        // list sent in the stream URL. A source outside this set is transcoded, and
+        // transcoded tracks are excluded from crossfade (the blend can't handle a
+        // second concurrent transcode of the same track).
+        val DIRECT_PLAY_CONTAINERS = setOf(
+            "mp3", "aac", "m4a", "mp4", "m4b", "flac", "webma", "webm", "wav", "ogg",
+        )
+
         // Volume normalisation target + safe gain range (EBU R128 LUFS / dB).
         // -14 LUFS is the common streaming reference; most masters sit louder than
         // this and are gently attenuated, while quiet tracks are boosted up to a

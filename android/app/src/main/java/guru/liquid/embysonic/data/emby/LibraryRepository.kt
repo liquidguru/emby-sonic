@@ -89,6 +89,9 @@ data class LibraryItem(
     val played: Boolean = false,
     val contentKind: ContentKind = ContentKind.UNKNOWN,
     val playlistItemId: String? = null,
+    // Source container (e.g. "mp3", "wma"); null if unknown. Lets playback tell
+    // whether Emby will transcode the track (transcoded tracks skip crossfade).
+    val container: String? = null,
 )
 
 /**
@@ -845,6 +848,7 @@ class LibraryRepository @Inject constructor(
             played = userData?.played ?: false,
             contentKind = kind,
             playlistItemId = playlistItemId,
+            container = container,
         )
     }
 

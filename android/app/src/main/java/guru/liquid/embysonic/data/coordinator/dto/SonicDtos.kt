@@ -11,6 +11,8 @@ data class TrackOutDto(
     @SerialName("artist") val artist: String? = null,
     @SerialName("album") val album: String? = null,
     @SerialName("duration_ms") val durationMs: Long? = null,
+    // Source container (e.g. "wma"); drives the crossfade direct-play gate.
+    @SerialName("container") val container: String? = null,
 )
 
 /** One result of `GET /sonic/tracks/{id}/similar`. */

@@ -11,6 +11,9 @@ class TrackOut(BaseModel):
     album: str | None
     duration_ms: int | None
     analysed_at: datetime | None
+    # Source container (from the file extension, e.g. "wma"), so the client can tell
+    # whether Emby will transcode the track and skip crossfade for it.
+    container: str | None = None
 
     model_config = {"from_attributes": True}
 

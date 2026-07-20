@@ -50,6 +50,11 @@ data class EmbyItemDto(
     @SerialName("RunTimeTicks")
     val runTimeTicks: Long? = null,
 
+    // Source container (e.g. "mp3", "flac", "wma"). Used to tell whether Emby will
+    // transcode a track — a transcoded track can't be crossfaded reliably.
+    @SerialName("Container")
+    val container: String? = null,
+
     @SerialName("ChildCount")
     val childCount: Int? = null,
 
