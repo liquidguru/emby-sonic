@@ -41,7 +41,9 @@ interface EmbyApi {
         @Query("Recursive") recursive: Boolean = true,
         @Query("SortBy") sortBy: String = "SortName",
         @Query("SortOrder") sortOrder: String = "Ascending",
-        @Query("Fields") fields: String = "UserData,PrimaryImageAspectRatio",
+        // Container tells the client whether Emby will transcode a track (e.g. WMA),
+        // which gates crossfade — a transcoded track can't be blended reliably.
+        @Query("Fields") fields: String = "UserData,PrimaryImageAspectRatio,Container",
         @Query("StartIndex") startIndex: Int = 0,
         @Query("Limit") limit: Int = 200,
         @Query("ParentId") parentId: String? = null,
@@ -73,7 +75,7 @@ interface EmbyApi {
     suspend fun getItemsByIds(
         @Query("UserId") userId: String,
         @Query("Ids") ids: String,
-        @Query("Fields") fields: String = "PrimaryImageAspectRatio",
+        @Query("Fields") fields: String = "PrimaryImageAspectRatio,Container",
     ): QueryResult<EmbyItemDto>
 
     /**
@@ -84,7 +86,7 @@ interface EmbyApi {
     suspend fun getPlaylistItems(
         @Path("playlistId") playlistId: String,
         @Query("UserId") userId: String,
-        @Query("Fields") fields: String = "UserData,PrimaryImageAspectRatio",
+        @Query("Fields") fields: String = "UserData,PrimaryImageAspectRatio,Container",
         @Query("Limit") limit: Int = 2000,
     ): QueryResult<EmbyItemDto>
 
