@@ -93,6 +93,9 @@ class DownloadStore @Inject constructor(
             playbackPositionMs = local?.positionMs ?: playbackPositionMs,
             played = local?.played ?: played,
             contentKind = runCatching { ContentKind.valueOf(contentKind) }.getOrDefault(ContentKind.UNKNOWN),
+            // Keep the source container so the crossfade gate stays correct for
+            // tracks played from downloads too (parity with the streamed paths).
+            container = container,
         )
     }
 

@@ -175,6 +175,12 @@ class AdventureViewModel @Inject constructor(
         imageUrl = imageUrl,
         album = album,
         durationMs = durationMs,
+        // Carry the source container: when an adventure is seeded from the
+        // currently-playing track, a dropped container left the start bookend
+        // looking like direct-play, so the crossfade gate armed against a
+        // transcoded WMA and looped it (the Heavy/Original bug).
+        container = container,
+        contentKind = contentKind,
     )
 
     private companion object {
