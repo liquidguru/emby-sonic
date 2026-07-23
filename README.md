@@ -41,8 +41,11 @@ a Mixes tab, and Settings (account + live analysis status, with Log out moved
 there rather than a stray top-bar icon). Playback runs through a mini player +
 Now Playing overlay (seek, shuffle/repeat, stop) with browser/lock-screen media
 controls, and any queue — an artist mix, radio, or a sonic mix — can be saved
-back to a real Emby playlist. Audiobooks remain Android-only for now; the web
-app is otherwise close to feature parity for music.
+back to a real Emby playlist. A "Build Sonic Mixes" trigger in the Mixes tab
+handles the initial clustering too, so the web app is a complete standalone
+client — no Android device needed to create mixes on a fresh coordinator.
+Audiobooks remain Android-only for now; the web app is otherwise close to
+feature parity for music.
 
 ## Phase 1 — Python Analysis Service
 
@@ -493,13 +496,38 @@ then build a shuffled cross-artist mix, sized by the shared "tracks per mix"
 setting); Stations (Library / Random Album / Decade radios); Recent Plays; offline
 downloads (download a playlist or a whole audiobook's original source files for
 browsing and playback with no network — audiobooks keep durable resume across the
-offline→online boundary; Wi-Fi-only by default; managed under Settings → Downloads);
+offline→online boundary; Wi-Fi-only by default; managed under Settings → Downloads;
+a foreground service keeps a download alive if the app is backgrounded, with a
+progress notification and a download-complete notification when it finishes);
 per-track **volume normalisation** (levels playback to a consistent loudness using
 the coordinator's measured LUFS — a `GainAudioProcessor` in the audio sink, toggle
 in Settings, on by default); a **configurable offline prefetch buffer** (Settings →
-Offline prefetch, 3/5/10/15 tracks ahead) to ride through signal drops; and search
-across music (tracks/albums/artists), audiobooks (books/authors), or everything
-from Home.
+Offline prefetch, 3/5/10/15 tracks ahead) to ride through signal drops; a
+**responsive Now Playing** that switches to compact chrome in short panes
+(split-screen, AppPair) so transport controls stay visible; a **Dynamic** theme
+that follows the system light/dark setting (in the app and the Now Playing
+widget), alongside five fixed dark palettes; Android Auto shuffle/repeat controls
+(mirrored in the notification shade) alongside its Playlists/Stations browse tree;
+and search across music (tracks/albums/artists), audiobooks (books/authors), or
+everything from Home.
+
+<table>
+<tr>
+<td width="25%"><img src="docs/screenshots/home.png" alt="Home screen with Stations, Sonic mixes and Recent plays"><br><sub>Home</sub></td>
+<td width="25%"><img src="docs/screenshots/mixes.png" alt="An auto-curated Sonic Mix, open with its tracks"><br><sub>Sonic Mixes</sub></td>
+<td width="25%"><img src="docs/screenshots/similar.png" alt="Now Playing's Similar tab listing sonically-alike tracks"><br><sub>Track Radio &amp; Similar</sub></td>
+<td width="25%"><img src="docs/screenshots/sonic-adventure.png" alt="Sonic Adventure: a generated journey from one track to another"><br><sub>Sonic Adventure</sub></td>
+</tr>
+<tr>
+<td width="25%"><img src="docs/screenshots/artist-mix-creator.png" alt="Artist Mix Creator with a grid of sonically similar artists"><br><sub>Artist Mix Creator</sub></td>
+<td width="25%"><img src="docs/screenshots/now-playing.png" alt="Now Playing with crossfade and volume normalisation"><br><sub>Now Playing</sub></td>
+<td width="25%"><img src="docs/screenshots/audiobooks.png" alt="The Audiobooks library grid"><br><sub>Audiobooks</sub></td>
+<td width="25%"><img src="docs/screenshots/downloads.png" alt="Offline downloads: playlists and audiobooks"><br><sub>Offline downloads</sub></td>
+</tr>
+</table>
+
+<img src="docs/screenshots/android-auto.png" alt="liquidWave running in Android Auto" width="100%">
+<sub>Android Auto</sub>
 
 ### Build
 
