@@ -9,6 +9,8 @@ Upgrade path: swap IndexFlatIP for IndexIVFFlat when library exceeds ~50k tracks
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import faiss
 
@@ -119,11 +121,21 @@ class SonicIndex:
 
     def save(self) -> None:
         self._ensure_loaded()
-        settings.faiss_index_path.parent.mkdir(parents=True, exist_ok=True)
-        faiss.write_index(self._index, str(settings.faiss_index_path))
-        settings.faiss_ids_path.write_text(
-            "\n".join(self._track_ids), encoding="utf-8"
-        )
+        index_path = settings.faiss_index_path
+        ids_path = settings.faiss_ids_path
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        ids_path.parent.mkdir(parents=True, exist_ok=True)
+        index_tmp = index_path.with_name(f".{index_path.name}.tmp")
+        ids_tmp = ids_path.with_name(f".{ids_path.name}.tmp")
+
+        try:
+            faiss.write_index(self._index, str(index_tmp))
+            ids_tmp.write_text("\n".join(self._track_ids), encoding="utf-8")
+            os.replace(ids_tmp, ids_path)
+            os.replace(index_tmp, index_path)
+        finally:
+            index_tmp.unlink(missing_ok=True)
+            ids_tmp.unlink(missing_ok=True)
 
     def __len__(self) -> int:
         return len(self._track_ids)

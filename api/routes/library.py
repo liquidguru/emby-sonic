@@ -15,10 +15,10 @@ router = APIRouter(tags=["library"])
 
 @router.post("/library/scan", response_model=ScanStarted)
 async def trigger_scan(
-    body: ScanRequest,
     background_tasks: BackgroundTasks,
     db: DB,
     _token: AuthToken,
+    body: ScanRequest = ScanRequest(),
 ) -> ScanStarted:
     if scan_state["running"]:
         raise HTTPException(409, "Scan already in progress")
@@ -28,9 +28,9 @@ async def trigger_scan(
 
 @router.post("/library/build-mixes", response_model=BuildMixesStarted)
 async def trigger_build_mixes(
-    body: BuildMixesRequest,
     background_tasks: BackgroundTasks,
     _token: AuthToken,
+    body: BuildMixesRequest = BuildMixesRequest(),
 ) -> BuildMixesStarted:
     if build_state()["running"]:
         raise HTTPException(409, "Mix build already in progress")
