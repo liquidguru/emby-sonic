@@ -4,12 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.bufferedCoordinatorTrackCount
 import guru.liquid.embysonic.data.coordinator.dto.ArtistMixRequestDto
-import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.emby.preferredLibrary
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
@@ -87,7 +88,10 @@ class ArtistMixViewModel @Inject constructor(
         viewModelScope.launch {
             musicLibraryId = runCatching { repository.audioLibraries() }
                 .getOrDefault(emptyList())
-                .firstOrNull { it.kind == LibraryKind.MUSIC }?.id
+                .preferredLibrary(
+                    LibraryKind.MUSIC,
+                    settings.selectedMusicLibraryId.first(),
+                )?.id
             val libId = musicLibraryId
             if (libId != null) {
                 allArtists = runCatching { repository.artists(libId) }
@@ -199,21 +203,20 @@ class ArtistMixViewModel @Inject constructor(
         _state.update { it.copy(building = true) }
         viewModelScope.launch {
             // Total comes from the shared "tracks per generated mix" setting; split
-            // it evenly across the chosen artists (round up so the pool can fill the
-            // total) and let the server trim the shuffled pool back to the total.
+            // a buffered request evenly across the chosen artists, then let Emby
+            // remove inaccessible tracks before trimming back to the requested total.
             val total = settings.generatedMixTracks.first()
-            val perArtist = ((total + artists.size - 1) / artists.size).coerceAtLeast(1)
+            val requestTotal = bufferedCoordinatorTrackCount(total)
+            val perArtist = ((requestTotal + artists.size - 1) / artists.size).coerceAtLeast(1)
             runCatching {
-                val raw = coordinator.artistMix(
+                val coordinatorTracks = coordinator.artistMix(
                     ArtistMixRequestDto(
                         artists = artists.map { it.title },
                         perArtist = perArtist,
-                        length = total,
+                        length = requestTotal,
                     ),
-                ).tracks.map { it.toLibraryItem() }
-                val art = runCatching { repository.artworkByIds(raw.map { it.id }) }
-                    .getOrDefault(emptyMap())
-                raw.map { t -> art[t.id]?.let { t.copy(imageUrl = it) } ?: t }
+                ).tracks
+                repository.itemsByIds(coordinatorTracks.map { it.id }).take(total)
             }.fold(
                 onSuccess = { tracks ->
                     _state.update { it.copy(building = false) }

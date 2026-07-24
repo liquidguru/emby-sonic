@@ -45,10 +45,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import guru.liquid.embysonic.BuildConfig
 import guru.liquid.embysonic.MainActivity
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
+import guru.liquid.embysonic.data.coordinator.bufferedCoordinatorTrackCount
 import guru.liquid.embysonic.data.coordinator.dto.LoudnessRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.TrackEdgesDto
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
-import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.download.DownloadProgressStore
 import guru.liquid.embysonic.data.download.DownloadStore
 import guru.liquid.embysonic.data.emby.ContentKind
@@ -1612,9 +1612,11 @@ class PlaybackController @Inject constructor(
                 coordinator.injectQueue(
                     QueueInjectRequestDto(
                         currentTrackId = current.id,
-                        queueLength = GUEST_DJ_INJECT_COUNT,
+                        queueLength = bufferedCoordinatorTrackCount(GUEST_DJ_INJECT_COUNT),
                     ),
-                ).injected.map { it.toLibraryItem() }.withArtwork()
+                ).injected.let { tracks ->
+                    library.itemsByIds(tracks.map { it.id })
+                }
             }
             result.onSuccess { injected ->
                 // Dedupe by item id AND by a normalized title+artist key. A library
@@ -1662,11 +1664,6 @@ class PlaybackController @Inject constructor(
             },
         )
         schedulePrefetch(activePlayerRef.currentMediaItemIndex.coerceAtLeast(0))
-    }
-
-    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
-        val art = runCatching { library.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
-        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
     }
 
     private fun clearGuestDjState() {

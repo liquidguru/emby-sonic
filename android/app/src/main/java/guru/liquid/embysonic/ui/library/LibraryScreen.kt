@@ -1,12 +1,16 @@
 package guru.liquid.embysonic.ui.library
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
@@ -15,8 +19,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -34,9 +42,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import guru.liquid.embysonic.data.emby.AudioLibrary
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
@@ -49,6 +59,9 @@ fun LibraryScreen(
     onOpenItem: (itemId: String, title: String, detailKind: DetailKind) -> Unit = { _, _, _ -> },
     onOpenNowPlaying: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
+    availableLibraries: List<AudioLibrary> = emptyList(),
+    selectedLibraryId: String? = null,
+    onSelectLibrary: (AudioLibrary) -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     // Saveable so popping back from a detail screen restores the tab the user
@@ -62,9 +75,12 @@ fun LibraryScreen(
     val isMusic = viewModel.kind == LibraryKind.MUSIC
     val canMakePlaylistFromSelection = isMusic && selectedTab < 2
     val placeholderBook = !isMusic
+    val selectedLibrary = availableLibraries.firstOrNull { it.id == selectedLibraryId }
+        ?: availableLibraries.firstOrNull()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showNameDialog by remember { mutableStateOf(false) }
+    var showLibraryPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -106,7 +122,24 @@ fun LibraryScreen(
                             modifier = Modifier.size(40.dp),
                         )
                     },
-                    title = { Text(viewModel.title) },
+                    title = {
+                        if (availableLibraries.size > 1) {
+                            TextButton(onClick = { showLibraryPicker = true }) {
+                                Text(
+                                    text = selectedLibrary?.name?.ifBlank { viewModel.title }
+                                        ?: viewModel.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Choose ${viewModel.title.lowercase()} library",
+                                )
+                            }
+                        } else {
+                            Text(viewModel.title)
+                        }
+                    },
                     actions = {
                         ViewToggleAction(listView = listView, onToggle = viewModel::toggleListView)
                         if (canMakePlaylistFromSelection) {
@@ -200,6 +233,40 @@ fun LibraryScreen(
                 TextButton(onClick = { showNameDialog = false }) { Text("Cancel") }
             },
         )
+    }
+
+    if (showLibraryPicker) {
+        ModalBottomSheet(onDismissRequest = { showLibraryPicker = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
+            ) {
+                Text(
+                    text = "Choose ${viewModel.title.lowercase()} library",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                )
+                availableLibraries.forEach { library ->
+                    val selected = library.id == selectedLibrary?.id
+                    ListItem(
+                        headlineContent = {
+                            Text(library.name.ifBlank { viewModel.title })
+                        },
+                        leadingContent = {
+                            RadioButton(selected = selected, onClick = null)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showLibraryPicker = false
+                                onSelectLibrary(library)
+                            },
+                    )
+                }
+            }
+        }
     }
 }
 

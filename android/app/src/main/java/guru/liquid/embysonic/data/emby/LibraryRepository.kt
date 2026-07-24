@@ -65,6 +65,11 @@ data class AudioLibrary(
     val kind: LibraryKind,
 )
 
+/** The saved library when it is still visible, otherwise the first available one. */
+fun List<AudioLibrary>.preferredLibrary(kind: LibraryKind, preferredId: String?): AudioLibrary? =
+    firstOrNull { it.kind == kind && it.id == preferredId }
+        ?: firstOrNull { it.kind == kind }
+
 /** Flattened item for library list/grid UIs, with its Emby image URL resolved. */
 /**
  * Whether a playable item is music or an audiobook/long-form, decided explicitly
@@ -820,8 +825,10 @@ class LibraryRepository @Inject constructor(
 
     /**
      * Resolve playable music track items for a set of Emby ids, preserving the
-     * requested order (Emby may return them in any order). Used to replay a
-     * stored Recent plays queue. Ids no longer in the library are dropped.
+     * requested order (Emby may return them in any order). The request is scoped
+     * to the signed-in Emby user, so inaccessible coordinator results—as well as
+     * ids no longer in the library—are omitted. Used for coordinator-generated
+     * queues and replaying stored Recent plays.
      */
     suspend fun itemsByIds(ids: List<String>): List<LibraryItem> {
         val wanted = ids.filter { it.isNotBlank() }

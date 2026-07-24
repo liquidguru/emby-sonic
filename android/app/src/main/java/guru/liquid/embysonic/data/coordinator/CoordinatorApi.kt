@@ -113,3 +113,11 @@ interface CoordinatorApi {
     // @GET("sonic/tracks/{id}/waveform")
     // suspend fun waveform(@Path("id") trackId: String): WaveformDto
 }
+
+/**
+ * Ask the coordinator for roughly 30% more tracks than the UI needs so Emby's
+ * per-user accessibility filter can drop hidden items without usually leaving
+ * a visibly short queue. Coordinator count parameters are capped at 100.
+ */
+fun bufferedCoordinatorTrackCount(target: Int): Int =
+    ((target * 13 + 9) / 10).coerceAtMost(100)

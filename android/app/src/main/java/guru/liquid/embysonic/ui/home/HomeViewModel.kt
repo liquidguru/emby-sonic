@@ -6,12 +6,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.download.DownloadStore
 import guru.liquid.embysonic.data.emby.ContentKind
-import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.emby.preferredLibrary
 import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
 import guru.liquid.embysonic.data.recent.RecentPlay
@@ -25,7 +25,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -154,9 +157,23 @@ class HomeViewModel @Inject constructor(
         val snap = settings.snapshot()
         _state.update { it.copy(userName = snap.userName) }
         observeHomePreferences()
+        observeLibrarySelection()
         observeRecentPlays()
         observeDownloads()
         refresh()
+    }
+
+    /** Refresh Emby-backed Home rows when the user switches music/audiobook library. */
+    private fun observeLibrarySelection() {
+        viewModelScope.launch {
+            combine(
+                settings.selectedMusicLibraryId,
+                settings.selectedAudiobookLibraryId,
+            ) { musicId, audiobookId -> musicId to audiobookId }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { refresh(showLoading = false) }
+        }
     }
 
     /** Downloaded playlists are a local source — populate their Home row even offline. */
@@ -244,8 +261,14 @@ class HomeViewModel @Inject constructor(
             // single failed Emby query degrades only its own row rather than the
             // whole screen.
             val libraries = runCatching { repository.audioLibraries() }.getOrElse { emptyList() }
-            val musicLibrary = libraries.firstOrNull { it.kind == LibraryKind.MUSIC }
-            val audiobookLibrary = libraries.firstOrNull { it.kind == LibraryKind.AUDIOBOOKS }
+            val musicLibrary = libraries.preferredLibrary(
+                LibraryKind.MUSIC,
+                settings.selectedMusicLibraryId.first(),
+            )
+            val audiobookLibrary = libraries.preferredLibrary(
+                LibraryKind.AUDIOBOOKS,
+                settings.selectedAudiobookLibraryId.first(),
+            )
             musicLibraryId = musicLibrary?.id
 
             _state.update {
@@ -396,7 +419,10 @@ class HomeViewModel @Inject constructor(
 
     fun playSonicMix(item: LibraryItem) {
         viewModelScope.launch {
-            runCatching { coordinator.mixDetail(item.id).tracks.map { it.toLibraryItem() }.withArtwork() }.fold(
+            runCatching {
+                val tracks = coordinator.mixDetail(item.id).tracks
+                repository.itemsByIds(tracks.map { it.id })
+            }.fold(
                 onSuccess = { tracks ->
                     tracks.firstOrNull()?.let {
                         playback.playQueue(
@@ -410,12 +436,6 @@ class HomeViewModel @Inject constructor(
                 onFailure = { _messages.send("Couldn't start playback: ${it.message}") },
             )
         }
-    }
-
-    /** Resolve Emby cover art for coordinator track ids (mixes carry none). */
-    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
-        val art = runCatching { repository.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
-        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
     }
 
     fun playAlbum(item: LibraryItem) = playCollection(item, DetailKind.ALBUM_TRACKS)

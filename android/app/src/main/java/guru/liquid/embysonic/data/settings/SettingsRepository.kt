@@ -47,6 +47,8 @@ class SettingsRepository @Inject constructor(
         val USER_NAME = stringPreferencesKey("user_name")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val LIBRARY_LIST_VIEW = booleanPreferencesKey("library_list_view")
+        val SELECTED_MUSIC_LIBRARY_ID = stringPreferencesKey("selected_music_library_id")
+        val SELECTED_AUDIOBOOK_LIBRARY_ID = stringPreferencesKey("selected_audiobook_library_id")
         val HOME_COMPACT_CARDS = booleanPreferencesKey("home_compact_cards")
         val HOME_SECTION_ORDER = stringPreferencesKey("home_section_order")
         val HOME_HIDDEN_SECTIONS = stringPreferencesKey("home_hidden_sections")
@@ -77,6 +79,12 @@ class SettingsRepository @Inject constructor(
     /** Whether library/detail grids render as a list instead of cards (persisted, shared). */
     val libraryListView: Flow<Boolean> =
         context.dataStore.data.map { it[Keys.LIBRARY_LIST_VIEW] ?: false }
+
+    val selectedMusicLibraryId: Flow<String?> =
+        context.dataStore.data.map { it[Keys.SELECTED_MUSIC_LIBRARY_ID] }
+
+    val selectedAudiobookLibraryId: Flow<String?> =
+        context.dataStore.data.map { it[Keys.SELECTED_AUDIOBOOK_LIBRARY_ID] }
 
     val homeCompactCards: Flow<Boolean> =
         context.dataStore.data.map { it[Keys.HOME_COMPACT_CARDS] ?: false }
@@ -127,6 +135,14 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setLibraryListView(value: Boolean) {
         context.dataStore.edit { it[Keys.LIBRARY_LIST_VIEW] = value }
+    }
+
+    suspend fun setSelectedMusicLibraryId(value: String) {
+        context.dataStore.edit { it[Keys.SELECTED_MUSIC_LIBRARY_ID] = value }
+    }
+
+    suspend fun setSelectedAudiobookLibraryId(value: String) {
+        context.dataStore.edit { it[Keys.SELECTED_AUDIOBOOK_LIBRARY_ID] = value }
     }
 
     suspend fun setHomeCompactCards(value: Boolean) {
@@ -303,6 +319,10 @@ class SettingsRepository @Inject constructor(
         coordinatorUrl: String,
     ) {
         context.dataStore.edit { prefs ->
+            if (prefs[Keys.USER_ID] != null && prefs[Keys.USER_ID] != userId) {
+                prefs.remove(Keys.SELECTED_MUSIC_LIBRARY_ID)
+                prefs.remove(Keys.SELECTED_AUDIOBOOK_LIBRARY_ID)
+            }
             prefs[Keys.SERVER_URL] = serverUrl
             prefs[Keys.COORDINATOR_URL] = coordinatorUrl
             val encrypted = secureTokenStore.encrypt(accessToken)
@@ -333,6 +353,8 @@ class SettingsRepository @Inject constructor(
             prefs.remove(Keys.SESSION_TOKEN_CIPHERTEXT)
             prefs.remove(Keys.USER_ID)
             prefs.remove(Keys.USER_NAME)
+            prefs.remove(Keys.SELECTED_MUSIC_LIBRARY_ID)
+            prefs.remove(Keys.SELECTED_AUDIOBOOK_LIBRARY_ID)
         }
         refreshCache()
     }

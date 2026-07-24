@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
-import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.coordinator.dto.BuildMixesRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.RegenerateMixRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
@@ -173,7 +172,7 @@ class PlaylistsViewModel @Inject constructor(
                 onSuccess = { detail ->
                     _sonicState.value = SonicMixesState.DetailData(
                         mix = detail.mix,
-                        tracks = detail.tracks.map { it.toLibraryItem() }.withArtwork(),
+                        tracks = repository.itemsByIds(detail.tracks.map { it.id }),
                     )
                 },
                 onFailure = {
@@ -190,7 +189,10 @@ class PlaylistsViewModel @Inject constructor(
 
     fun playSonicMix(mix: SonicMixDto) {
         viewModelScope.launch {
-            runCatching { coordinator.mixDetail(mix.id).tracks.map { it.toLibraryItem() }.withArtwork() }.fold(
+            runCatching {
+                val tracks = coordinator.mixDetail(mix.id).tracks
+                repository.itemsByIds(tracks.map { it.id })
+            }.fold(
                 onSuccess = { tracks ->
                     val first = tracks.firstOrNull()
                     if (first == null) {
@@ -258,13 +260,14 @@ class PlaylistsViewModel @Inject constructor(
                 coordinator.regenerateMix(mix.id, RegenerateMixRequestDto(tracksPerMix = tracksPerMix))
             }.fold(
                 onSuccess = { detail ->
+                    val tracks = repository.itemsByIds(detail.tracks.map { it.id })
                     _sonicState.value = SonicMixesState.DetailData(
                         mix = detail.mix,
-                        tracks = detail.tracks.map { it.toLibraryItem() }.withArtwork(),
+                        tracks = tracks,
                     )
                     _mixOptions.value = _mixOptions.value.copy(
                         generating = false,
-                        message = "Mix refreshed — ${detail.tracks.size} tracks",
+                        message = "Mix refreshed — ${tracks.size} tracks",
                     )
                 },
                 onFailure = {
@@ -337,17 +340,6 @@ class PlaylistsViewModel @Inject constructor(
                 break
             }
         }
-    }
-
-    /**
-     * Coordinator tracks carry no artwork; resolve each track's Emby Primary
-     * cover in one batched query so mix detail, Now Playing, and the mini player
-     * show real art instead of placeholders. Falls back to the unhydrated items
-     * if the lookup fails.
-     */
-    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
-        val art = runCatching { repository.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
-        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
     }
 
     private companion object {

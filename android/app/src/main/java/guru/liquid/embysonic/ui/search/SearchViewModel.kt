@@ -8,6 +8,8 @@ import guru.liquid.embysonic.data.emby.AudioLibrary
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
+import guru.liquid.embysonic.data.emby.preferredLibrary
+import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
 import guru.liquid.embysonic.playback.PlaybackSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -56,6 +59,7 @@ sealed interface SearchResults {
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val repository: LibraryRepository,
+    private val settings: SettingsRepository,
     private val playback: PlaybackController,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -129,7 +133,11 @@ class SearchViewModel @Inject constructor(
             SearchScope.BOOKS, SearchScope.AUTHORS -> LibraryKind.AUDIOBOOKS
             else -> LibraryKind.MUSIC
         }
-        return libs.firstOrNull { it.kind == kind }?.id
+        val preferredId = when (kind) {
+            LibraryKind.MUSIC -> settings.selectedMusicLibraryId.first()
+            LibraryKind.AUDIOBOOKS -> settings.selectedAudiobookLibraryId.first()
+        }
+        return libs.preferredLibrary(kind, preferredId)?.id
     }
 
     fun onQueryChange(value: String) {

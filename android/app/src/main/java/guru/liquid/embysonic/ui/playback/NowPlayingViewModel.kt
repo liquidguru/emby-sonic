@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
-import guru.liquid.embysonic.data.coordinator.toLibraryItem
+import guru.liquid.embysonic.data.coordinator.bufferedCoordinatorTrackCount
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.playback.PlaybackController
@@ -84,10 +84,11 @@ class NowPlayingViewModel @Inject constructor(
         radioJob?.cancel()
         radioJob = viewModelScope.launch {
             runCatching {
-                val tracks = coordinator.trackRadio(seed.id).tracks.map { it.toLibraryItem() }
-                val art = runCatching { repository.artworkByIds(tracks.map { it.id }) }
-                    .getOrDefault(emptyMap())
-                tracks.map { t -> art[t.id]?.let { t.copy(imageUrl = it) } ?: t }
+                val coordinatorTracks = coordinator.trackRadio(
+                    seed.id,
+                    bufferedCoordinatorTrackCount(RADIO_TRACK_COUNT),
+                ).tracks
+                repository.itemsByIds(coordinatorTracks.map { it.id }).take(RADIO_TRACK_COUNT)
             }.fold(
                 onSuccess = { _radio.value = RadioState.Data(it) },
                 onFailure = { _radio.value = RadioState.Error(it.message ?: "Couldn't build radio") },
@@ -104,8 +105,11 @@ class NowPlayingViewModel @Inject constructor(
         similarJob?.cancel()
         similarJob = viewModelScope.launch {
             runCatching {
-                val tracks = coordinator.similarTracks(seed.id).map { it.track.toLibraryItem() }
-                tracks.withArtwork()
+                val coordinatorTracks = coordinator.similarTracks(
+                    seed.id,
+                    bufferedCoordinatorTrackCount(SIMILAR_TRACK_COUNT),
+                )
+                repository.itemsByIds(coordinatorTracks.map { it.track.id }).take(SIMILAR_TRACK_COUNT)
             }.fold(
                 onSuccess = { _similar.value = SimilarState.Data(it) },
                 onFailure = { _similar.value = SimilarState.Error(it.message ?: "Couldn't load similar tracks") },
@@ -148,8 +152,8 @@ class NowPlayingViewModel @Inject constructor(
         return PlaybackSource("similar:$similarSeedId", "Similar Tracks", "Like $seedTitle", tracks.firstOrNull()?.imageUrl)
     }
 
-    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
-        val art = runCatching { repository.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
-        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
+    private companion object {
+        const val RADIO_TRACK_COUNT = 25
+        const val SIMILAR_TRACK_COUNT = 25
     }
 }

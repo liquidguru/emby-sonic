@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.AdventureRequestDto
-import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.playlist.PlaylistRepository
@@ -83,13 +82,15 @@ class AdventureViewModel @Inject constructor(
             runCatching {
                 // The user picks a total length; start + end take two slots, so
                 // the middle target is length - 2. Over-request from the
-                // coordinator so de-duping (multiple copies of the same song)
-                // doesn't leave the journey short, then sample back down.
+                // coordinator so user-access filtering and de-duping (multiple
+                // copies of the same song) don't leave the journey short, then
+                // sample back down.
                 val targetMiddle = (s.length - 2).coerceAtLeast(1)
                 val requestLength = (targetMiddle * 2 + 4).coerceAtMost(MAX_ADVENTURE_REQUEST)
-                val raw = coordinator.adventure(
+                val coordinatorTracks = coordinator.adventure(
                     AdventureRequestDto(fromId = start.id, toId = end.id, length = requestLength),
-                ).tracks.map { it.toLibraryItem() }
+                ).tracks
+                val raw = repository.itemsByIds(coordinatorTracks.map { it.id })
                 // Bookend with the user's exact start and end, and dedupe the
                 // MIDDLE by title+artist (not id) so multiple library copies of a
                 // song collapse and the journey reliably ends on the chosen track.

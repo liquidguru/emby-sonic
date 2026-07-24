@@ -17,15 +17,16 @@ import android.os.Bundle
 import dagger.hilt.android.AndroidEntryPoint
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
-import guru.liquid.embysonic.data.coordinator.toLibraryItem
 import guru.liquid.embysonic.data.emby.DetailKind
 import guru.liquid.embysonic.data.emby.LibraryItem
 import guru.liquid.embysonic.data.emby.LibraryKind
 import guru.liquid.embysonic.data.emby.LibraryRepository
 import guru.liquid.embysonic.data.emby.STATION_DECADES
+import guru.liquid.embysonic.data.emby.preferredLibrary
 import guru.liquid.embysonic.data.emby.resumeStartItem
 import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
+import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.MainActivity
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +55,9 @@ class SonicPlaybackService : MediaLibraryService() {
 
     @Inject
     lateinit var recentPlays: RecentPlaysRepository
+
+    @Inject
+    lateinit var settings: SettingsRepository
 
     private var mediaSession: MediaLibrarySession? = null
     private var sessionPlayer: AvrcpDurationPlayer? = null
@@ -280,7 +284,7 @@ class SonicPlaybackService : MediaLibraryService() {
             mediaId.startsWith(MIX_PREFIX) -> {
                 val mixId = Uri.decode(mediaId.removePrefix(MIX_PREFIX))
                 val detail = coordinator.mixDetail(mixId)
-                val items = detail.tracks.map { it.toLibraryItem() }.withArtwork()
+                val items = library.itemsByIds(detail.tracks.map { it.id })
                 val first = items.firstOrNull() ?: return false
                 playback.playQueue(items, first, PlaybackSource("mix:$mixId", detail.mix.displayTitle(), "Sonic mix", first.imageUrl))
                 return true
@@ -361,17 +365,18 @@ class SonicPlaybackService : MediaLibraryService() {
         return true
     }
 
-    private suspend fun List<LibraryItem>.withArtwork(): List<LibraryItem> {
-        val art = runCatching { library.artworkByIds(map { it.id }) }.getOrDefault(emptyMap())
-        return map { item -> art[item.id]?.let { item.copy(imageUrl = it) } ?: item }
-    }
-
     private suspend fun musicLibraryId(): String =
-        library.audioLibraries().firstOrNull { it.kind == LibraryKind.MUSIC }?.id
+        library.audioLibraries().preferredLibrary(
+            LibraryKind.MUSIC,
+            settings.selectedMusicLibraryId.first(),
+        )?.id
             ?: throw IllegalStateException("No music library found")
 
     private suspend fun audiobookLibraryId(): String =
-        library.audioLibraries().firstOrNull { it.kind == LibraryKind.AUDIOBOOKS }?.id
+        library.audioLibraries().preferredLibrary(
+            LibraryKind.AUDIOBOOKS,
+            settings.selectedAudiobookLibraryId.first(),
+        )?.id
             ?: throw IllegalStateException("No audiobook library found")
 
     private suspend fun mediaItemForId(mediaId: String): MediaItem? =

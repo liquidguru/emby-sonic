@@ -25,6 +25,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import guru.liquid.embysonic.data.emby.AudioLibrary
 import guru.liquid.embysonic.data.emby.LibraryKind
+import guru.liquid.embysonic.data.emby.preferredLibrary
 import guru.liquid.embysonic.ui.home.HomeScreen
 import guru.liquid.embysonic.ui.library.DetailScreen
 import guru.liquid.embysonic.ui.library.LibraryScreen
@@ -36,9 +37,9 @@ import guru.liquid.embysonic.ui.playback.NowPlayingScreen
 import guru.liquid.embysonic.ui.search.SearchScreen
 
 /**
- * Bottom-navigation shell. The middle tabs are built from the user's discovered
- * audio libraries (Music, Audiobooks), so the nav adapts to what they actually have.
- * Login and Settings live on the outer nav graph; [onOpenSettings] bubbles up.
+ * Bottom-navigation shell. One tab is shown per discovered library kind (Music,
+ * Audiobooks); users with multiple libraries of a kind switch between them inside
+ * that tab. Login and Settings live on the outer nav graph; [onOpenSettings] bubbles up.
  */
 @Composable
 fun MainShell(
@@ -47,8 +48,12 @@ fun MainShell(
 ) {
     val navController = rememberNavController()
     val libraries by shellViewModel.libraries.collectAsStateWithLifecycle()
+    val selectedLibraryIds by shellViewModel.selectedLibraryIds.collectAsStateWithLifecycle()
     val current by navController.currentBackStackEntryAsState()
     val currentRoute = current?.destination?.route
+    val navLibraries = LibraryKind.entries.mapNotNull { kind ->
+        libraries.preferredLibrary(kind, selectedLibraryIds[kind])
+    }
 
     // A bottom-nav tab tap should always land on that section's root. Search and
     // Adventure are full-screen overlays that live on top of a tab; jump straight
@@ -84,7 +89,7 @@ fun MainShell(
                             label = { Text("Home") },
                         )
 
-                        libraries.forEach { library ->
+                        navLibraries.forEach { library ->
                             val libraryRoute = Routes.library(library.id, library.kind.name)
                             val libraryPattern = Routes.libraryPattern(library.kind.name)
                             NavigationBarItem(
@@ -133,12 +138,21 @@ fun MainShell(
                         defaultValue = LibraryKind.MUSIC.name
                     },
                 ),
-            ) {
+            ) { backStackEntry ->
+                val libraryId = backStackEntry.arguments
+                    ?.getString(Routes.ARG_LIBRARY_ID)
+                    .orEmpty()
                 LibraryScreen(
                     contentPadding = padding,
                     onOpenItem = openDetail,
                     onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
                     onOpenSearch = { navController.navigate(Routes.search("MUSIC")) },
+                    availableLibraries = libraries.filter { it.kind == LibraryKind.MUSIC },
+                    selectedLibraryId = libraryId,
+                    onSelectLibrary = { library ->
+                        shellViewModel.selectLibrary(library)
+                        navController.navigateRootTab(Routes.library(library.id, library.kind.name))
+                    },
                 )
             }
             composable(
@@ -150,12 +164,21 @@ fun MainShell(
                         defaultValue = LibraryKind.AUDIOBOOKS.name
                     },
                 ),
-            ) {
+            ) { backStackEntry ->
+                val libraryId = backStackEntry.arguments
+                    ?.getString(Routes.ARG_LIBRARY_ID)
+                    .orEmpty()
                 LibraryScreen(
                     contentPadding = padding,
                     onOpenItem = openDetail,
                     onOpenNowPlaying = { navController.navigate(Routes.NOW_PLAYING) },
                     onOpenSearch = { navController.navigate(Routes.search("AUDIOBOOKS")) },
+                    availableLibraries = libraries.filter { it.kind == LibraryKind.AUDIOBOOKS },
+                    selectedLibraryId = libraryId,
+                    onSelectLibrary = { library ->
+                        shellViewModel.selectLibrary(library)
+                        navController.navigateRootTab(Routes.library(library.id, library.kind.name))
+                    },
                 )
             }
             composable(
