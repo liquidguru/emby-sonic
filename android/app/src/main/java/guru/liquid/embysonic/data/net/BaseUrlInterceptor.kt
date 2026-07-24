@@ -6,11 +6,10 @@ import okhttp3.Response
 import java.io.IOException
 
 /**
- * Rewrites the scheme/host/port of every outgoing request to the base URL returned
- * by [baseUrlProvider], which is read fresh on each call so a user changing the
- * server address at runtime takes effect immediately. The Retrofit interfaces use a
- * placeholder base URL ("http://localhost/"); this interceptor redirects to the real
- * target. The request path supplied by Retrofit is preserved.
+ * Rebuilds every outgoing request on the base URL returned by [baseUrlProvider],
+ * preserving an optional base path and appending Retrofit's encoded request path and
+ * query. The provider is read fresh on each call so a user changing the server
+ * address at runtime takes effect immediately.
  */
 class BaseUrlInterceptor(
     private val baseUrlProvider: () -> String?,
@@ -19,13 +18,17 @@ class BaseUrlInterceptor(
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        val requestUrl = request.url
         val base = baseUrlProvider()?.toHttpUrlOrNull()
             ?: throw IOException("No server URL configured")
 
-        val newUrl = request.url.newBuilder()
-            .scheme(base.scheme)
-            .host(base.host)
-            .port(base.port)
+        val newUrl = base.newBuilder()
+            .apply {
+                for (segment in requestUrl.encodedPathSegments) {
+                    if (segment.isNotEmpty()) addEncodedPathSegment(segment)
+                }
+                encodedQuery(requestUrl.encodedQuery)
+            }
             .build()
 
         return chain.proceed(request.newBuilder().url(newUrl).build())

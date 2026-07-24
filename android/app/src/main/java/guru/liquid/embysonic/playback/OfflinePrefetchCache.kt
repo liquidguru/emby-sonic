@@ -111,7 +111,7 @@ class OfflinePrefetchCache @Inject constructor(
         val byteCap = keep.toLong() * PER_TRACK_BUDGET_BYTES
         var total = files.sumOf { it.length() }
         while (files.size > keep || total > byteCap) {
-            val victim = files.removeFirst()
+            val victim = files.removeAt(0)
             total -= victim.length()
             victim.delete()
         }

@@ -683,11 +683,11 @@ class PlaybackController @Inject constructor(
             when (val result = context.imageLoader.execute(request)) {
                 is SuccessResult -> result.drawable.toBitmap()
                 is ErrorResult -> {
-                    Log.w(TAG, "Widget art failed: $authed", result.throwable)
+                    Log.w(TAG, "Widget art failed: $url", result.throwable)
                     null
                 }
             }
-        }.onFailure { Log.w(TAG, "Widget art error: $authed", it) }.getOrNull() ?: return null
+        }.onFailure { Log.w(TAG, "Widget art error: $url", it) }.getOrNull() ?: return null
         return runCatching {
             val dir = File(context.cacheDir, "widget_art").apply { mkdirs() }
             // Unique filename each load so the URI always changes — the launcher

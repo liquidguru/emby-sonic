@@ -128,7 +128,8 @@ class PlaylistDownloader @Inject constructor(
                 playbackPositionMs = item.playbackPositionMs,
                 played = item.played,
                 contentKind = item.contentKind.name,
-                fileName = store.fileFor(item.id, null).name,
+                container = item.container,
+                fileName = store.fileFor(item.id, item.container).name,
                 artFileName = item.imageUrl?.let { store.artFileFor(it).name },
                 state = DownloadState.PENDING,
             )
