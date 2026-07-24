@@ -485,7 +485,10 @@ minSdk 26). Browse/stream/auth go to the **Emby API directly**; sonic features g
 to the **coordinator**. Stack: Compose + Hilt + Retrofit/OkHttp (two clients) +
 Media3 ExoPlayer + DataStore.
 
-**Features:** library + audiobook browse with A–Z fast-scroll; Now Playing with
+**Features:** library + audiobook browse with A–Z fast-scroll; a library picker
+when your server has more than one music or audiobook library (switch via a
+dropdown on the Library screen — the choice is remembered across restarts and
+also scopes Home, Search, and Artist Mix); Now Playing with
 queue, shuffle/repeat, mini player, and a system media notification; durable
 audiobook resume; music crossfade with a synced artwork cross-dissolve; an in-app
 equalizer (presets + per-band, also broadcasts its session for external EQ apps);
