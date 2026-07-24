@@ -6,7 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    emby_url: str = "http://192.168.1.50:8096"
+    # Emby's address as reachable FROM the coordinator host. If Emby runs on the
+    # same machine, the default works; otherwise set EMBY_URL in your .env.
+    emby_url: str = "http://localhost:8096"
     # Optional: Emby's publicly-reachable address (reverse-proxied FQDN, etc.).
     # The webapp hands a server URL straight to the browser for direct
     # browser->Emby streaming, so a LAN-only address fails for anyone loading
