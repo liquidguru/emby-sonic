@@ -261,6 +261,7 @@ class PlaybackController @Inject constructor(
     // widget/app can resume. Joined before acting on a cold widget command.
     private var restoreJob: Job? = null
     private var lastSessionPersistMs: Long = 0L
+    private var lastServiceStartMs: Long = 0L
     private var streamOffsetsByIndex: MutableMap<Int, Long> = mutableMapOf()
     private var playSessionIdsByIndex: MutableMap<Int, String> = mutableMapOf()
     private var lastProgressReportMs: Long = 0
@@ -861,6 +862,7 @@ class PlaybackController @Inject constructor(
             currentIndex = index,
             positionMs = position,
             shuffled = queueShuffled,
+            guestDjEnabled = guestDjEnabled,
         )
         scope.launch { runCatching { sessionStore.save(session) } }
     }
@@ -885,6 +887,10 @@ class PlaybackController @Inject constructor(
         }
         queue = tracks
         queueShuffled = saved.shuffled
+        // Restore Guest DJ alongside the queue. The runtime guards still apply: it
+        // switches itself off if repeat is on, and injection only happens once an
+        // eligible track is actually playing.
+        guestDjEnabled = saved.guestDjEnabled
         playSessionIdsByIndex = tracks.indices
             .associateWith { UUID.randomUUID().toString() }
             .toMutableMap()
@@ -1220,6 +1226,9 @@ class PlaybackController @Inject constructor(
         guestDjLoading = false
         guestDjAttemptSignature = null
         publishState()
+        // Persist immediately: otherwise the toggle only reaches disk on the next
+        // unrelated persist, and a process kill in between loses it.
+        persistSession()
         if (guestDjEnabled) maybeInjectGuestDj()
     }
 
@@ -1433,9 +1442,28 @@ class PlaybackController @Inject constructor(
         activePlayerRef.play()
     }
 
+    /**
+     * Ask the system to start the playback service, but only when we don't already
+     * have a live connection to it.
+     *
+     * Every `startForegroundService()` creates a contract that the service must call
+     * `startForeground()` in time, or Android ANRs the process. This used to fire
+     * unconditionally on every [playActive] call, and a real ANR trace showed it
+     * being issued in bursts — 11 starts, several within milliseconds of each other
+     * — when playback kept retrying. One of those went unmatched and killed the app
+     * mid-ride. Skipping the call once connected (and rate-limiting it otherwise)
+     * keeps a retry loop from ever stacking up service starts. The service also has
+     * its own foreground watchdog as a second line of defence.
+     */
     private fun ensurePlaybackService() {
-        val intent = Intent(context, SonicPlaybackService::class.java)
-        ContextCompat.startForegroundService(context, intent)
+        if (notificationController?.isConnected != true) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastServiceStartMs >= SERVICE_START_DEBOUNCE_MS) {
+                lastServiceStartMs = now
+                val intent = Intent(context, SonicPlaybackService::class.java)
+                ContextCompat.startForegroundService(context, intent)
+            }
+        }
         connectNotificationController()
     }
 
@@ -1977,8 +2005,27 @@ class PlaybackController @Inject constructor(
      * see the direct-play gate in the blend loop). A null/unknown container is
      * assumed direct-play so the common case never regresses.
      */
+    /**
+     * Whether Emby will transcode this track, which makes it unsafe to crossfade:
+     * the blend opens a second stream of the same track and the concurrent
+     * transcode restarts it, so the track loops until the user skips.
+     *
+     * An unknown container fails SAFE (treated as "will transcode"). It used to
+     * fail open, which is how this bug came back four times: each fix plugged one
+     * path that dropped `container`, but any future path that dropped it silently
+     * re-enabled the loop. The costs are wildly asymmetric — a needless clean cut
+     * is barely noticeable, a looping track ruins a ride.
+     */
     private fun PlaybackTrack.willTranscode(): Boolean {
-        val c = container?.lowercase() ?: return false
+        val c = container?.lowercase()
+        if (c == null) {
+            // If this shows up routinely, containers aren't reaching the player and
+            // crossfade is being disabled far more than intended — the fix then is
+            // to carry `container` authoritatively from the coordinator rather than
+            // through per-screen conversions.
+            Log.w(TAG, "Crossfade skipped (unknown container): $title")
+            return true
+        }
         return c !in DIRECT_PLAY_CONTAINERS
     }
 
@@ -2559,6 +2606,10 @@ class PlaybackController @Inject constructor(
         const val SLEEP_TIMER_FADE_MS = 3_000L
         const val SLEEP_TIMER_FADE_STEP_MS = 100L
         const val SESSION_PERSIST_THROTTLE_MS = 10_000L
+
+        // Floor between startForegroundService() calls while no live connection to
+        // the service exists, so a retry loop can't stack up unmatched starts.
+        const val SERVICE_START_DEBOUNCE_MS = 1_000L
         const val TAG = "PlaybackController"
     }
 }

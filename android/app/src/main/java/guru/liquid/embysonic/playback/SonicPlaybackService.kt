@@ -1,8 +1,17 @@
 package guru.liquid.embysonic.playback
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import guru.liquid.embysonic.R
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -62,6 +71,73 @@ class SonicPlaybackService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
     private var sessionPlayer: AvrcpDurationPlayer? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var foregroundWatchdogPending = false
+
+    /**
+     * Android kills the process with an ANR when a `startForegroundService()` call
+     * isn't matched by `startForeground()` in time. Media3 normally satisfies that
+     * by posting the media notification as soon as the player has something to
+     * play — but when playback never actually starts (a failed track load, a dry
+     * radio queue, a network drop) no notification is posted and the app is killed.
+     * Seen in the field on beta.28 mid-ride: "Context.startForegroundService() did
+     * not then call Service.startForeground()".
+     *
+     * This is the safety net. Shortly after each start, if Media3 still hasn't
+     * posted, we post a minimal notification ourselves so the contract is met. It
+     * reuses Media3's own notification id, so the real notification replaces this
+     * placeholder the moment playback does begin. In the normal case the watchdog
+     * finds a notification already posted and does nothing at all.
+     */
+    private val foregroundWatchdog = Runnable {
+        foregroundWatchdogPending = false
+        if (hasPostedMediaNotification()) return@Runnable
+        Log.w(TAG, "Media3 posted no notification after service start; promoting with a placeholder")
+        runCatching { promoteToForegroundWithPlaceholder() }
+            .onFailure { Log.w(TAG, "Foreground watchdog could not promote the service", it) }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val result = super.onStartCommand(intent, flags, startId)
+        if (!foregroundWatchdogPending) {
+            foregroundWatchdogPending = true
+            mainHandler.postDelayed(foregroundWatchdog, FOREGROUND_WATCHDOG_DELAY_MS)
+        }
+        return result
+    }
+
+    private fun hasPostedMediaNotification(): Boolean =
+        runCatching {
+            getSystemService(NotificationManager::class.java)
+                ?.activeNotifications
+                ?.any { it.id == MEDIA_NOTIFICATION_ID } == true
+        }.getOrDefault(false)
+
+    private fun promoteToForegroundWithPlaceholder() {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel(MEDIA_CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    MEDIA_CHANNEL_ID,
+                    getString(R.string.app_name),
+                    NotificationManager.IMPORTANCE_LOW,
+                ),
+            )
+        }
+        val notification = NotificationCompat.Builder(this, MEDIA_CHANNEL_ID)
+            .setSmallIcon(androidx.media3.session.R.drawable.media3_notification_small_icon)
+            .setContentTitle(getString(R.string.app_name))
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+        ServiceCompat.startForeground(
+            this,
+            MEDIA_NOTIFICATION_ID,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -126,6 +202,8 @@ class SonicPlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(foregroundWatchdog)
+        foregroundWatchdogPending = false
         mediaSession?.release()
         mediaSession = null
         sessionPlayer = null
@@ -565,5 +643,19 @@ class SonicPlaybackService : MediaLibraryService() {
         const val AUTO_RESUME_LIMIT = 50
         const val ACTION_SHUFFLE = "guru.liquid.embysonic.SHUFFLE"
         const val ACTION_REPEAT = "guru.liquid.embysonic.REPEAT"
+        const val TAG = "SonicPlaybackService"
+
+        // How long to give Media3 to post its own media notification before the
+        // watchdog steps in. Android's window is ~30s, so this is conservative
+        // while still leaving plenty of margin.
+        const val FOREGROUND_WATCHDOG_DELAY_MS = 5_000L
+
+        // Mirrors Media3's DefaultMediaNotificationProvider defaults, so the real
+        // media notification REPLACES the watchdog's placeholder rather than
+        // sitting beside it. (Not referenced via the Media3 constants directly:
+        // DefaultMediaNotificationProvider is @UnstableApi, and the values are
+        // stable across the 1.x line we pin.)
+        const val MEDIA_NOTIFICATION_ID = 1001
+        const val MEDIA_CHANNEL_ID = "default_channel_id"
     }
 }

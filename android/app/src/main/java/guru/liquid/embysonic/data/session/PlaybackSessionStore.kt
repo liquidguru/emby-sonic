@@ -45,6 +45,10 @@ data class PersistedSession(
     val currentIndex: Int,
     val positionMs: Long,
     val shuffled: Boolean = false,
+    // Guest DJ used to live only in memory, so it silently switched itself off
+    // whenever Android killed the process during a pause — the queue came back but
+    // the DJ didn't. Defaulted so sessions written before this field deserialize.
+    val guestDjEnabled: Boolean = false,
 )
 
 private val Context.playbackSessionDataStore: DataStore<Preferences> by
