@@ -6,8 +6,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # Emby's address as reachable FROM the coordinator host. If Emby runs on the
-    # same machine, the default works; otherwise set EMBY_URL in your .env.
+    # Emby's address. This is NOT private to the coordinator: the webapp hands it
+    # straight to the browser for direct browser->Emby browsing and streaming, so
+    # it must be reachable from OTHER machines on your network too — not just from
+    # the coordinator host.
+    #
+    # In particular, do NOT use localhost/127.0.0.1 even when Emby runs on the same
+    # machine as the coordinator: the coordinator's own calls would work, but every
+    # browser would try to reach Emby on ITS OWN loopback and find nothing. The
+    # symptom is confusing — login succeeds (that hop is server-side) while the
+    # library comes up empty. Use the LAN address, e.g. http://192.168.1.10:8096.
     emby_url: str = "http://localhost:8096"
     # Optional: Emby's publicly-reachable address (reverse-proxied FQDN, etc.).
     # The webapp hands a server URL straight to the browser for direct

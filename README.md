@@ -425,7 +425,7 @@ Set via environment variables or a `.env` file:
 
 | Variable | Default | Description |
 |---|---|---|
-| `EMBY_URL` | `http://localhost:8096` | Emby server URL (as reachable from the coordinator host) |
+| `EMBY_URL` | `http://localhost:8096` | Emby server URL. Use the **LAN address** (e.g. `http://192.168.1.10:8096`) even if Emby runs on the same host as the coordinator — **not** `localhost`/`127.0.0.1`. The web app hands this to the browser to fetch music directly, so a loopback address makes every browser look for Emby on itself: login works, library is empty |
 | `EMBY_URL_EXTERNAL` | *(blank = same as `EMBY_URL`)* | Emby's publicly-reachable address (FQDN/reverse proxy). Only needed for the web app: it streams audio browser→Emby directly, so a LAN-only `EMBY_URL` fails for anyone loading the page over WAN. Set this and the web app picks whichever address the browser loaded the page from |
 | `EMBY_API_KEY` | *(required)* | Emby API key for coordinator admin calls and worker audio downloads |
 | `WORKER_SECRET` | falls back to `EMBY_API_KEY` | Shared secret required in `X-Worker-Token` for worker routes |
