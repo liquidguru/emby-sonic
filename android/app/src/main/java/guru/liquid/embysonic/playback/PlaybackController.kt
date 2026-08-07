@@ -1951,8 +1951,14 @@ class PlaybackController @Inject constructor(
         // Crossfade needs BOTH tracks to direct-play. A track Emby transcodes (e.g.
         // WMA) can't be blended: the helper's second transcode races the primary's
         // stream and can restart it — heard as the first track looping until you
-        // skip. Do a clean cut instead. (Unknown container -> assume direct-play, so
-        // this never regresses the common case.)
+        // skip. Do a clean cut instead. An unknown container counts as transcoding
+        // (see willTranscode) — failing open here is what let the loop come back
+        // three times.
+        //
+        // KNOWN ROUGH EDGE: returning here also skips the edge trimming below, so a
+        // skipped transition plays the outgoing track's silent outro AND the
+        // incoming track's silent intro in full — audibly a long gap rather than a
+        // tight cut. Worth applying the trim to plain cuts too.
         if (current.willTranscode() || next.willTranscode()) {
             if (crossfadeArmed && crossfadeArmedIndex == index) cancelCrossfade()
             if (transcodeSkipLoggedIndex != index) {
