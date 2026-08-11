@@ -26,3 +26,12 @@ android/keystores/
 
 # Codex remote session attachments (not part of the project)
 .codex-remote-attachments/
+
+# Local working directories, never for publication. /screenshots/ in particular
+# holds the RAW captures taken straight off the phone, before the pass that
+# removes the account name and other personal details — the scrubbed set that
+# ships lives in docs/screenshots/ (tracked) and playstore/ assets. Leading
+# slashes keep these root-only so docs/screenshots/ is unaffected.
+/screenshots/
+/output/
+.claude/
