@@ -1,0 +1,73 @@
+name: Notify ntfy on pushes and releases
+
+# Quiet audit trail of what lands in the repo. Pushes to master go out at LOW
+# priority so they sit silently in the notification shade; a published release
+# is an actual event (testers get it), so that one is allowed to make noise.
+#
+# Endpoint is held in repo secrets (NTFY_URL — full URL incl. the topic;
+# optional NTFY_TOKEN for an authenticated ntfy server) so it isn't exposed in
+# the repo. No-ops cleanly if NTFY_URL isn't set.
+
+on:
+  push:
+    branches: [master]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push to ntfy
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          # Untrusted event data goes through env (never inline in run) to avoid
+          # shell script injection from commit or release text.
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+        run: |
+          if [ -z "$NTFY_URL" ]; then
+            echo "NTFY_URL secret not set — skipping notification."
+            exit 0
+          fi
+
+          if [ "$EVENT" = "release" ]; then
+            TITLE="Release: ${RELEASE_NAME:-$RELEASE_TAG}"
+            BODY="Published by ${ACTOR}"
+            CLICK="$RELEASE_URL"
+            PRIORITY="default"
+            TAGS="rocket"
+          else
+            # Only the head commit's subject line — a full multi-commit push with
+            # long bodies would make an unreadable notification.
+            SUBJECT="$(printf '%s' "$COMMIT_MSG" | head -n 1)"
+            TITLE="Push to master by ${ACTOR}"
+            BODY="${SUBJECT}"
+            # Commits carry an author separate from whoever pushed; worth showing
+            # when they differ (e.g. a Codex- or Claude-authored commit).
+            if [ -n "$COMMIT_AUTHOR" ] && [ "$COMMIT_AUTHOR" != "$ACTOR" ]; then
+              BODY="${SUBJECT}"$'\n'"— authored by ${COMMIT_AUTHOR}"
+            fi
+            CLICK="$COMMIT_URL"
+            PRIORITY="low"
+            TAGS="arrow_up"
+          fi
+
+          curl -fsS \
+            ${NTFY_TOKEN:+-H "Authorization: Bearer ${NTFY_TOKEN}"} \
+            -H "Title: ${TITLE}" \
+            -H "Click: ${CLICK}" \
+            -H "Tags: ${TAGS}" \
+            -H "Priority: ${PRIORITY}" \
+            --data "$BODY" \
+            "$NTFY_URL"
