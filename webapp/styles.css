@@ -1,24 +1,44 @@
 /* ── Reset & base ───────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Display face. Self-hosted: there is no service worker, so a CDN font would
+   simply fail offline. Latin subset only, variable 400–700. */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./fonts/space-grotesk-latin-var.woff2') format('woff2');
+}
+
 :root {
-  --bg:           #111318;
-  --panel:        #1c1f28;
-  --panel-strong: #23273a;
-  --line:         #2a2d3a;
-  --accent:       #55d6be;
-  --accent-dim:   rgba(85,214,190,.15);
-  --text:         #f0f2f8;
-  --muted:        #8b90a4;
-  --danger:       #f06a8a;
+  /* Palette mirrors the Android app's theme (Color.kt) so web and app read as
+     one product. Do not drift these independently. */
+  --bg:           #0B1020;
+  --panel:        #131A2E;
+  --panel-strong: #1B2440;
+  --line:         #26304A;
+  --accent:       #4FC3F7;
+  --accent-dim:   rgba(79,195,247,.15);
+  --text:         #E3E7F0;
+  --muted:        #9AA4BF;
+  --danger:       #F06A8A;
+  --void:         #05070E;
   --nav-h:        62px;
   --mini-h:       66px;
   --radius:       12px;
   --card-radius:  14px;
+
+  /* Display is for brand moments only — wordmark, section titles, track
+     titles. Body stays on the platform face so it reads as native on a phone. */
+  --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-body:    system-ui, -apple-system, sans-serif;
+
+  --ease:         cubic-bezier(.22,.61,.36,1);
 }
 
-html, body { height: 100%; background: #0a0c10; overflow: hidden; }
-body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
+html, body { height: 100%; background: var(--void); overflow: hidden; }
+body { font-family: var(--font-body); color: var(--text); }
 
 /* ── Outer wrapper (fills viewport, centres the shell) ─── */
 .app {
@@ -26,7 +46,7 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  background: #0a0c10;
+  background: var(--void);
 }
 
 /* ── Phone shell (max-width on desktop) ─────────────────── */
@@ -62,9 +82,10 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   margin-bottom: 6px;
 }
 .wordmark {
+  font-family: var(--font-display);
   font-size: 2rem;
   font-weight: 700;
-  letter-spacing: -.02em;
+  letter-spacing: -.03em;
   color: var(--text);
 }
 .login-tagline { color: var(--muted); margin-top: 8px; font-size: .9rem; }
@@ -90,7 +111,7 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
 /* ── Buttons ─────────────────────────────────────────────── */
 .primary-btn {
   background: var(--accent);
-  color: #111;
+  color: #00131F;   /* Android onPrimary */
   font-weight: 600;
   font-size: .9rem;
   padding: 11px 20px;
@@ -195,7 +216,7 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   gap: 12px;
 }
 .view-header .eyebrow { margin-bottom: 2px; }
-.view-header h2 { font-size: 1.5rem; font-weight: 700; }
+.view-header h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; }
 
 .back-header {
   display: flex;
@@ -212,8 +233,10 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   padding: 0 20px 10px;
 }
 .shelf-title {
+  font-family: var(--font-display);
   font-size: .95rem;
   font-weight: 600;
+  letter-spacing: -.01em;
   color: var(--text);
   padding: 0 20px 10px;
 }
@@ -523,7 +546,7 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   margin: 0 auto;
 }
 .mix-detail-meta { padding: 16px 20px 8px; }
-.mix-detail-meta h2 { font-size: 1.3rem; font-weight: 700; }
+.mix-detail-meta h2 { font-family: var(--font-display); font-size: 1.3rem; font-weight: 700; letter-spacing: -.02em; }
 .mix-detail-meta .muted-text { color: var(--muted); font-size: .85rem; margin-top: 4px; }
 .mix-detail-actions { display: flex; gap: 10px; padding: 12px 20px; }
 .mix-detail-actions .primary-btn, .mix-detail-actions .secondary-btn { flex: 1; text-align: center; }
@@ -630,6 +653,29 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   flex-shrink: 0;
 }
 .mini-player.hidden { display: none; }
+
+/* Signature: the wave the product is named for. It travels only while audio
+   plays and stills on pause, so playback state is legible at a glance rather
+   than being decoration. The SVG is inline so it costs no request. */
+.mini-wave {
+  height: 10px;
+  overflow: hidden;
+  opacity: .5;
+  background-repeat: repeat-x;
+  background-size: 96px 10px;
+  background-position: 0 50%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='10' viewBox='0 0 96 10'%3E%3Cpath d='M0 5 Q 12 0 24 5 T 48 5 T 72 5 T 96 5' fill='none' stroke='%234FC3F7' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  animation: wave-travel 2.4s linear infinite;
+  animation-play-state: paused;
+}
+.mini-player.is-playing .mini-wave {
+  animation-play-state: running;
+  opacity: 1;
+}
+@keyframes wave-travel {
+  from { background-position:   0 50%; }
+  to   { background-position: 96px 50%; }
+}
 .mini-progress-track {
   height: 3px;
   background: var(--line);
@@ -1300,4 +1346,54 @@ body { font-family: system-ui, -apple-system, sans-serif; color: var(--text); }
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* ── Motion ──────────────────────────────────────────────────
+   Restraint is deliberate: the waveform is the one bold moment,
+   everything here is functional feedback only.                */
+
+/* Shelves settle in on first paint. These sections are static in the markup,
+   so this runs once at load rather than on every re-render. */
+@keyframes shelf-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.shelf {
+  animation: shelf-rise .45s var(--ease) both;
+}
+.shelf:nth-of-type(2) { animation-delay: .05s; }
+.shelf:nth-of-type(3) { animation-delay: .10s; }
+.shelf:nth-of-type(4) { animation-delay: .15s; }
+.shelf:nth-of-type(5) { animation-delay: .20s; }
+
+/* Press feedback — confirms the tap landed on touch, where there is no hover. */
+.station-card, .decade-btn, .genre-btn, .primary-btn, .secondary-btn {
+  transition: transform .12s var(--ease), background-color .18s var(--ease),
+              border-color .18s var(--ease);
+}
+.station-card:active, .decade-btn:active, .genre-btn:active,
+.primary-btn:active, .secondary-btn:active { transform: scale(.97); }
+
+.mini-info { transition: opacity .15s var(--ease); }
+.mini-info:active { opacity: .7; }
+
+/* Progress fill shouldn't jump when the track changes. */
+.mini-progress-fill { transition: width .2s linear; }
+
+/* Keyboard focus must stay visible — it was relying on the browser default. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* The wave would otherwise strobe at 0.01ms; hold it still instead. */
+  .mini-player.is-playing .mini-wave { animation: none; }
 }

@@ -3,8 +3,8 @@
   "short_name": "Sonic",
   "start_url": "/app/",
   "display": "standalone",
-  "background_color": "#111318",
-  "theme_color": "#111318",
+  "background_color": "#0B1020",
+  "theme_color": "#0B1020",
   "icons": [
     {
       "src": "icon.svg",

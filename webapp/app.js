@@ -2176,6 +2176,10 @@ function renderMini() {
   miniArtwork.src = artworkUrl(track.id);
   miniPlayButton.textContent = audio.paused ? "▶" : "⏸";
   miniPlayButton.setAttribute("aria-label", audio.paused ? "Play" : "Pause");
+  // Drives the waveform along the top of the mini player: it travels while
+  // audio is playing and stills when paused, so playback state is readable
+  // without looking at the button.
+  miniPlayer.classList.toggle("is-playing", !audio.paused);
   miniPrevButton.disabled = state.currentIndex <= 0;
   miniNextButton.disabled = state.currentIndex >= state.queue.length - 1;
 }
