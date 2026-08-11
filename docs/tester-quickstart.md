@@ -438,5 +438,10 @@ notes are exactly what I'm after.
 
 - **Android only** for now (iOS is a later phase).
 - First-time library analysis is slow (see Prerequisites). It's a one-time cost.
+- **No crossfade on tracks Emby has to transcode** (WMA is the common one). Blending
+  those reliably isn't possible — a second stream of the same track fights the first
+  and the track can restart — so they get a clean cut instead. The silence-trimming
+  runs as part of a crossfade, so a skipped transition can also leave an audible gap.
+  Improving that is on the list.
 
 Thanks again — your feedback shapes what ships. 🌊
