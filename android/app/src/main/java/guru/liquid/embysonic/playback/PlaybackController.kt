@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaMetadata as PlatformMediaMetadata
 import android.net.Uri
@@ -59,6 +60,7 @@ import guru.liquid.embysonic.data.emby.dto.PlaybackReportDto
 import guru.liquid.embysonic.data.emby.dto.UserDataUpdateDto
 import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
+import guru.liquid.embysonic.data.session.HelperLatencyStore
 import guru.liquid.embysonic.data.session.PersistedSession
 import guru.liquid.embysonic.data.session.PersistedTrack
 import guru.liquid.embysonic.data.session.PlaybackSessionStore
@@ -103,6 +105,7 @@ class PlaybackController @Inject constructor(
     private val coordinator: CoordinatorApi,
     private val library: LibraryRepository,
     private val sessionStore: PlaybackSessionStore,
+    private val helperLatencyStore: HelperLatencyStore,
     private val downloadStore: DownloadStore,
     private val downloadProgress: DownloadProgressStore,
 ) {
@@ -116,6 +119,13 @@ class PlaybackController @Inject constructor(
         .build()
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+    // Platform (not Media3) attributes, only used to ask which device media audio
+    // is currently routed to — see currentAudioRouteKey.
+    private val platformMediaAttributes = android.media.AudioAttributes.Builder()
+        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+        .build()
 
     // The primary player's audio session — what the Equalizer and any external
     // effects app attach to.
@@ -224,9 +234,21 @@ class PlaybackController @Inject constructor(
     private var crossfadeFireJob: Job? = null
 
     // How long after play() the helper actually starts producing audio, learned
-    // from each blend's measured residual (see learnHelperStartLatency). Device/
-    // codec dependent, so the initial value is only a starting guess.
-    private var helperStartLatencyMs = HELPER_START_LATENCY_INITIAL_MS
+    // from each blend's measured residual (see learnHelperStartLatency).
+    //
+    // Keyed by audio output route and persisted, because it's device/codec
+    // dependent: Bluetooth in the car and the phone's own speaker settle on very
+    // different figures. It used to be a single in-memory value reset to a
+    // hardcoded guess on every process start, so the first two or three blends of
+    // every drive sounded wrong before converging. Loaded on init, so a new
+    // session starts already calibrated for whatever it's playing through.
+    private val latencyByRoute = mutableMapOf<String, Long>()
+
+    private var helperStartLatencyMs: Long
+        get() = latencyByRoute[currentAudioRouteKey()] ?: HELPER_START_LATENCY_INITIAL_MS
+        set(value) {
+            latencyByRoute[currentAudioRouteKey()] = value
+        }
 
     // The outgoing track + blend length while a crossfade is firing, published in
     // state so Now Playing can dissolve the artwork in sync with the audio.
@@ -315,6 +337,13 @@ class PlaybackController @Inject constructor(
     private var notificationController: MediaController? = null
 
     init {
+        // Start from the latencies learned in previous sessions rather than the
+        // hardcoded guess, so early blends don't have to converge all over again.
+        scope.launch {
+            runCatching { helperLatencyStore.load() }
+                .getOrNull()
+                ?.let { saved -> saved.forEach { (route, ms) -> latencyByRoute.putIfAbsent(route, ms) } }
+        }
         player.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
                 publishFromPlayer(player)
@@ -2087,10 +2116,54 @@ class PlaybackController @Inject constructor(
      * transition, and clamped so one bad reading can't wreck later blends.
      */
     private fun learnHelperStartLatency(offsetMs: Long) {
+        val route = currentAudioRouteKey()
         val corrected = helperStartLatencyMs + offsetMs
         val smoothed = helperStartLatencyMs + ((corrected - helperStartLatencyMs) * HELPER_LATENCY_SMOOTHING).toLong()
         helperStartLatencyMs = smoothed.coerceIn(0L, HELPER_LATENCY_MAX_MS)
-        Log.d(TAG, "Helper start latency: residual=${offsetMs}ms -> estimate=${helperStartLatencyMs}ms")
+        Log.d(
+            TAG,
+            "Helper start latency [$route]: residual=${offsetMs}ms -> estimate=${helperStartLatencyMs}ms",
+        )
+        // Keep it across process death so the next session starts calibrated.
+        val snapshot = latencyByRoute.toMap()
+        scope.launch { runCatching { helperLatencyStore.save(snapshot) } }
+    }
+
+    /**
+     * A stable key for the current audio output, so the learned helper latency is
+     * remembered per route rather than shared across wildly different ones.
+     *
+     * Unrecognised outputs fall back to their raw platform type ("type_N"), which
+     * still gives them their own slot — better than lumping them in with the
+     * speaker and re-learning every time.
+     */
+    private fun currentAudioRouteKey(): String {
+        val type = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                audioManager
+                    .getAudioDevicesForAttributes(platformMediaAttributes)
+                    .firstOrNull()
+                    ?.type
+            } else {
+                null
+            }
+        }.getOrNull() ?: return legacyAudioRouteKey()
+        return when (type) {
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "bluetooth"
+            AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "wired"
+            AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_DEVICE,
+            AudioDeviceInfo.TYPE_USB_ACCESSORY,
+            -> "usb"
+            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
+            else -> "type_$type"
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun legacyAudioRouteKey(): String = when {
+        audioManager.isBluetoothA2dpOn -> "bluetooth"
+        audioManager.isWiredHeadsetOn -> "wired"
+        else -> "speaker"
     }
 
     /**
