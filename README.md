@@ -13,7 +13,7 @@ mixes, and a Guest DJ.
 > the Artist Mix Creator, Stations, Recent Plays, offline playlist downloads,
 > per-track volume normalisation, and search across music + audiobooks. See
 > [`docs/spec.md`](docs/spec.md) for the full architecture and milestone list,
-> and [`AGENTS.md`](AGENTS.md) for the working agreement / dev environment.
+> and [`docs/faq.md`](docs/faq.md) if something isn't behaving.
 
 ## Architecture
 
