@@ -872,10 +872,22 @@ class PlaybackController @Inject constructor(
      * Snapshot the current queue + position to disk so the widget/app can resume
      * after the process is killed. [throttle] coalesces the periodic calls from
      * the playing loop; discrete events (pause, skip, new queue) pass false.
-     * Never persists while casting — the remote receiver owns playback then.
+     *
+     * This DOES persist while casting. It used to bail out on the grounds that
+     * "the remote receiver owns playback", which quietly meant nothing at all was
+     * saved from the moment a cast began: not queue progress, not Guest DJ
+     * additions, not the Guest DJ toggle. If the process was then killed — which
+     * is routine, since the phone is idle in a pocket while a speaker plays — the
+     * next restore resurrected the pre-cast snapshot and playback jumped back to
+     * whatever track was current when casting started, with Guest DJ off.
+     *
+     * Reading the cast player is correct here: [isCasting] is defined as
+     * `activePlayerRef === castPlayer`, and both the index and position below come
+     * from `activePlayerRef`, so while casting they are the receiver's own values.
+     * Restoring over a live cast isn't a risk either — [restoreSession] bails when
+     * `isCasting`.
      */
     private fun persistSession(throttle: Boolean = false) {
-        if (isCasting) return
         val tracks = queue
         if (tracks.isEmpty()) {
             scope.launch { runCatching { sessionStore.clear() } }
