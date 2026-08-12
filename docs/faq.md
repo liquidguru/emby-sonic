@@ -48,6 +48,41 @@ A restart often exposes this even though nothing seemed broken before — a
 long-running process may be holding a cached token, so the Emby call only
 happens again once that cache is cold.
 
+### Tracks fail with "connection refused" — set EMBY_URL on your WORKERS too
+
+`EMBY_URL` isn't only the coordinator's setting. **Workers download the audio
+from Emby themselves**, so every machine running a worker needs its own working
+value. A remote worker that inherits the default `http://localhost:8096` looks
+for Emby on *its own* machine, finds nothing, and fails every track it claims:
+
+```
+[worker] batch done: stored=0 failed=16
+```
+
+with `[WinError 10061] No connection could be made` (or `Connection refused`) in
+`/sonic/status/errors`.
+
+This one hides badly. A worker with no work to do just logs `no pending tracks`
+and looks perfectly healthy — the fault only surfaces the moment it actually
+claims something, which may be weeks after you set it up. Check every worker:
+
+```
+python -c "from config import settings; print(settings.emby_url)"
+```
+
+If tracks were already marked failed by a misconfigured worker, fix the config,
+**restart the worker** (it reads `.env` once at startup, so a running process
+keeps the old value), then requeue only the affected rows — matching on the
+error text so genuine failures aren't disturbed:
+
+```sql
+UPDATE tracks SET analysis_status='pending', error=NULL, claimed_at=NULL
+WHERE analysis_status='error' AND error LIKE '%10061%';
+```
+
+Back up `data/sonic.db` first, and check the counts by error type before and
+after so you know exactly what you touched.
+
 ### The scan command returns 422
 
 Older versions required a JSON body. Current versions don't. Either update, or
