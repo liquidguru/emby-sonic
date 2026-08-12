@@ -114,7 +114,23 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    // Direct track matches + all tracks by any artist whose name matches, deduped.
+    /**
+     * Direct track matches plus tracks by any artist whose name matches, deduped.
+     *
+     * Artist matches get a reserved slice at the FRONT rather than being appended.
+     * Emby's free-text track search matches loosely across title and album, so a
+     * band name can easily return more direct matches than the result cap — and
+     * the band's own tracks then land past the end of the list. Searching
+     * "dream theatre" returned 60 tracks merely containing "dream" or "theatre",
+     * pushing all 22 Dream Theater tracks to positions 61+, i.e. invisible.
+     *
+     * Reserving slots (rather than simply putting artists first) keeps the
+     * opposite case working: searching a song title that happens to resemble some
+     * artist's name yields at most [ARTIST_SLICE] of their tracks above it, not
+     * their entire catalogue. Emby's own relevance ordering is trusted for which
+     * artist leads — it ranks "Dream Theater" top for "dream theatre" despite the
+     * spelling difference, which is not worth reimplementing here.
+     */
     private suspend fun searchTracksExpanded(q: String, parentId: String?): List<LibraryItem> =
         coroutineScope {
             val directDeferred = async { repository.searchTracks(q, parentId) }
@@ -122,8 +138,16 @@ class SearchViewModel @Inject constructor(
             val direct = directDeferred.await()
             val artistIds = artistsDeferred.await().map { it.id }
             val byArtist = repository.tracksByArtistIds(artistIds, parentId)
+
             val seen = HashSet<String>(direct.size + byArtist.size)
-            (direct + byArtist).filter { seen.add(it.id) }
+            val leading = byArtist.asSequence()
+                .filter { seen.add(it.id) }
+                .take(ARTIST_SLICE)
+                .toList()
+            // Whatever didn't fit still follows the direct matches rather than
+            // being dropped, so a big discography stays reachable.
+            val rest = (direct + byArtist).filter { seen.add(it.id) }
+            leading + rest
         }
 
     private suspend fun parentIdFor(scope: SearchScope): String? {
@@ -161,5 +185,10 @@ class SearchViewModel @Inject constructor(
     private companion object {
         const val MIN_QUERY = 2
         const val ARG_MODE = "mode"
+
+        // Result slots reserved at the front for tracks by matching artists, so a
+        // band search always shows that band. Small enough that a song search
+        // isn't buried under an artist's catalogue if the name happens to match.
+        const val ARTIST_SLICE = 25
     }
 }
