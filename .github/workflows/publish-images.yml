@@ -3,6 +3,11 @@ name: Publish Docker images
 on:
   release:
     types: [published]
+  # Manual runs build but deliberately do NOT push (see the push: lines below),
+  # so the image builds can be smoke-tested — e.g. after a PyTorch index change
+  # breaks a CUDA variant — without waiting for a release or overwriting the
+  # published :latest tag with a build from a branch.
+  workflow_dispatch:
 
 jobs:
   coordinator:
@@ -22,7 +27,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.coordinator
-          push: true
+          push: ${{ github.event_name == 'release' }}
           cache-from: type=gha,scope=coordinator
           cache-to: type=gha,mode=max,scope=coordinator
           tags: |
@@ -35,12 +40,20 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # One broken CUDA index shouldn't cancel the CPU image, which is the one
+      # most people actually pull. Without this, a cu124 failure took the other
+      # two down with it and no images were published at all.
+      fail-fast: false
       matrix:
         include:
           - variant: cpu
             tag: latest
-          - variant: cu124
-            tag: cu124
+          # cu126, not cu124: PyTorch has pruned the cu124 index, and because
+          # --index-url replaces PyPI outright, every torch there (2.4.0-2.6.0)
+          # now fails to resolve its pinned nvidia-cudnn-cu12==9.1.0.70. cu124
+          # also stops at torch 2.6.0 while cu126 carries current releases.
+          - variant: cu126
+            tag: cu126
           - variant: cuda
             tag: cuda
     steps:
@@ -56,7 +69,7 @@ jobs:
           context: .
           file: Dockerfile
           build-args: TORCH_VARIANT=${{ matrix.variant }}
-          push: true
+          push: ${{ github.event_name == 'release' }}
           cache-from: type=gha,scope=worker-${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=worker-${{ matrix.variant }}
           tags: |

@@ -86,7 +86,7 @@ python main.py         # coordinator on http://0.0.0.0:8765
 
 **GPU workers** (bare metal, not Docker): install a CUDA build of torch instead
 of the CPU wheel above, e.g. `pip install torch --index-url
-https://download.pytorch.org/whl/cu124` (use `cu124` for older/pre-Ampere GPUs,
+https://download.pytorch.org/whl/cu126` (use `cu126` for older/pre-Ampere GPUs,
 or check [pytorch.org](https://pytorch.org/get-started/locally/) for the current
 stable cuXXX index). Verify with `python -c "import torch; print(torch.cuda.is_available())"`
 before running `worker.py` — a plain `pip install torch` on Windows commonly
@@ -319,7 +319,7 @@ not redownloaded on every container rebuild/restart. Workers stream audio from
 Emby; no music library bind mount is needed.
 
 Worker images are CPU-only by default. To build a GPU-capable worker, set
-`TORCH_VARIANT` before building: `cuda` for CUDA 12.8+ (modern GPUs), `cu124`
+`TORCH_VARIANT` before building: `cuda` for CUDA 12.8+ (modern GPUs), `cu126`
 for CUDA 12.4 (older / pre-Ampere GPUs). The guided `./install.sh` detects your
 CUDA version and picks the right image automatically.
 
@@ -348,7 +348,7 @@ built with `TORCH_VARIANT=cuda` and that `nvidia-smi` works inside a test
 container.
 
 > **Prebuilt images:** published to GHCR on every release — `…-worker:latest`
-> (CPU), `:cu124` (CUDA 12.4, older GPUs), or `:cuda` (CUDA 12.8+). Set
+> (CPU), `:cu126` (CUDA 12.6, older GPUs), or `:cuda` (CUDA 12.8+). Set
 > `WORKER_IMAGE` and drop `--build` to pull instead of build.
 
 Standalone worker container:
@@ -363,7 +363,7 @@ docker run -d --name emby-sonic-worker \
   emby-sonic-worker python worker.py
 ```
 
-Standalone NVIDIA GPU worker (use `cu124` instead of `cuda` for older / pre-Ampere hardware):
+Standalone NVIDIA GPU worker (use `cu126` instead of `cuda` for older / pre-Ampere hardware):
 
 ```bash
 docker build --build-arg TORCH_VARIANT=cuda -t emby-sonic-worker:cuda .

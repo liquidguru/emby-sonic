@@ -62,7 +62,7 @@ Use this when one machine should run both the coordinator and the worker.
 1. Run `./install.sh`.
 2. Choose `2) Single Linux/Windows Docker box`.
 3. Enter your Emby URL and API key.
-4. The installer auto-detects your GPU and CUDA version and selects the right worker image (CPU / cu124 / cuda). Confirm or override when prompted.
+4. The installer auto-detects your GPU and CUDA version and selects the right worker image (CPU / cu126 / cuda). Confirm or override when prompted.
 
 Check the worker device:
 
@@ -107,11 +107,11 @@ The installer uses these images:
 ```text
 ghcr.io/liquidguru/emby-sonic-coordinator:latest
 ghcr.io/liquidguru/emby-sonic-worker:latest       # CPU
-ghcr.io/liquidguru/emby-sonic-worker:cu124        # CUDA 12.4 (older / pre-Ampere GPUs)
+ghcr.io/liquidguru/emby-sonic-worker:cu126        # CUDA 12.6 (older / pre-Ampere GPUs)
 ghcr.io/liquidguru/emby-sonic-worker:cuda         # CUDA 12.8+ (modern GPUs)
 ```
 
-For pinned releases, append the release tag — e.g. `latest-v0.1.0-beta.6`, `cu124-v0.1.0-beta.6`.
+For pinned releases, append the release tag — e.g. `latest-v0.1.0-beta.6`, `cu126-v0.1.0-beta.6`.
 
 ## Updating
 

@@ -32,7 +32,7 @@ WORKDIR /app
 # TORCH_VARIANT:
 #   cpu   = CPU-only PyTorch wheel, the default and smallest worker image.
 #   cuda  = PyPI PyTorch wheel with bundled NVIDIA CUDA dependencies.
-#   cuXXX = explicit PyTorch CUDA wheel index, for example cu124.
+#   cuXXX = explicit PyTorch CUDA wheel index, for example cu126.
 COPY requirements.txt .
 ARG TORCH_VARIANT=cpu
 RUN set -eux; \
