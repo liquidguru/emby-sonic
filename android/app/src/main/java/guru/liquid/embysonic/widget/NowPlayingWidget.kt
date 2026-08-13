@@ -158,6 +158,14 @@ object NowPlayingWidget {
         views.setThemedColor(R.id.widget_previous, "setColorFilter", palettes) { it.textPrimary }
         views.setThemedColor(R.id.widget_next, "setColorFilter", palettes) { it.textPrimary }
         views.setThemedColor(R.id.widget_play_pause, "setColorFilter", palettes) { it.accent }
+        // Swap the glyph as well as the colour. The filled "connected" cast icon
+        // is the platform convention and the thing people actually look for — a
+        // tint change on an identical outline reads as "not casting" even while
+        // the subtitle says otherwise.
+        views.setImageViewResource(
+            R.id.widget_cast,
+            if (snapshot.isCasting) R.drawable.ic_widget_cast_connected else R.drawable.ic_widget_cast,
+        )
         views.setThemedColor(R.id.widget_cast, "setColorFilter", palettes) {
             if (snapshot.isCasting) it.accent else it.textSecondary
         }
