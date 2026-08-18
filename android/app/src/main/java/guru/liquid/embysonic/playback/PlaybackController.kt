@@ -228,6 +228,9 @@ class PlaybackController @Inject constructor(
     private var crossfadeTargetIndex = -1
     // Log a transcode-skip once per queue index, not every poll.
     private var transcodeSkipLoggedIndex = -1
+    // Same throttle for the other crossfade-skip reasons, which were previously silent.
+    private var crossfadeSkipLoggedIndex = -1
+    private var crossfadeSkipLoggedReason: String? = null
     private var crossfadeJob: Job? = null
     // Precisely-timed fire scheduled once the helper's tail is buffered; non-null
     // means a fire is pending (or ran) for the armed index.
@@ -1198,6 +1201,11 @@ class PlaybackController @Inject constructor(
         queue = if (currentTrack != null) listOf(currentTrack) + shuffledTail else shuffledTail
         queueShuffled = true
         guestDjAttemptSignature = null
+        // Indices are about to be reassigned, so a suppression held against the old
+        // ordering would land on an unrelated track and silently kill its crossfade.
+        suppressCrossfadeIndex = -1
+        transcodeSkipLoggedIndex = -1
+        crossfadeSkipLoggedIndex = -1
         playSessionIdsByIndex = queue.indices
             .associateWith { index ->
                 currentPlaybackSessionId.takeIf { index == 0 && currentTrack != null }
@@ -1967,6 +1975,18 @@ class PlaybackController @Inject constructor(
      * other. Never runs for audiobooks (long-form), repeat-one, the last track,
      * or a next track that is long-form.
      */
+    /**
+     * Crossfade skips were silent, so "why didn't it blend?" was unanswerable from a log.
+     * Throttled to one line per (index, reason) so the poll loop can't spam it.
+     */
+    private fun logCrossfadeSkip(index: Int, reason: String) {
+        if (crossfadeSkipLoggedIndex == index && crossfadeSkipLoggedReason == reason) return
+        crossfadeSkipLoggedIndex = index
+        crossfadeSkipLoggedReason = reason
+        val title = queue.getOrNull(index)?.title ?: "?"
+        Log.w(TAG, "Crossfade skipped ($reason): $title")
+    }
+
     private fun maybeStartCrossfade() {
         if (crossfadeInProgress) return
         val snap = settings.snapshot()
@@ -1975,18 +1995,30 @@ class PlaybackController @Inject constructor(
             return
         }
         if (!player.isPlaying) return
-        if (player.repeatMode == Player.REPEAT_MODE_ONE) return
+        if (player.repeatMode == Player.REPEAT_MODE_ONE) {
+            logCrossfadeSkip(-1, "repeat-one")
+            return
+        }
         val index = player.currentMediaItemIndex.coerceAtLeast(0)
         if (crossfadeArmed && crossfadeArmedIndex != index) {
             cancelCrossfade()
         }
         // Don't blend a track the user manually seeked to the end of.
-        if (index == suppressCrossfadeIndex) return
+        if (index == suppressCrossfadeIndex) {
+            logCrossfadeSkip(index, "seeked into the blend window")
+            return
+        }
         val current = queue.getOrNull(index) ?: return
         if (current.isLongForm) return
-        if ((streamOffsetsByIndex[index] ?: 0L) > 0L) return
+        if ((streamOffsetsByIndex[index] ?: 0L) > 0L) {
+            logCrossfadeSkip(index, "stream offset ${streamOffsetsByIndex[index]}ms (server-side start)")
+            return
+        }
         val nextIndex = player.nextMediaItemIndex
-        if (nextIndex == C.INDEX_UNSET) return
+        if (nextIndex == C.INDEX_UNSET) {
+            logCrossfadeSkip(index, "no next track")
+            return
+        }
         val next = queue.getOrNull(nextIndex) ?: return
         if (next.isLongForm) return
         // Crossfade needs BOTH tracks to direct-play. A track Emby transcodes (e.g.
