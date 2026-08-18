@@ -35,3 +35,7 @@ android/keystores/
 /screenshots/
 /output/
 .claude/
+
+# Backups/variants of .env hold real credentials — .env alone does not catch them.
+.env.*
+!.env.example
