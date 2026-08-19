@@ -2,6 +2,14 @@
 
 **Status:** Confirmed Android bug, intentionally deferred while the first Google Play submission is under review.
 
+> **Update, beta.34.** A separate Cast crash in the same area was fixed **without** the Media3
+> upgrade, by supplying a small custom `MediaItemConverter` to `CastPlayer` (see
+> `cast/SafeMediaItemConverter.kt`). That is worth weighing against the recommendation below,
+> which ranks the adapter approach as the fallback: the adapter route needs no version bump and
+> is therefore available now, whereas the upgrade is still gated on the Play submission settling.
+> The trade-off in "Recommended future fix" — more app-owned volume code and careful event
+> handling — is unchanged; only its relative attractiveness has moved.
+
 **Observed:** 25 July 2026, casting from liquidWave on a Pixel 8 Pro to a Google speaker.
 
 ## Summary

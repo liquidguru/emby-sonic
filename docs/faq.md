@@ -163,6 +163,24 @@ Two knock-on effects worth knowing:
   silent intro in full — audibly a gap rather than a tight cut. Improving that is
   on the list.
 
+**Since beta.34, the app tells you why.** Every skipped blend logs its reason, so
+you no longer have to guess:
+
+```bash
+adb logcat -d | grep "Crossfade skipped"
+```
+
+You'll get one line per transition — `transcode`, `repeat-one`, `no next track`,
+and so on. **If you report a crossfade problem, this is the single most useful
+thing to include.**
+
+One case it won't flag, because nothing is wrong from the app's side: a track
+with a long **mastered fade-out**. The blend covers the last few seconds, so if
+the song spends twenty seconds fading to silence on its own, most of that plays
+bare and the transition feels like no crossfade happened at all. A longer
+crossfade setting helps a little. A proper fix — starting the blend when the
+outro begins rather than when the audio becomes inaudible — is being looked at.
+
 ### A track restarted from the beginning when my phone changed network
 
 Same root cause. A transcode is a live server-side session, not a static file, so
@@ -197,14 +215,36 @@ By design — only music libraries are analysed. Spoken word would pollute mixes
 
 ### Failed track count climbs after deleting or replacing files
 
-Known limitation: **tracks removed from Emby aren't currently removed from the
-coordinator's database or search index.** Their rows linger, and workers keep
-trying to download items that no longer exist — you'll see 404s in
-`/sonic/status/errors` and a rising `failed_tracks`.
+**Tracks removed from Emby aren't removed from the coordinator automatically.**
+Their rows linger, and workers keep trying to download items that no longer
+exist — you'll see 404s in `/sonic/status/errors` and a rising `failed_tracks`.
 
-It doesn't affect playback: results are re-resolved through Emby before you see
-them, so anything Emby no longer returns is filtered out silently. But the
-database and index carry dead weight until cleanup lands.
+**This does affect what you hear**, which earlier versions of this answer got
+wrong. Replacing a file (re-encoding, converting a format, retagging in a way
+that makes Emby re-import) gives it a **new item id** and deletes the old one.
+The old row stays behind, still analysed and still in the search index — so a
+mix can pick the dead row *and* its replacement and serve you the same recording
+twice, because deduplication is by item id and these are two different ids.
+
+Clean them up with:
+
+```bash
+python tools/find_orphans.py
+```
+
+Dry run by default — it prints a summary, writes the candidates to CSV for you
+to review, and never touches the database. It also refuses to report anything if
+Emby returns implausibly few items, so a failed connection can't make your whole
+library look orphaned.
+
+To actually delete, stop the coordinator and worker, remove those ids from
+`tracks` and `embeddings`, then start the coordinator again — it rebuilds the
+search index from the database on startup, so the index needs no separate
+attention. **Back up `data/sonic.db` first.**
+
+For scale: on a 27,560-track library that had ~1,400 files converted from WMA,
+this found 1,394 orphaned rows, 1,356 of them fully analysed and live in the
+index.
 
 ### Mixes look thin, or are missing tracks I know I have
 

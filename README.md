@@ -220,6 +220,23 @@ row outright, so it stops showing up in the skipped-tracks list; if the same
 Emby item still genuinely exists, the next library scan just recreates a fresh
 `pending` row for it.
 
+`broken_tracks.py` only sees rows that already **failed**. Replacing files leaves
+a different mess: the old rows succeeded, so they sit there analysed and indexed,
+and a mix can serve the same recording twice under two ids. Find those with:
+
+```bash
+# Report rows whose Emby item no longer exists. Dry run — writes a CSV,
+# never touches the database.
+python tools/find_orphans.py
+```
+
+It pulls Emby's full audio id list in a few paged calls and does a set
+difference, rather than checking every id one at a time, and refuses to report
+anything if that fetch returns implausibly few ids — otherwise a failed
+connection would mark your whole library as orphaned. Deleting is deliberate and
+separate; back up `data/sonic.db` first, and restart the coordinator afterwards
+so it rebuilds the FAISS index from the database.
+
 ### Keeping the coordinator itself running (bare metal)
 
 A bare `python main.py` in a terminal has nothing supervising it — close the
