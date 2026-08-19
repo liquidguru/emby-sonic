@@ -120,7 +120,10 @@ class CastManager @Inject constructor(
         castContext = ctx
         ctx.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
         playback.setCastVolumeController(::setCastVolume)
-        castPlayer = CastPlayer(ctx).also { player ->
+        // Not CastPlayer(ctx): the stock converter throws on a queue item that
+        // carries no custom data, which a mid-queue removal produces. See
+        // SafeMediaItemConverter.
+        castPlayer = CastPlayer(ctx, SafeMediaItemConverter()).also { player ->
             player.setSessionAvailabilityListener(availabilityListener)
             playback.attachCastPlayer(player)
             if (player.isCastSessionAvailable) onCastConnected(ctx.sessionManager.currentCastSession)
