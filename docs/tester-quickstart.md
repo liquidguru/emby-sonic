@@ -188,6 +188,36 @@ Either way the coordinator listens on **`http://<host>:8765`**. Check it:
 curl http://<host>:8765/docs      # interactive API docs should load
 ```
 
+### Updating the coordinator later
+
+```bash
+git pull
+```
+
+Native: restart the coordinator. Docker: `docker compose up -d --build`.
+
+> **If you run it as a Windows scheduled task, also re-run the installers:**
+>
+> ```powershell
+> .\deploy\coordinator-install.ps1
+> .\deploy\worker-install.ps1 -Mode service
+> ```
+>
+> Do this **once** after updating to beta.35 or later, even if everything looks
+> fine. Before beta.35 the task launcher left the old process running when the
+> task was stopped, so it kept its port and every later restart quietly failed
+> to take effect — a coordinator could run for weeks on stale code while
+> reporting perfectly healthy. Re-running the installer clears that and
+> replaces the launcher with one that can't do it again.
+>
+> To confirm you're not affected, check nothing outlives a stop:
+>
+> ```powershell
+> Stop-ScheduledTask -TaskName EmbySonicCoordinator
+> Get-NetTCPConnection -LocalPort 8765 -State Listen   # should return nothing
+> Start-ScheduledTask -TaskName EmbySonicCoordinator
+> ```
+
 ---
 
 ## 3. Install the Emby plugin (prebuilt — no compiling)
