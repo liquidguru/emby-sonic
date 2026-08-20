@@ -152,6 +152,7 @@ const queueList        = document.querySelector("#queueList");
 
 const audio      = document.querySelector("#audio");
 const messageEl  = document.querySelector("#message");
+const serverBanner = document.querySelector("#serverBanner");
 
 // ── State ────────────────────────────────────────────────
 
@@ -2504,8 +2505,72 @@ function renderSession() {
     const cap = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
     greeting.textContent = `Hi, ${cap}`;
     switchView("home");
+    checkEmbyReachable();
   }
 }
+
+// ── Emby reachability ────────────────────────────────────
+//
+// The browser talks to Emby directly, so an Emby address it cannot reach
+// produces empty artist/album/playlist lists and broken artwork — output
+// identical to a genuinely empty library, with nothing saying a request
+// failed. That has now cost real debugging time twice: once from EMBY_URL
+// set to loopback, and once from EMBY_URL_EXTERNAL pointing at a port the
+// reverse proxy had moved off. Both looked like "my library is empty".
+//
+// So probe the address explicitly and say what's wrong. /System/Info/Public
+// needs no auth, so this also works before or independently of a valid token.
+async function checkEmbyReachable() {
+  const base = activeServerUrl();
+  if (!base) return;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const resp = await fetch(`${base}/System/Info/Public`, { signal: controller.signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    hideServerBanner();
+  } catch (err) {
+    showServerBanner(base, err);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function showServerBanner(base, err) {
+  const mixedContent = window.location.protocol === "https:" && base.startsWith("http:");
+  let hint;
+  if (mixedContent) {
+    // Worth calling out separately: the browser blocks these before they hit
+    // the network, so the server is fine and nothing appears in its logs.
+    hint = "This page is served over HTTPS but that address is plain HTTP, so your "
+      + "browser blocks every request to it. Set EMBY_URL_EXTERNAL to an HTTPS address.";
+  } else if (err?.name === "AbortError") {
+    hint = "The server did not respond in time. Check it is running and reachable from this device.";
+  } else {
+    hint = "Check the address is correct — including its port — and reachable from this device. "
+      + "If you reach liquidWave over a domain name, this comes from EMBY_URL_EXTERNAL.";
+  }
+  serverBanner.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = "Can't reach your Emby server";
+  const body = document.createElement("span");
+  body.append(document.createTextNode("Tried "));
+  const code = document.createElement("code");
+  code.textContent = base;
+  body.append(code, document.createTextNode(`. ${hint}`));
+  serverBanner.append(title, body);
+  serverBanner.classList.remove("hidden");
+}
+
+function hideServerBanner() {
+  serverBanner.classList.add("hidden");
+}
+
+// A laptop waking on a different network is exactly when the reachable
+// address changes, so re-check rather than leaving a stale banner either way.
+window.addEventListener("online", () => {
+  if (state.session?.token) checkEmbyReachable();
+});
 
 // ── Emby direct API ──────────────────────────────────────
 

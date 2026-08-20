@@ -1397,3 +1397,25 @@ body { font-family: var(--font-body); color: var(--text); }
   /* The wave would otherwise strobe at 0.01ms; hold it still instead. */
   .mini-player.is-playing .mini-wave { animation: none; }
 }
+
+/* Emby unreachable — persistent, not a toast. The failure it reports is
+   indistinguishable from an empty library in the UI, so it has to stay on
+   screen until the connection actually works. */
+.server-banner {
+  margin: 0 16px 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(180, 60, 50, .16);
+  border: 1px solid rgba(220, 90, 80, .5);
+  color: var(--text);
+  font-size: .85rem;
+  line-height: 1.45;
+}
+.server-banner strong { display: block; margin-bottom: 3px; }
+.server-banner code {
+  background: rgba(0,0,0,.32);
+  padding: 1px 5px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+.server-banner.hidden { display: none; }

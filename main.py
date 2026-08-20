@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
@@ -6,6 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from api.routes import status, tracks, adventure, mixes, queue, library, artists, albums, worker, webapp
 from db.database import init_db
 from config import settings
+
+log = logging.getLogger(__name__)
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -37,7 +40,57 @@ async def lifespan(app: FastAPI):
     # on-disk index — or stale index after analysed tracks were committed —
     # is reconciled on every startup.
     await rebuild_index_from_db()
+    await _warn_if_emby_urls_unreachable()
     yield
+
+
+async def _warn_if_emby_urls_unreachable() -> None:
+    """
+    Probe the Emby addresses at startup and warn loudly about any that fail.
+
+    EMBY_URL_EXTERNAL is handed to BROWSERS, never used by the coordinator
+    itself, so a wrong value has no symptom here — it surfaces as a web app
+    with an apparently empty library, which reads as a data problem rather
+    than a networking one. Saying so at startup turns a long debugging session
+    into one line in the log.
+
+    This only ever WARNS. A coordinator that can't reach the external address
+    may be perfectly healthy: plenty of networks don't hairpin, so the public
+    hostname is unreachable from inside while working fine for real clients.
+    Refusing to start on that would be wrong.
+    """
+    import httpx
+
+    targets = [("EMBY_URL", settings.emby_url)]
+    if settings.emby_url_external:
+        targets.append(("EMBY_URL_EXTERNAL", settings.emby_url_external))
+
+    for name, url in targets:
+        base = url.rstrip("/")
+        if not base:
+            continue
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(f"{base}/System/Info/Public")
+            if resp.status_code >= 400:
+                log.warning("%s=%s answered HTTP %s — check the address.", name, base, resp.status_code)
+            else:
+                log.info("%s=%s reachable.", name, base)
+        except Exception as exc:
+            if name == "EMBY_URL_EXTERNAL":
+                log.warning(
+                    "%s=%s is NOT reachable from the coordinator (%s). This can be normal if "
+                    "your network doesn't hairpin — but this address is what BROWSERS are told "
+                    "to stream from, so if the web app shows an empty library over a domain "
+                    "name, this is why. Check the host AND the port.",
+                    name, base, exc,
+                )
+            else:
+                log.error(
+                    "%s=%s is NOT reachable (%s). The coordinator needs this to scan and "
+                    "analyse; nothing will work until it resolves.",
+                    name, base, exc,
+                )
 
 
 app = FastAPI(title="Emby Sonic", version="0.1.0", lifespan=lifespan)

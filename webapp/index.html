@@ -46,6 +46,13 @@
       </header>
 
       <!-- Scrollable page content -->
+      <!--
+        Persistent, dismissable warning for when the browser cannot reach Emby
+        at all. Deliberately NOT the toast: a toast auto-hides after 4s and
+        leaves the user staring at empty lists that look like an empty library.
+      -->
+      <div id="serverBanner" class="server-banner hidden" role="alert"></div>
+
       <div class="page-content" id="pageContent">
 
         <!-- HOME ───────────────────────────────────────────── -->
