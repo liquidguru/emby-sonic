@@ -145,13 +145,52 @@ $supervisorArgs = @(
 ) -join ' '
 
 # Remove superseded launchers from older installs, if present.
-foreach ($stale in @('worker_run.generated.ps1', 'worker_run.generated.py')) {
-    $stalePath = Join-Path $RepoDir $stale
+foreach ($staleLauncher in @('worker_run.generated.ps1', 'worker_run.generated.py')) {
+    $stalePath = Join-Path $RepoDir $staleLauncher
     if (Test-Path $stalePath) {
         Remove-Item $stalePath -Force
         Write-Host "Removed superseded launcher -> $stalePath" -ForegroundColor Yellow
     }
 }
+
+# Clear anything still running from a previous install BEFORE re-registering.
+# See the matching block in coordinator-install.ps1: the launcher this replaces
+# orphaned its child, and the task is MultipleInstances IgnoreNew, so without
+# this an upgrade reports success while the old worker keeps running.
+# Scoped to this repo AND the worker's own scripts, so it never touches the
+# coordinator or any unrelated Python.
+$repoPatterns = @($RepoDir, $repoFwd)
+# NOT a bare 'supervise.py' — see the note in coordinator-install.ps1.
+$scriptPatterns = @('worker_run.generated.py', '--script worker.py', 'worker.py')
+if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+$allPython = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' })
+$matched = @($allPython | Where-Object {
+    # Capture the command line first: $_ is rebound inside the inner pipelines.
+    $cmd = $_.CommandLine
+    $cmd -and
+    ($repoPatterns | Where-Object { $_ -and $cmd -like "*$_*" }) -and
+    ($scriptPatterns | Where-Object { $cmd -like "*$_*" })
+})
+
+# Expand to descendants — a venv's python.exe stub launches the real
+# interpreter as a child whose command line carries no repo path.
+$targets = @{}
+foreach ($p in $matched) { $targets[[int]$p.ProcessId] = $p }
+for ($pass = 0; $pass -lt 5; $pass++) {
+    foreach ($p in $allPython) {
+        if (-not $targets.ContainsKey([int]$p.ProcessId) -and $targets.ContainsKey([int]$p.ParentProcessId)) {
+            $targets[[int]$p.ProcessId] = $p
+        }
+    }
+}
+foreach ($procId in @($targets.Keys)) {
+    Write-Host "Stopping leftover worker process $procId" -ForegroundColor Yellow
+    Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+}
+if ($targets.Count) { Start-Sleep -Seconds 2 }
 
 # --- register the scheduled task --------------------------------------------
 if ($Mode -eq 'service') {

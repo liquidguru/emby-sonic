@@ -99,6 +99,64 @@ if (Test-Path $legacyLauncher) {
     Write-Host "Removed superseded launcher -> $legacyLauncher" -ForegroundColor Yellow
 }
 
+# Clear anything still running from a previous install BEFORE re-registering.
+#
+# This is not belt-and-braces, it is the upgrade path. The launcher this
+# replaces orphaned its child, so stopping the task leaves a process holding
+# :8765. Registering over the top then does nothing useful: the task is set to
+# MultipleInstances IgnoreNew, so Start-ScheduledTask is a silent no-op while
+# the orphan keeps serving old code — the install reports success and changes
+# nothing. Deleting the old launcher file does not help either; a running
+# process does not care that its script is gone.
+#
+# Matched on this repo's path plus the specific scripts, so a second checkout
+# or any unrelated Python on the box is left alone.
+$repoPatterns = @($RepoDir, $repoFwd)
+# NOT a bare 'supervise.py' — both services now run through it, and matching on
+# that alone would make this installer kill the worker.
+$scriptPatterns = @('coordinator_run.generated.py', '--script main.py', 'main.py')
+if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+$allPython = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' })
+$matched = @($allPython | Where-Object {
+    # Capture the command line first: $_ is rebound inside the inner pipelines.
+    $cmd = $_.CommandLine
+    $cmd -and
+    ($repoPatterns | Where-Object { $_ -and $cmd -like "*$_*" }) -and
+    ($scriptPatterns | Where-Object { $cmd -like "*$_*" })
+})
+
+# Expand to descendants. A venv's python.exe is a stub that launches the real
+# interpreter as a child, and THAT process's command line is a bare "main.py"
+# with no repo path in it — so pattern matching alone misses the process that
+# actually holds the port.
+$targets = @{}
+foreach ($p in $matched) { $targets[[int]$p.ProcessId] = $p }
+for ($pass = 0; $pass -lt 5; $pass++) {
+    foreach ($p in $allPython) {
+        if (-not $targets.ContainsKey([int]$p.ProcessId) -and $targets.ContainsKey([int]$p.ParentProcessId)) {
+            $targets[[int]$p.ProcessId] = $p
+        }
+    }
+}
+foreach ($procId in @($targets.Keys)) {
+    Write-Host "Stopping leftover coordinator process $procId" -ForegroundColor Yellow
+    Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+}
+if ($targets.Count) { Start-Sleep -Seconds 2 }
+
+# Last resort: whatever still holds the port would make the new instance fail
+# to bind, which is the whole failure mode being fixed here.
+$holder = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -Unique
+foreach ($holderPid in $holder) {
+    Write-Host "Port 8765 still held by PID $holderPid - stopping it" -ForegroundColor Yellow
+    Stop-Process -Id $holderPid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+
 $supervisorArgs = @(
     "`"$launcher`""
     "--python `"$pyFwd`""
