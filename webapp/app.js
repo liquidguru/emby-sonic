@@ -174,6 +174,8 @@ const state = {
   activeMixId: null,
   pendingMixDetail: null,
   musicParentIds: null,
+  // Address probing actually reached; null until resolveServerUrl() runs.
+  resolvedServerUrl: null,
   libraryTab: "artists",   // "artists" | "playlists"
   libraryArtists: null,    // cached AlbumArtists items
   libraryPlaylists: null,  // cached Playlist items (null = refetch)
@@ -236,6 +238,7 @@ logoutButton.addEventListener("click", () => {
     mixes: [], adventureFrom: null, adventureTo: null,
     selectedArtists: [], genresLoaded: false,
     musicParentIds: null,
+    resolvedServerUrl: null,
     libraryTab: "artists", libraryArtists: null,
     libraryPlaylists: null, libraryStack: [],
     libraryBooks: null, audiobookLibId: undefined,
@@ -2504,8 +2507,13 @@ function renderSession() {
     const name = state.session.userName || "there";
     const cap = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
     greeting.textContent = `Hi, ${cap}`;
-    switchView("home");
-    checkEmbyReachable();
+    // Resolve BEFORE loading anything: the home view fetches from Emby
+    // immediately, and firing those at an unreachable address just renders
+    // the empty lists this whole mechanism exists to prevent. Re-render the
+    // view afterwards so a first load that raced the probe still fills in.
+    resolveServerUrl()
+      .catch(() => {})
+      .finally(() => switchView("home"));
   }
 }
 
@@ -2520,20 +2528,57 @@ function renderSession() {
 //
 // So probe the address explicitly and say what's wrong. /System/Info/Public
 // needs no auth, so this also works before or independently of a valid token.
-async function checkEmbyReachable() {
-  const base = activeServerUrl();
-  if (!base) return;
+async function probeServer(base) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const resp = await fetch(`${base}/System/Info/Public`, { signal: controller.signal });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    hideServerBanner();
+    return { base, ok: resp.ok, err: resp.ok ? null : new Error(`HTTP ${resp.status}`) };
   } catch (err) {
-    showServerBanner(base, err);
+    return { base, ok: false, err };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Pick the Emby address that ACTUALLY ANSWERS, rather than the one the
+// hostname implies. Both are probed in parallel — they're cheap, and doing
+// them in sequence would make the common case wait on a timeout — then the
+// heuristic's preference is used only to break a tie when both work.
+//
+// This is what makes split-horizon DNS work: reaching liquidWave at a public
+// hostname that a local DNS rewrite resolves to a LAN address means the
+// "external" Emby address is the one that CAN'T be reached, and the LAN one
+// can. The old hostname-shape test got that exactly backwards.
+async function resolveServerUrl() {
+  const session = state.session;
+  if (!session) return;
+  const preferred = preferredServerUrl();
+  const candidates = [...new Set(
+    [preferred, session.serverUrl, session.serverUrlExternal]
+      .filter(Boolean)
+      .map((u) => u.replace(/\/$/, "")),
+  )];
+  if (!candidates.length) return;
+
+  const results = await Promise.all(candidates.map(probeServer));
+  const winner = results.find((r) => r.ok && r.base === preferred) || results.find((r) => r.ok);
+
+  if (winner) {
+    state.resolvedServerUrl = winner.base;
+    if (winner.base !== preferred) {
+      // Not an error — but it means the obvious address is unreachable, and
+      // that is worth knowing before it turns into "the library looks empty".
+      console.info(`liquidWave: using ${winner.base} — ${preferred} did not respond.`);
+    }
+    hideServerBanner();
+    return;
+  }
+
+  // Nothing answered. Report against the address the user would expect.
+  state.resolvedServerUrl = null;
+  const failed = results.find((r) => r.base === preferred) || results[0];
+  showServerBanner(failed.base, failed.err);
 }
 
 function showServerBanner(base, err) {
@@ -2568,8 +2613,12 @@ function hideServerBanner() {
 
 // A laptop waking on a different network is exactly when the reachable
 // address changes, so re-check rather than leaving a stale banner either way.
+// Coming back on a different network is exactly when the reachable address
+// changes, so re-resolve rather than keeping a stale choice or stale banner.
 window.addEventListener("online", () => {
-  if (state.session?.token) checkEmbyReachable();
+  if (!state.session?.token) return;
+  state.resolvedServerUrl = null;
+  resolveServerUrl().catch(() => {});
 });
 
 // ── Emby direct API ──────────────────────────────────────
@@ -2897,12 +2946,24 @@ function browserDeviceId() {
 // stays open across a network change, or a persisted session reused from a
 // different network later, doesn't keep streaming from a stale address (#30).
 function activeServerUrl() {
+  // Whatever probing actually reached wins over any guess.
+  if (state.resolvedServerUrl) return state.resolvedServerUrl;
+  return preferredServerUrl();
+}
+
+// The hostname heuristic, kept only to ORDER the candidates and to give
+// activeServerUrl() an answer before probing finishes. It is a guess, not a
+// decision: with split-horizon DNS (an AdGuard/Pi-hole rewrite pointing a
+// public hostname at a LAN address — completely normal in a homelab) a public
+// name can be the LAN, and the LAN address can be the only one that works.
+function preferredServerUrl() {
   const session = state.session;
+  if (!session) return "";
   const host = window.location.hostname;
   const isLan = host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")
     || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host) || host.startsWith("[");
   const base = (isLan ? session.serverUrl : session.serverUrlExternal) || session.serverUrl;
-  return base.replace(/\/$/, "");
+  return (base || "").replace(/\/$/, "");
 }
 
 function playSessionId() {
