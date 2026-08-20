@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from api.routes import status, tracks, adventure, mixes, queue, library, artists, albums, worker, webapp
 from db.database import init_db
@@ -132,6 +133,22 @@ app.include_router(webapp.router, prefix="/sonic")
 
 _webapp_dir = Path(__file__).resolve().parent / "webapp"
 app.mount("/app", NoCacheStaticFiles(directory=_webapp_dir, html=True), name="webapp")
+
+
+@app.get("/", include_in_schema=False)
+async def root_to_webapp() -> RedirectResponse:
+    """
+    Send the bare host to the web app.
+
+    Without this, anyone who types just host:port — the natural thing to do,
+    and what a browser offers from history — gets `{"detail":"Not Found"}`.
+    Raw JSON reads as the application being broken rather than as a missing
+    path, and it has already sent one person hunting a non-existent outage.
+
+    307 rather than 301: a permanent redirect is cached by browsers more or
+    less forever, which would be painful to undo if the web app ever moves.
+    """
+    return RedirectResponse(url="/app/", status_code=307)
 
 
 if __name__ == "__main__":

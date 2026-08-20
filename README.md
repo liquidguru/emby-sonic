@@ -233,9 +233,21 @@ python tools/find_orphans.py
 It pulls Emby's full audio id list in a few paged calls and does a set
 difference, rather than checking every id one at a time, and refuses to report
 anything if that fetch returns implausibly few ids — otherwise a failed
-connection would mark your whole library as orphaned. Deleting is deliberate and
-separate; back up `data/sonic.db` first, and restart the coordinator afterwards
-so it rebuilds the FAISS index from the database.
+connection would mark your whole library as orphaned.
+
+Deleting is deliberate and separate. Back up `data/sonic.db` first, then remove
+the ids from `tracks` **and** `embeddings`, and afterwards:
+
+1. **Restart the coordinator** — it rebuilds the FAISS index from the database
+   on startup, so the index needs no separate attention.
+2. **Rebuild your mixes.** Existing mixes still reference the deleted tracks in
+   `mix_tracks`. Nothing breaks — the mix endpoint skips tracks it can't
+   resolve — but those mixes come back short until rebuilt:
+
+   ```bash
+   curl -X POST http://<coordinator>:8765/sonic/library/build-mixes \
+     -H "X-Emby-Token: <token>"
+   ```
 
 ### Keeping the coordinator itself running (bare metal)
 

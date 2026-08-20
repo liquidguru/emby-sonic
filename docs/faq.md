@@ -242,6 +242,16 @@ To actually delete, stop the coordinator and worker, remove those ids from
 search index from the database on startup, so the index needs no separate
 attention. **Back up `data/sonic.db` first.**
 
+**Then rebuild your mixes.** Existing mixes still list the deleted tracks, so
+they come back a few tracks short until you do. Nothing breaks in the meantime —
+mixes silently skip tracks they can't resolve — but it's easy to miss, because
+a slightly short mix looks perfectly normal:
+
+```bash
+curl -X POST http://<coordinator>:8765/sonic/library/build-mixes \
+  -H "X-Emby-Token: <token>"
+```
+
 For scale: on a 27,560-track library that had ~1,400 files converted from WMA,
 this found 1,394 orphaned rows, 1,356 of them fully analysed and live in the
 index.
