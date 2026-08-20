@@ -25,6 +25,7 @@ import numpy as np
 from sklearn.cluster import MiniBatchKMeans
 from sqlalchemy import select, delete
 
+from analysis.track_identity import identity_key
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -183,6 +184,7 @@ def _cluster_and_name(
     tempos: list[float | None],
     energies: list[float | None],
     artists: list[str | None],
+    titles: list[str | None],
     genres: list[str | None],
     n_clusters: int,
     tracks_per_mix: int,
@@ -204,7 +206,36 @@ def _cluster_and_name(
         # Closest to the centroid by Euclidean distance in the same feature
         # space k-means used (so selection matches cluster assignment).
         dist = np.linalg.norm(features[mask] - centroids[cluster_id], axis=1)
-        top_indices = np.argsort(dist)[:tracks_per_mix]
+        ordered = np.argsort(dist)
+
+        # Walk the ordered candidates and skip a second copy of a song already
+        # in THIS mix, rather than taking a flat top-N.
+        #
+        # Without this the selection rule actively gathers duplicates: copies of
+        # one recording have near-identical embeddings, so they land in the same
+        # cluster AND at nearly the same distance from its centre. They are more
+        # likely to appear together than two unrelated tracks.
+        #
+        # Per-mix, not global — the same song turning up in two different mixes
+        # is fine; twice in one is not. First past the post wins, which is the
+        # copy closest to the centroid.
+        top_indices: list[int] = []
+        seen_keys: set[str] = set()
+        for i in ordered:
+            key = identity_key(artists[mask[i]], titles[mask[i]], track_ids[mask[i]])
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            top_indices.append(i)
+            if len(top_indices) == tracks_per_mix:
+                break
+        if len(top_indices) < tracks_per_mix:
+            # A short mix beats a padded one with repeats, but it's worth
+            # knowing a cluster was mostly duplicates.
+            logger.info(
+                "build_mixes: cluster %d yielded %d/%d tracks after de-duplication",
+                cluster_id, len(top_indices), tracks_per_mix,
+            )
 
         sel_tempos = [tempos[mask[i]] for i in top_indices]
         sel_energies = [energies[mask[i]] for i in top_indices]
@@ -266,6 +297,7 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
                     Embedding.tempo,
                     Embedding.energy,
                     Track.artist,
+                    Track.title,
                     Track.genre,
                     Track.file_path,
                 ).join(Track, Track.id == Embedding.track_id)
@@ -293,6 +325,7 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
     tempos = [r.tempo for r in rows]
     energies = [r.energy for r in rows]
     artists = [r.artist for r in rows]
+    titles = [r.title for r in rows]
     genres = [r.genre for r in rows]
 
     logger.info(
@@ -304,7 +337,8 @@ async def _run(n_clusters: int, tracks_per_mix: int) -> int:
     # event loop stays responsive during the ~15-20s build (notably so the
     # /library/build-state poll can be answered while a build runs).
     clusters = await asyncio.to_thread(
-        _cluster_and_name, track_ids, vecs, tempos, energies, artists, genres, n_clusters, tracks_per_mix
+        _cluster_and_name, track_ids, vecs, tempos, energies, artists, titles, genres,
+        n_clusters, tracks_per_mix,
     )
 
     # Pass 2: replace all mixes and write the new ones.

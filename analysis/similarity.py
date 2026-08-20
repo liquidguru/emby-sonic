@@ -14,8 +14,6 @@ Algorithms:
 from __future__ import annotations
 
 import random
-import re
-import unicodedata
 
 import numpy as np
 from sqlalchemy import select
@@ -23,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas import SimilarTrack, TrackOut, SimilarArtist, SimilarAlbum
 from analysis.faiss_index import sonic_index
+from analysis.track_identity import identity_key
 from db.models import Track, Embedding
 
 ADVENTURE_SEARCH_K = 50
@@ -37,18 +36,9 @@ async def _load_track_out(track_id: str, db: AsyncSession) -> TrackOut | None:
     return TrackOut.model_validate(track)
 
 
-def _normalise_identity_part(value: str | None) -> str:
-    text = unicodedata.normalize("NFKD", value or "")
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    return re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
-
-
 def _track_identity_key(track: TrackOut) -> str:
-    title = _normalise_identity_part(track.title)
-    artist = _normalise_identity_part(track.artist)
-    if title or artist:
-        return f"{artist}|{title}"
-    return f"id:{track.id}"
+    """Adventure's original key, now shared — see analysis/track_identity.py."""
+    return identity_key(track.artist, track.title, track.id)
 
 
 def _even_sample(items: list[TrackOut], target: int) -> list[TrackOut]:
@@ -88,24 +78,36 @@ async def build_radio(seed_id: str, length: int, db: AsyncSession) -> list[Track
         return []
 
     visited = {seed_id}
+    # A duplicate is the NEAREST possible neighbour to its twin, so without this
+    # radio reliably plays the same song twice in a row — and then risks walking
+    # back and forth between the copies, since each is the other's best match.
+    seed_out = await _load_track_out(seed_id, db)
+    seen_keys = {_track_identity_key(seed_out)} if seed_out else set()
     queue: list[TrackOut] = []
     current_vec = seed_vec
 
     while len(queue) < length:
         candidates = sonic_index.search(current_vec, k=20)
-        next_track = next(
-            ((tid, score) for tid, score in candidates if tid not in visited), None
-        )
-        if next_track is None:
+        chosen: TrackOut | None = None
+        for tid, _score in candidates:
+            if tid in visited:
+                continue
+            visited.add(tid)
+            track_out = await _load_track_out(tid, db)
+            if track_out is None:
+                continue
+            key = _track_identity_key(track_out)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            chosen = track_out
             break
-        tid, _ = next_track
-        visited.add(tid)
-        track_out = await _load_track_out(tid, db)
-        if track_out:
-            queue.append(track_out)
-            next_vec = sonic_index.get_vector(tid)
-            if next_vec is not None:
-                current_vec = next_vec
+        if chosen is None:
+            break
+        queue.append(chosen)
+        next_vec = sonic_index.get_vector(chosen.id)
+        if next_vec is not None:
+            current_vec = next_vec
 
     return queue
 

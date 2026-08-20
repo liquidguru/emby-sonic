@@ -68,16 +68,67 @@ class ClusterAndNameTests(unittest.TestCase):
     falls back to a dominant genre before giving up to a bare mood name.
     """
 
-    def _one_cluster(self, tempos, energies, artists, genres):
+    def _one_cluster(self, tempos, energies, artists, genres, titles=None):
         # A single, trivial cluster: all points identical so k-means puts
         # everything in one bucket regardless of the input vectors.
         import numpy as np
         n = len(tempos)
         vecs = np.ones((n, 4), dtype=np.float32)
         track_ids = [f"t{i}" for i in range(n)]
-        clusters = _cluster_and_name(track_ids, vecs, tempos, energies, artists, genres, n_clusters=1, tracks_per_mix=n)
+        # Distinct titles by default so de-duplication doesn't quietly drop
+        # tracks these naming assertions depend on.
+        if titles is None:
+            titles = [f"Song {i}" for i in range(n)]
+        clusters = _cluster_and_name(
+            track_ids, vecs, tempos, energies, artists, titles, genres,
+            n_clusters=1, tracks_per_mix=n,
+        )
         self.assertEqual(len(clusters), 1)
         return clusters[0]["name"]
+
+    def _one_cluster_tracks(self, artists, titles):
+        import numpy as np
+        n = len(artists)
+        vecs = np.ones((n, 4), dtype=np.float32)
+        track_ids = [f"t{i}" for i in range(n)]
+        clusters = _cluster_and_name(
+            track_ids, vecs, [120.0] * n, [0.5] * n, artists, titles, ["rock"] * n,
+            n_clusters=1, tracks_per_mix=n,
+        )
+        return clusters[0]["track_ids"]
+
+    def test_same_song_under_two_ids_appears_once(self) -> None:
+        """The live case: one recording present twice, e.g. a studio album and
+        a greatest-hits, or the same album sitting in two folders."""
+        picked = self._one_cluster_tracks(
+            artists=["Abba", "Abba", "Abba"],
+            titles=["Dancing Queen", "Dancing Queen", "Fernando"],
+        )
+        self.assertEqual(len(picked), 2)
+
+    def test_punctuation_and_accents_still_count_as_the_same_song(self) -> None:
+        picked = self._one_cluster_tracks(
+            artists=["Bjork", "Björk"],
+            titles=["Joga!", "Jóga"],
+        )
+        self.assertEqual(len(picked), 1)
+
+    def test_live_version_is_kept_as_a_distinct_recording(self) -> None:
+        """Deliberately NOT normalised away — a live take is different music."""
+        picked = self._one_cluster_tracks(
+            artists=["Creed", "Creed"],
+            titles=["Signs", "Signs (Live)"],
+        )
+        self.assertEqual(len(picked), 2)
+
+    def test_untagged_tracks_are_not_collapsed_together(self) -> None:
+        """Without the id fallback every untitled track shares one key and all
+        but the first would vanish."""
+        picked = self._one_cluster_tracks(
+            artists=[None, None, None],
+            titles=[None, None, None],
+        )
+        self.assertEqual(len(picked), 3)
 
     def test_dominant_artist_wins_over_genre(self) -> None:
         name = self._one_cluster(
