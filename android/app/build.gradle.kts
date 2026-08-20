@@ -23,8 +23,8 @@ android {
         applicationId = "guru.liquid.embysonic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 35
-        versionName = "0.1.0-beta.35"
+        versionCode = 36
+        versionName = "0.1.0-beta.36"
         vectorDrawables { useSupportLibrary = true }
     }
 
