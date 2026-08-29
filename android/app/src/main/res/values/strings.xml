@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">liquidWave</string>
+    <!-- Shown while casting, when Media3 isn't holding a media notification of its
+         own. Says "casting" rather than just the app name so an ongoing notification
+         with no audio coming from the phone doesn't look like a stuck one. -->
+    <string name="casting_notification_title">Casting</string>
     <string name="widget_description">liquidWave mini player — control playback from your home screen.</string>
     <string name="widget_idle_subtitle">Tap to open</string>
     <string name="widget_art_description">Album artwork</string>

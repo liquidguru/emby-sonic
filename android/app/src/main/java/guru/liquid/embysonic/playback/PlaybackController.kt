@@ -32,6 +32,7 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaController
+import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -955,6 +956,37 @@ class PlaybackController @Inject constructor(
     /** Join any in-flight cold-start restore so a widget command sees the queue. */
     private suspend fun awaitRestore() {
         restoreJob?.join()
+    }
+
+    /**
+     * The last session, in the form Media3 needs to resume it without the app
+     * having been opened. Null when there is nothing worth resuming.
+     *
+     * Android Auto asks for this when the user gets in the car: if the app isn't
+     * already running it calls `onPlaybackResumption`, and whatever comes back is
+     * what it offers as "carry on where you left off". We never implemented that
+     * callback, so Media3 answered "unsupported" and Auto could only offer *Open
+     * liquidWave* — on a car screen, where opening an app is exactly what you don't
+     * want to be doing. Reported 2026-08-28.
+     *
+     * The app's process not running is the NORMAL state here, not an error: it gets
+     * killed in the background like anything else, and the whole point of persisting
+     * a session is to survive that. The queue was on disk the entire time; nothing
+     * was asking for it.
+     *
+     * Deliberately reuses [restoreSession] rather than reading the store directly,
+     * so a resume from the car reconstructs the queue exactly as the app would —
+     * including audiobook start offsets and the seek/StartTimeTicks distinction.
+     * Two code paths for "put the last session back" would drift.
+     */
+    suspend fun resumableSession(): MediaSession.MediaItemsWithStartPosition? {
+        awaitRestore()
+        if (queue.isEmpty()) runCatching { restoreSession() }
+        if (queue.isEmpty()) return null
+        val player = activePlayerRef
+        val index = player.currentMediaItemIndex.coerceAtLeast(0)
+        val position = player.currentPosition.coerceAtLeast(0L)
+        return MediaSession.MediaItemsWithStartPosition(activeMediaItems(), index, position)
     }
 
     /** Launch the app when a widget command has nothing to act on (no session). */

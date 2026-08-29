@@ -41,10 +41,13 @@ import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -74,6 +77,7 @@ class SonicPlaybackService : MediaLibraryService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var foregroundWatchdogPending = false
+    private var castKeeperJob: Job? = null
 
     /**
      * Android kills the process with an ANR when a `startForegroundService()` call
@@ -114,7 +118,7 @@ class SonicPlaybackService : MediaLibraryService() {
                 ?.any { it.id == MEDIA_NOTIFICATION_ID } == true
         }.getOrDefault(false)
 
-    private fun promoteToForegroundWithPlaceholder() {
+    private fun promoteToForegroundWithPlaceholder(contentTitle: String = getString(R.string.app_name)) {
         val manager = getSystemService(NotificationManager::class.java) ?: return
         if (manager.getNotificationChannel(MEDIA_CHANNEL_ID) == null) {
             manager.createNotificationChannel(
@@ -127,7 +131,7 @@ class SonicPlaybackService : MediaLibraryService() {
         }
         val notification = NotificationCompat.Builder(this, MEDIA_CHANNEL_ID)
             .setSmallIcon(androidx.media3.session.R.drawable.media3_notification_small_icon)
-            .setContentTitle(getString(R.string.app_name))
+            .setContentTitle(contentTitle)
             .setOngoing(true)
             .setSilent(true)
             .build()
@@ -137,6 +141,60 @@ class SonicPlaybackService : MediaLibraryService() {
             notification,
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
         )
+    }
+
+    /**
+     * Keep the service in the foreground for as long as we are casting.
+     *
+     * While casting, no audio plays on the phone, so Media3 does not keep a media
+     * notification up — and without one the process has no foreground service.
+     * Android then treats the app as fully idle, freezes it, and eventually kills
+     * it. Observed in the field 2026-08-23 on beta.34 (the app build then current;
+     * beta.35/36 were coordinator-only and identical app-side):
+     *
+     *     ActivityManager: Killing guru.liquid.embysonic (adj 900):
+     *                      Async binder space running out while frozen
+     *
+     * It surfaced only then because it was previously MASKED BY A BUG. Before
+     * beta.34 the stock Cast MediaItemConverter crashed the app repeatedly during a
+     * cast — 99 caught NPEs in one session once it was fixed — and every crash
+     * restarted the process, resetting the idle timer that leads to the freeze.
+     * Fixing the crash let the app live long enough to be frozen and killed
+     * instead. Do not read the absence of earlier reports as this being new.
+     *
+     * Note *why* it dies: a frozen process cannot drain binder transactions, and an
+     * actively-playing receiver keeps sending status callbacks, so the queue
+     * overflows. Casting is therefore not merely permitted to be killed — the
+     * longer the cast runs, the more certain the kill becomes.
+     *
+     * Three symptoms, one cause. The frozen process cannot run its periodic session
+     * save, so you lose your place (playback resumes at the START of the queue next
+     * launch). It cannot process Cast callbacks, so it dies. And once dead nothing
+     * controls the receiver, which plays on with no way to stop it from the phone —
+     * a cast ran for about an hour that way.
+     *
+     * Media3 owns the notification whenever it wants it, so this only steps in when
+     * none is posted, and reuses Media3's own id so there is never a second one.
+     * It re-checks periodically because Media3 may drop the notification at any
+     * point during a cast, not only at the start.
+     */
+    private fun startCastForegroundKeeper() {
+        if (castKeeperJob?.isActive == true) return
+        castKeeperJob = serviceScope.launch {
+            while (isActive) {
+                if (!hasPostedMediaNotification()) {
+                    Log.i(TAG, "Casting with no media notification; holding the service in the foreground")
+                    runCatching { promoteToForegroundWithPlaceholder(getString(R.string.casting_notification_title)) }
+                        .onFailure { Log.w(TAG, "Could not hold the service in the foreground while casting", it) }
+                }
+                delay(CAST_FOREGROUND_CHECK_MS)
+            }
+        }
+    }
+
+    private fun stopCastForegroundKeeper() {
+        castKeeperJob?.cancel()
+        castKeeperJob = null
     }
 
     override fun onCreate() {
@@ -169,6 +227,16 @@ class SonicPlaybackService : MediaLibraryService() {
                 .map { it.shuffleEnabled to it.repeatMode }
                 .distinctUntilChanged()
                 .collect { mediaSession?.setCustomLayout(buildCustomLayout()) }
+        }
+        // Hold the foreground service for the duration of a cast — see
+        // startCastForegroundKeeper for why nothing else does.
+        serviceScope.launch {
+            playback.state
+                .map { it.isCasting }
+                .distinctUntilChanged()
+                .collect { casting ->
+                    if (casting) startCastForegroundKeeper() else stopCastForegroundKeeper()
+                }
         }
     }
 
@@ -255,6 +323,39 @@ class SonicPlaybackService : MediaLibraryService() {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> =
             Futures.immediateFuture(LibraryResult.ofItem(browsableItem(ROOT_ID, "liquidWave"), params))
+
+        /**
+         * Give Android Auto the last session so it can carry on without the app
+         * being opened.
+         *
+         * This is a `default` method on Media3's callback, so leaving it out
+         * compiled and ran perfectly happily — it just answered "unsupported", and
+         * Auto fell back to offering *Open liquidWave*. Nothing logged, nothing
+         * failed; the feature simply wasn't there. The same gap leaves the widget
+         * showing "Tap to open" after the process dies.
+         *
+         * Failing the future is the documented way to say "nothing to resume", and
+         * is the right answer for a first run or after the queue is cleared — Auto
+         * then shows its normal empty state rather than a broken-looking entry.
+         */
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+            serviceScope.launch {
+                val resumable = runCatching { playback.resumableSession() }
+                    .onFailure { Log.w(TAG, "Could not rebuild the last session for resumption", it) }
+                    .getOrNull()
+                if (resumable == null) {
+                    future.setException(UnsupportedOperationException("No previous session to resume"))
+                } else {
+                    Log.i(TAG, "Resuming last session for ${controller.packageName}")
+                    future.set(resumable)
+                }
+            }
+            return future
+        }
 
         override fun onGetItem(
             session: MediaLibrarySession,
@@ -649,6 +750,13 @@ class SonicPlaybackService : MediaLibraryService() {
         // watchdog steps in. Android's window is ~30s, so this is conservative
         // while still leaving plenty of margin.
         const val FOREGROUND_WATCHDOG_DELAY_MS = 5_000L
+
+        /**
+         * How often to re-check that a cast still has a foreground notification.
+         * Frequent enough that a gap can't last long — the freeze only bites after
+         * a sustained idle period — but idle enough to cost nothing over an hour.
+         */
+        const val CAST_FOREGROUND_CHECK_MS = 15_000L
 
         // Mirrors Media3's DefaultMediaNotificationProvider defaults, so the real
         // media notification REPLACES the watchdog's placeholder rather than
