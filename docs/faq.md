@@ -17,7 +17,7 @@ machine and finds nothing.
 Use the LAN address, even when Emby and the coordinator are on the same box:
 
 ```
-EMBY_URL=http://192.168.1.10:8096
+EMBY_URL=http://192.168.1.50:8096    # your Emby's own LAN address
 ```
 
 The symptom is confusing because **login still works** — that hop happens
