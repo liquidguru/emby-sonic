@@ -1,0 +1,43 @@
+name: Rebuild the website
+
+# playliquidwave.com renders /faq by fetching docs/faq.md from THIS repo at build
+# time, so the FAQ has exactly one source of truth. The catch is that Cloudflare
+# Pages watches the *site* repo, not this one — so editing the FAQ changed
+# nothing on the live site until the site happened to be rebuilt for some other
+# reason. The single-source design prevented the two copies diverging, but said
+# nothing about the live page being current.
+#
+# This closes that gap: editing the FAQ here pokes Cloudflare to rebuild.
+#
+# The hook URL is itself the credential — anyone holding it can trigger a build
+# of that one project and nothing else — so it lives in the CF_PAGES_DEPLOY_HOOK
+# repo secret. Deploy hooks are dashboard-only; Cloudflare exposes no API to
+# create them (checked against their OpenAPI spec, 2026-08-30).
+#
+# No-ops cleanly if the secret isn't set, matching the ntfy workflows.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      # Only what the site actually pulls. Add paths here if build.mjs ever
+      # fetches more from this repo, or the site will silently go stale again.
+      - 'docs/faq.md'
+  workflow_dispatch:
+
+jobs:
+  trigger-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger a Cloudflare Pages deploy
+        env:
+          HOOK: ${{ secrets.CF_PAGES_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "CF_PAGES_DEPLOY_HOOK secret not set — skipping the site rebuild."
+            exit 0
+          fi
+          # -f so a non-2xx fails the job: a silently ignored hook would put us
+          # right back to a stale FAQ with nothing to show for it.
+          code=$(curl -fsS -X POST "$HOOK" -o /dev/null -w '%{http_code}')
+          echo "Cloudflare Pages deploy hook returned HTTP $code"
