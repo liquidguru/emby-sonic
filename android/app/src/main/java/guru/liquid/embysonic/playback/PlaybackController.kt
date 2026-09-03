@@ -327,6 +327,7 @@ class PlaybackController @Inject constructor(
     private var lastCastPositionMs: Long = C.TIME_UNSET
     private var castVolume = CastVolumeState()
     private var castVolumeController: ((Float) -> Unit)? = null
+    private var castMuteController: ((Boolean) -> Unit)? = null
     private var castVolumeJob: Job? = null
     private var castVolumePendingTarget: Float? = null
     private var castVolumePendingUntilMs: Long = 0L
@@ -501,6 +502,30 @@ class PlaybackController @Inject constructor(
         castVolumeController = controller
     }
 
+    fun setCastMuteController(controller: ((Boolean) -> Unit)?) {
+        castMuteController = controller
+    }
+
+    /**
+     * True when [player] is the Cast player, i.e. audio is leaving the phone. The
+     * media session uses this to decide whether to publish a remote volume
+     * provider for the hardware volume keys — see [RemoteVolumePlayer].
+     */
+    fun isRemotePlayer(player: Player): Boolean = castPlayer != null && player === castPlayer
+
+    /**
+     * Mute is not debounced the way volume is: it is a single discrete change, so
+     * there is nothing to coalesce, and the receiver echoes it back through
+     * [onCastVolumeChanged] anyway.
+     */
+    fun setCastMuted(muted: Boolean) {
+        if (!castVolume.available) return
+        if (castVolume.muted == muted) return
+        castVolume = castVolume.copy(muted = muted)
+        publishCastVolumeState()
+        castMuteController?.invoke(muted)
+    }
+
     fun setCastVolume(volume: Float) {
         if (!castVolume.available) return
         val normalized = volume.coerceIn(0f, 1f)
@@ -522,8 +547,9 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    fun onCastVolumeChanged(volume: Double?, deviceName: String?) {
+    fun onCastVolumeChanged(volume: Double?, deviceName: String?, muted: Boolean? = null) {
         val normalized = volume?.toFloat()?.coerceIn(0f, 1f) ?: return
+        val isMuted = muted ?: castVolume.muted
         val pendingTarget = castVolumePendingTarget
         if (
             pendingTarget != null &&
@@ -533,6 +559,7 @@ class PlaybackController @Inject constructor(
             castVolume = castVolume.copy(
                 deviceName = deviceName ?: castVolume.deviceName,
                 pending = true,
+                muted = isMuted,
             )
             publishCastVolumeState()
             return
@@ -544,6 +571,7 @@ class PlaybackController @Inject constructor(
             volume = normalized,
             deviceName = deviceName,
             pending = false,
+            muted = isMuted,
         )
         publishCastVolumeState()
     }

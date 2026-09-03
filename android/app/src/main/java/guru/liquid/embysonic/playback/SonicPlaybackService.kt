@@ -72,7 +72,11 @@ class SonicPlaybackService : MediaLibraryService() {
     lateinit var settings: SettingsRepository
 
     private var mediaSession: MediaLibrarySession? = null
-    private var sessionPlayer: AvrcpDurationPlayer? = null
+    private var sessionPlayer: Player? = null
+
+    // Non-null only while casting. Held separately because the receiver's volume
+    // has to be pushed into the session's volume provider by hand.
+    private var remoteVolumePlayer: RemoteVolumePlayer? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -228,6 +232,17 @@ class SonicPlaybackService : MediaLibraryService() {
                 .distinctUntilChanged()
                 .collect { mediaSession?.setCustomLayout(buildCustomLayout()) }
         }
+        // Keep the session's remote volume provider showing the receiver's real
+        // level. CastPlayer never emits onDeviceVolumeChanged, so without this the
+        // provider would still report whatever it read when casting started —
+        // wrong after the in-app slider, another phone, or the TV remote moved it,
+        // and the next key press would then jump from that stale value.
+        serviceScope.launch {
+            playback.state
+                .map { it.castVolume }
+                .distinctUntilChanged()
+                .collect { remoteVolumePlayer?.notifyVolumeChanged() }
+        }
         // Hold the foreground service for the duration of a cast — see
         // startCastForegroundKeeper for why nothing else does.
         serviceScope.launch {
@@ -275,6 +290,7 @@ class SonicPlaybackService : MediaLibraryService() {
         mediaSession?.release()
         mediaSession = null
         sessionPlayer = null
+        remoteVolumePlayer = null
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -396,14 +412,32 @@ class SonicPlaybackService : MediaLibraryService() {
             }
     }
 
-    private fun sessionPlayerFor(player: Player): AvrcpDurationPlayer =
-        AvrcpDurationPlayer(
+    /**
+     * Wraps the active player for the media session. While casting it gets a
+     * second wrapper that publishes a working remote volume provider, which is
+     * what makes the hardware volume keys reach the receiver — see
+     * [RemoteVolumePlayer] for why Media3's CastPlayer needs the help.
+     */
+    private fun sessionPlayerFor(player: Player): Player {
+        val timed = AvrcpDurationPlayer(
             player = player,
             fallbackDurationMs = { playback.currentMetadataDurationMs() },
             positionMs = { playback.currentSessionPositionMs() },
             bufferedPositionMs = { playback.currentSessionBufferedPositionMs() },
             onSeekToMs = playback::seekTo,
         )
+        if (!playback.isRemotePlayer(player)) {
+            remoteVolumePlayer = null
+            return timed
+        }
+        return RemoteVolumePlayer(
+            player = timed,
+            currentVolume = { playback.state.value.castVolume.volume },
+            currentMuted = { playback.state.value.castVolume.muted },
+            onSetVolume = playback::setCastVolume,
+            onSetMuted = playback::setCastMuted,
+        ).also { remoteVolumePlayer = it }
+    }
 
     private suspend fun childrenFor(parentId: String): List<MediaItem> =
         when (parentId) {

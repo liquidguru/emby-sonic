@@ -35,6 +35,7 @@ data class CastVolumeState(
     val volume: Float = 1f,
     val deviceName: String? = null,
     val pending: Boolean = false,
+    val muted: Boolean = false,
 )
 
 enum class OfflinePrefetchStatus {

@@ -120,6 +120,7 @@ class CastManager @Inject constructor(
         castContext = ctx
         ctx.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
         playback.setCastVolumeController(::setCastVolume)
+        playback.setCastMuteController(::setCastMuted)
         // Not CastPlayer(ctx): the stock converter throws on a queue item that
         // carries no custom data, which a mid-queue removal produces. See
         // SafeMediaItemConverter.
@@ -183,7 +184,8 @@ class CastManager @Inject constructor(
         val deviceName = runCatching {
             session.castDevice?.friendlyName ?: session.castDevice?.modelName
         }.getOrNull()
-        playback.onCastVolumeChanged(volume = volume, deviceName = deviceName)
+        val muted = runCatching { session.isMute }.getOrNull()
+        playback.onCastVolumeChanged(volume = volume, deviceName = deviceName, muted = muted)
     }
 
     private fun setCastVolume(volume: Float) {
@@ -197,6 +199,16 @@ class CastManager @Inject constructor(
                 Log.w(TAG, "Cast volume update failed", it)
                 playback.onCastVolumeSetFailed()
             }
+    }
+
+    private fun setCastMuted(muted: Boolean) {
+        val session = volumeSession ?: castContext?.sessionManager?.currentCastSession
+        if (session == null) {
+            playback.onCastVolumeUnavailable()
+            return
+        }
+        runCatching { session.setMute(muted) }
+            .onFailure { Log.w(TAG, "Cast mute update failed", it) }
     }
 
     private fun playServicesAvailable(context: Context): Boolean =
