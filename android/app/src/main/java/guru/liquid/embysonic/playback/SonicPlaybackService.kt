@@ -241,7 +241,12 @@ class SonicPlaybackService : MediaLibraryService() {
             playback.state
                 .map { it.castVolume }
                 .distinctUntilChanged()
-                .collect { remoteVolumePlayer?.notifyVolumeChanged() }
+                // Only while the receiver's volume is actually known. Disconnecting
+                // resets this to its 1.0 default *before* the player swaps back to
+                // local, so without the guard the last thing pushed to the session
+                // is a spurious "volume is now 100%" — visible as the cast volume
+                // flashing to full in the system UI on the way out.
+                .collect { volume -> if (volume.available) remoteVolumePlayer?.notifyVolumeChanged() }
         }
         // Hold the foreground service for the duration of a cast — see
         // startCastForegroundKeeper for why nothing else does.
