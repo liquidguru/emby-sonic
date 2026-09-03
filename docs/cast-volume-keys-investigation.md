@@ -191,6 +191,19 @@ directions, behaviour across suspend/resume, return to local volume after
 disconnect, and the `dumpsys media_session` reading. Those need a deliberate pass
 against the list above before this is called done.
 
+One criterion above is simply wrong and should be read as aspirational: **lint
+does not pass on this project and did not before this change either.**
+`:app:lintRelease` reports *30 errors, 65 warnings* on beta.39 and reports the
+identical 30 errors, 65 warnings on the commit immediately before it (verified by
+running it against both in separate worktrees). Almost all are
+`UnsafeOptInUsageError` from Media3's `@UnstableApi`, plus one `NewApi` and one
+`WrongConstant`. So lint is useful here only as a *differential* check — compare
+the count against the previous commit — until someone does a dedicated pass or
+adopts a baseline file. Treating "lint passes" as a release gate would block every
+release, and treating a green run as required would tempt someone into a
+scattergun opt-in annotation sweep across the playback code, which is a worse
+trade than the warnings.
+
 ## References
 
 - [Google Cast Android sender integration — volume control](https://developers.google.com/cast/docs/android_sender/integrate#volume_control)
