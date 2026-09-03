@@ -1,6 +1,10 @@
 # Cast volume keys investigation
 
-**Status:** Confirmed Android bug, intentionally deferred while the first Google Play submission is under review.
+**Status: FIXED in beta.39** by the adapter route
+(`playback/RemoteVolumePlayer.kt`), not the Media3 upgrade this document
+originally ranked first. See "Resolution" at the end. The analysis below is kept
+as written because it diagnosed the cause correctly and the reasoning still
+explains *why* the fix looks the way it does.
 
 > **Update, beta.34.** A separate Cast crash in the same area was fixed **without** the Media3
 > upgrade, by supplying a small custom `MediaItemConverter` to `CastPlayer` (see
@@ -145,6 +149,47 @@ video Cast receiver.
   longer reports liquidWave as `controlType=FIXED, max=0`.
 - `./gradlew :app:assembleDebug` and `./gradlew :app:lintDebug` pass from
   `android/`.
+
+## Resolution (beta.39)
+
+Fixed by the **fallback adapter**, `playback/RemoteVolumePlayer.kt` — a
+`ForwardingPlayer` wrapped around the session player *only while casting*. It
+implements points 1–5 of the fallback plan above. Media3 was **not** upgraded.
+
+The adapter won on containment. A Media3 bump touches local playback, the media
+notification, Android Auto and the playback service all at once; this touches the
+Cast path and nothing else, which is the right shape of risk for a closed beta
+with testers on the 14-day clock.
+
+Two things found while building it that are not obvious from the analysis above:
+
+- **`CastPlayer`'s device-volume methods are not merely unimplemented, they are
+  empty method bodies.** `getDeviceVolume()` compiles to `iconst_0 / ireturn`;
+  `setDeviceVolume(int, int)` and `increaseDeviceVolume(int)` compile to a bare
+  `return`. So overriding the command set alone would not have been enough — the
+  calls had to be intercepted before they reached `CastPlayer`.
+
+- **Media3's session reads the command set from the *argument* of
+  `onAvailableCommandsChanged`, not from the player.** So the added commands are
+  dropped from what the session advertises to `MediaController` clients whenever
+  CastPlayer emits that event. This is cosmetic — the volume provider is built
+  from `PlayerWrapper.createVolumeProviderCompat()` and its presses are gated by
+  `PlayerWrapper.isCommandAvailable()`, both of which call the player directly —
+  and it is documented in the class. Patching it would mean wrapping every
+  registered listener, and `Player.Listener` is a Java interface of ~30 default
+  methods that Kotlin's `by` delegation generates **no** forwarders for. A
+  wrapper written that way compiles and silently swallows every callback it does
+  not name; that was caught with `javap` on the compiled class, not by the
+  compiler.
+
+### Acceptance criteria still outstanding
+
+Confirmed on a Pixel 8 Pro: the keys move the receiver while casting, and the
+remote→local handoff still restores the queue position. **Not yet confirmed:**
+lock screen and backgrounded operation, slider/key synchronisation in both
+directions, behaviour across suspend/resume, return to local volume after
+disconnect, and the `dumpsys media_session` reading. Those need a deliberate pass
+against the list above before this is called done.
 
 ## References
 
