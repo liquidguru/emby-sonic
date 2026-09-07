@@ -61,6 +61,7 @@ data class HomeUiState(
     val playlists: List<LibraryItem> = emptyList(),
     val sonicMixes: List<LibraryItem> = emptyList(),
     val recentAlbums: List<LibraryItem> = emptyList(),
+    val recentAudiobooks: List<LibraryItem> = emptyList(),
     val artists: List<LibraryItem> = emptyList(),
     val genres: List<LibraryItem> = emptyList(),
     val downloads: List<LibraryItem> = emptyList(),
@@ -74,6 +75,7 @@ enum class HomeSectionKind(val id: String, val label: String) {
     PLAYLISTS("playlists", "Playlists"),
     SONIC_MIXES("sonic_mixes", "Sonic mixes"),
     RECENT_ALBUMS("recent_albums", "Recently added albums"),
+    RECENT_AUDIOBOOKS("recent_audiobooks", "Recently added audiobooks"),
     ARTISTS("artists", "Artists");
 
     companion object {
@@ -85,6 +87,7 @@ enum class HomeSectionKind(val id: String, val label: String) {
             PLAYLISTS,
             SONIC_MIXES,
             RECENT_ALBUMS,
+            RECENT_AUDIOBOOKS,
             ARTISTS,
         )
 
@@ -299,6 +302,16 @@ class HomeViewModel @Inject constructor(
                     _state.update { it.copy(recentAlbums = items) }
                 }
                 async {
+                    // Audiobooks are MusicAlbums inside the audiobook library — the
+                    // same shape as a music album, which is why resumeAudiobooks
+                    // resolves a book through its chapters' albumId. So the recently
+                    // added query works unchanged; only the library id differs.
+                    val items = section {
+                        audiobookLibrary?.let { repository.recentlyAddedAlbums(it.id, HOME_SECTION_LIMIT) }.orEmpty()
+                    }
+                    _state.update { it.copy(recentAudiobooks = items) }
+                }
+                async {
                     val items = section {
                         musicLibrary?.let { repository.artists(it.id).take(HOME_SECTION_LIMIT) }.orEmpty()
                     }
@@ -339,6 +352,7 @@ class HomeViewModel @Inject constructor(
             playlists.isEmpty() &&
             sonicMixes.isEmpty() &&
             recentAlbums.isEmpty() &&
+            recentAudiobooks.isEmpty() &&
             artists.isEmpty() &&
             downloads.isEmpty()
 

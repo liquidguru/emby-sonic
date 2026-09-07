@@ -386,6 +386,14 @@ private fun HomeContent(
                         onClick = { onOpenItem(it.id, it.title, DetailKind.ALBUM_TRACKS) },
                         onPlay = onPlayAlbum,
                     )
+                    HomeSectionKind.RECENT_AUDIOBOOKS -> HomeSectionData(
+                        items = state.recentAudiobooks,
+                        onClick = { onOpenItem(it.id, it.title, DetailKind.BOOK_CHAPTERS) },
+                        // Despite the name this is just "play this book": it starts at
+                        // the stored position if there is one and at chapter one if
+                        // there isn't, which is what a newly added book needs.
+                        onPlay = onPlayResumeAudiobook,
+                    )
                     HomeSectionKind.ARTISTS -> HomeSectionData(
                         items = state.artists,
                         onClick = { onOpenItem(it.id, it.title, DetailKind.ARTIST_ALBUMS) },
@@ -418,6 +426,7 @@ private fun HomeContent(
             state.playlists.isEmpty() &&
             state.sonicMixes.isEmpty() &&
             state.recentAlbums.isEmpty() &&
+            state.recentAudiobooks.isEmpty() &&
             state.artists.isEmpty() &&
             state.downloads.isEmpty()
         ) {
