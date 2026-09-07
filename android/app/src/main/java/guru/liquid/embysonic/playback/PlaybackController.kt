@@ -2006,6 +2006,38 @@ class PlaybackController @Inject constructor(
     private fun PlaybackTrack.absolutePosition(index: Int, playerPositionMs: Long): Long =
         (streamOffsetsByIndex[index] ?: 0L) + playerPositionMs
 
+    /**
+     * Tells Emby the current stream session for [index] is finished, so it reaps
+     * that PlaySessionId's transcode instead of leaving it running.
+     *
+     * Deliberately narrower than [reportStopped], which is for playback actually
+     * ending: that one also marks the track played when it's near the end and
+     * writes a resume position. Neither is right mid-seek — seeking from the last
+     * minute of a book would mark it finished. This only closes the server job.
+     *
+     * Reports the position being seeked TO rather than away from: the new session
+     * reports progress there within a second anyway, and if the app dies in that
+     * gap it's better for resume to land where the user asked to be.
+     */
+    private fun retireStreamSession(index: Int, track: PlaybackTrack, positionMs: Long) {
+        val staleSessionId = playSessionIdsByIndex[index] ?: return
+        val queueSize = queue.size
+        scope.launch {
+            runCatching {
+                embyApi.reportPlaybackStopped(
+                    PlaybackReportDto(
+                        itemId = track.id,
+                        positionTicks = positionMs.msToTicks(),
+                        playSessionId = staleSessionId,
+                        isPaused = true,
+                        playlistIndex = index,
+                        playlistLength = queueSize,
+                    ),
+                )
+            }
+        }
+    }
+
     /** Reopens the stream at [positionMs] via `/stream?StartTimeTicks=` (server-side seek). */
     private fun seekViaStreamOffset(index: Int, track: PlaybackTrack, positionMs: Long) {
         val nextOffset = positionMs.coerceAtLeast(0)
@@ -2015,6 +2047,17 @@ class PlaybackController @Inject constructor(
         // — audio keeps coming from the old position while the position counter
         // shows the seek target. A fresh id forces a new job that honours the
         // offset (verified against Emby 4.10 for wma/mp3/m4b sources).
+        //
+        // Retiring the OLD id first is what stops that from leaking. Emby keeps
+        // one transcode per PlaySessionId, so abandoning an id abandons its
+        // ffmpeg: the job keeps running, pinned to a core, with nothing reading
+        // it. Every seek left one behind. Audiobooks always land here — long-form
+        // forces needsServerSeek for anything streamed — so a book burned a fresh
+        // transcode per scrub: twelve against one m4b in forty seconds on
+        // 2026-09-07, five of which outlived the session and held all four cores
+        // for twelve minutes. Music mostly escaped it, needing to be both
+        // transcoded and unseekable to reach this path at all.
+        retireStreamSession(index = index, track = track, positionMs = nextOffset)
         playSessionIdsByIndex[index] = UUID.randomUUID().toString()
         streamOffsetsByIndex[index] = nextOffset
         player.replaceMediaItem(
