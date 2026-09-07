@@ -242,7 +242,9 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text("Back", style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // FlowRow, not Row: six chips overflow a phone width and the last
+                    // one gets squeezed to one character per line ("6 0 s").
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SettingsRepository.SKIP_SECONDS_OPTIONS.forEach { seconds ->
                             FilterChip(
                                 selected = state.skipBackSeconds == seconds,
@@ -252,7 +254,7 @@ fun SettingsScreen(
                         }
                     }
                     Text("Forward", style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SettingsRepository.SKIP_SECONDS_OPTIONS.forEach { seconds ->
                             FilterChip(
                                 selected = state.skipForwardSeconds == seconds,

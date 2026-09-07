@@ -5,6 +5,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +22,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -81,9 +85,15 @@ object SliderTrackProgress : TrackProgress {
         compact: Boolean,
     ) {
         val duration = state.durationMs.coerceAtLeast(0)
-        val fraction = remember(state.positionMs, duration) {
+        // Null unless a drag is in progress; while scrubbing it overrides the
+        // played fraction so the bar tracks the finger instead of the playhead.
+        var scrubFraction by remember { mutableStateOf<Float?>(null) }
+        val playedFraction = remember(state.positionMs, duration) {
             if (duration <= 0) 0f else (state.positionMs.toFloat() / duration).coerceIn(0f, 1f)
         }
+        val fraction = scrubFraction ?: playedFraction
+        // The times follow the bar, so you can see where you'll land before letting go.
+        val shownPosition = scrubFraction?.let { (duration * it).toLong() } ?: state.positionMs
         val barHeight = if (compact) 6.dp else 12.dp
         val timeStyle = if (compact) {
             MaterialTheme.typography.labelSmall
@@ -108,6 +118,14 @@ object SliderTrackProgress : TrackProgress {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(if (compact) 18.dp else 30.dp)
+                        // Two gesture detectors, deliberately separate. Tap jumps
+                        // straight to a spot; drag scrubs with live feedback and only
+                        // commits on release. Before this, drag was handled by the tap
+                        // detector alone — which waits for the finger to lift and
+                        // ignores everything in between, so a drag silently became a
+                        // tap wherever you happened to let go, with the bar frozen the
+                        // whole way. It also meant one seek per attempt on a bar worth
+                        // ~a minute of audio per pixel on a long book.
                         .pointerInput(duration) {
                             detectTapGestures { offset ->
                                 if (duration > 0) {
@@ -115,6 +133,27 @@ object SliderTrackProgress : TrackProgress {
                                     onSeek((duration * next).toLong())
                                 }
                             }
+                        }
+                        .pointerInput(duration) {
+                            if (duration <= 0) return@pointerInput
+                            detectHorizontalDragGestures(
+                                onDragStart = { offset ->
+                                    scrubFraction = (offset.x / size.width).coerceIn(0f, 1f)
+                                },
+                                onHorizontalDrag = { change, _ ->
+                                    change.consume()
+                                    scrubFraction =
+                                        (change.position.x / size.width).coerceIn(0f, 1f)
+                                },
+                                // Commit once, on release — not per drag event. A seek
+                                // can be expensive (a transcoded source restarts the
+                                // stream), and scrubbing fires these continuously.
+                                onDragEnd = {
+                                    scrubFraction?.let { onSeek((duration * it).toLong()) }
+                                    scrubFraction = null
+                                },
+                                onDragCancel = { scrubFraction = null },
+                            )
                         },
                     contentAlignment = Alignment.CenterStart,
                 ) {
@@ -138,8 +177,8 @@ object SliderTrackProgress : TrackProgress {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(formatTime(state.positionMs), style = timeStyle)
-                    Text("-${formatTime((duration - state.positionMs).coerceAtLeast(0))}", style = timeStyle)
+                    Text(formatTime(shownPosition), style = timeStyle)
+                    Text("-${formatTime((duration - shownPosition).coerceAtLeast(0))}", style = timeStyle)
                 }
             }
         }
