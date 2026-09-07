@@ -37,6 +37,8 @@ data class SettingsUiState(
     val crossfadeTrimEdges: Boolean = true,
     val volumeNormalizationEnabled: Boolean = true,
     val prefetchAheadCount: Int = 3,
+    val skipBackSeconds: Int = 15,
+    val skipForwardSeconds: Int = 30,
     val generatedMixTracks: Int = 25,
     val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,
     val isCasting: Boolean = false,
@@ -67,6 +69,8 @@ class SettingsViewModel @Inject constructor(
                 crossfadeSeconds = snap.crossfadeDurationMs / 1000,
                 volumeNormalizationEnabled = snap.volumeNormalizationEnabled,
                 prefetchAheadCount = snap.prefetchAheadCount,
+                skipBackSeconds = snap.skipBackSeconds,
+                skipForwardSeconds = snap.skipForwardSeconds,
                 generatedMixTracks = snap.generatedMixTracks,
                 themeChoice = snap.themeChoice,
             )
@@ -107,6 +111,16 @@ class SettingsViewModel @Inject constructor(
     fun setPrefetchAheadCount(value: Int) {
         _state.update { it.copy(prefetchAheadCount = value) }
         viewModelScope.launch { settings.setPrefetchAheadCount(value) }
+    }
+
+    fun setSkipBackSeconds(value: Int) {
+        _state.update { it.copy(skipBackSeconds = value) }
+        viewModelScope.launch { settings.setSkipBackSeconds(value) }
+    }
+
+    fun setSkipForwardSeconds(value: Int) {
+        _state.update { it.copy(skipForwardSeconds = value) }
+        viewModelScope.launch { settings.setSkipForwardSeconds(value) }
     }
 
     fun setGeneratedMixTracks(count: Int) {

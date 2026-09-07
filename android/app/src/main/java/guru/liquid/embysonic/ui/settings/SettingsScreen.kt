@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.data.settings.ThemeChoice
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -225,6 +226,40 @@ fun SettingsScreen(
                             onCheckedChange = viewModel::setVolumeNormalizationEnabled,
                             enabled = backendAvailable,
                         )
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Audiobook skip buttons", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "How far the back and forward buttons jump on the Now Playing screen. They only appear for audiobooks. The two default to different amounts on purpose — back is usually for catching a line you missed, forward for stepping over something.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text("Back", style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SettingsRepository.SKIP_SECONDS_OPTIONS.forEach { seconds ->
+                            FilterChip(
+                                selected = state.skipBackSeconds == seconds,
+                                onClick = { viewModel.setSkipBackSeconds(seconds) },
+                                label = { Text("${seconds}s") },
+                            )
+                        }
+                    }
+                    Text("Forward", style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SettingsRepository.SKIP_SECONDS_OPTIONS.forEach { seconds ->
+                            FilterChip(
+                                selected = state.skipForwardSeconds == seconds,
+                                onClick = { viewModel.setSkipForwardSeconds(seconds) },
+                                label = { Text("${seconds}s") },
+                            )
+                        }
                     }
                 }
             }

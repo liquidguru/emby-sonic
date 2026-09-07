@@ -62,6 +62,7 @@ class NowPlayingViewModel @Inject constructor(
     fun seekTo(positionMs: Long) = playback.seekTo(positionMs)
     fun skipPrevious() = playback.skipPrevious()
     fun skipNext() = playback.skipNext()
+    fun skipBy(deltaMs: Long) = playback.skipBy(deltaMs)
     fun seekToQueueIndex(index: Int) = playback.seekToQueueIndex(index)
     fun moveQueueItem(fromIndex: Int, toIndex: Int) = playback.moveQueueItem(fromIndex, toIndex)
     fun removeQueueItem(index: Int) = playback.removeQueueItem(index)

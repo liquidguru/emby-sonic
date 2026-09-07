@@ -320,6 +320,8 @@ class PlaybackController @Inject constructor(
     private var sleepTimerEndsAtMs: Long = 0L
     private var sleepTimerFiring = false
     private var audiobookSpeed: Float = settings.snapshot().audiobookSpeed
+    private var skipBackSeconds: Int = settings.snapshot().skipBackSeconds
+    private var skipForwardSeconds: Int = settings.snapshot().skipForwardSeconds
     private var guestDjEnabled = false
     private var guestDjLoading = false
     private var guestDjAttemptSignature: String? = null
@@ -414,6 +416,22 @@ class PlaybackController @Inject constructor(
                 .collect { speed ->
                     audiobookSpeed = speed
                     applyPlaybackSpeed()
+                    publishState()
+                }
+        }
+        scope.launch {
+            settings.skipBackSeconds
+                .distinctUntilChanged()
+                .collect { seconds ->
+                    skipBackSeconds = seconds
+                    publishState()
+                }
+        }
+        scope.launch {
+            settings.skipForwardSeconds
+                .distinctUntilChanged()
+                .collect { seconds ->
+                    skipForwardSeconds = seconds
                     publishState()
                 }
         }
@@ -1112,8 +1130,11 @@ class PlaybackController @Inject constructor(
         // once READY — before that every stream looks unseekable.
         // A downloaded file is local and seekable, so seek it in-player even when
         // it's long-form (server-side seeking only applies to streamed content).
+        // Long-form served statically is seekable like a local file, so it seeks in
+        // the player too — that's what makes a seek instant instead of a transcode
+        // restart, and what the skip buttons depend on.
         val needsServerSeek = activePlayerRef === this.player && track != null &&
-            !downloadStore.isTrackDownloaded(track.id) && (
+            !downloadStore.isTrackDownloaded(track.id) && !track.seeksInPlayer && (
             track.isLongForm ||
                 (player.playbackState == Player.STATE_READY && !player.isCurrentMediaItemSeekable)
             )
@@ -1135,6 +1156,29 @@ class PlaybackController @Inject constructor(
         publishState()
         reportProgress(lastReportedState, force = true, eventName = "TimeUpdate")
         persistSession()
+    }
+
+    /**
+     * Nudge the current track by [deltaMs], clamped to its bounds. Used by the
+     * audiobook skip buttons.
+     *
+     * Goes through [seekTo], so it inherits whichever seek path the track uses —
+     * instant in-player for a directly-streamed book, server-side for a transcoded
+     * one. Clamping to the track rather than crossing into the next one is
+     * deliberate: skipping back at the start of chapter four should land at the
+     * start of chapter four, not somewhere in chapter three.
+     */
+    fun skipBy(deltaMs: Long) {
+        if (queue.isEmpty()) return
+        val player = activePlayerRef
+        val index = player.currentMediaItemIndex.coerceAtLeast(0)
+        val current = queue.getOrNull(index)?.absolutePosition(index, player.currentPosition.coerceAtLeast(0L))
+            ?: return
+        val duration = state.value.durationMs.takeIf { it > 0L }
+        val target = (current + deltaMs).coerceAtLeast(0L).let {
+            if (duration != null) it.coerceAtMost(duration) else it
+        }
+        seekTo(target)
     }
 
     fun skipPrevious() {
@@ -1406,9 +1450,14 @@ class PlaybackController @Inject constructor(
         val localUri = downloadStore.localUri(track.id)
             ?: if (startOffsetMs == 0L && !track.isLongForm) prefetchCache.cachedUri(track.id) else null
 
+        val remoteUri = if (track.seeksInPlayer) {
+            staticStreamUrl(track.id, playbackSessionId)
+        } else {
+            streamUrl(track.id, startOffsetMs, playbackSessionId)
+        }
         return MediaItem.Builder()
             .setMediaId(track.id)
-            .setUri(localUri ?: Uri.parse(streamUrl(track.id, startOffsetMs, playbackSessionId)))
+            .setUri(localUri ?: Uri.parse(remoteUri))
             .setMediaMetadata(metadata)
             .build()
     }
@@ -1471,6 +1520,31 @@ class PlaybackController @Inject constructor(
                 .appendQueryParameter("StartTimeTicks", startOffsetMs.msToTicks().toString())
         }
         return builder.build().toString()
+    }
+
+    /**
+     * The original file, unmodified, with byte-range support — no transcode and no
+     * `StartTimeTicks`. The player seeks it directly, so this URL never changes for
+     * the life of the item and a seek costs one range request.
+     *
+     * Deliberately minimal: with `Static=true` Emby ignores the transcoding
+     * parameters, and sending them anyway invites a future reader to think they do
+     * something here.
+     */
+    private fun staticStreamUrl(itemId: String, playbackSessionId: String): String {
+        val snap = settings.snapshot()
+        val base = snap.serverUrl?.trimEnd('/')
+            ?: throw IllegalStateException("No Emby server configured")
+        val userId = snap.userId?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Not signed in")
+        return Uri.parse("$base/Audio/${Uri.encode(itemId)}/stream")
+            .buildUpon()
+            .appendQueryParameter("UserId", userId)
+            .appendQueryParameter("Static", "true")
+            .appendQueryParameter("MediaSourceId", "mediasource_$itemId")
+            .appendQueryParameter("PlaySessionId", playbackSessionId)
+            .build()
+            .toString()
     }
 
     private fun castStreamUrl(itemId: String, playbackSessionId: String): String {
@@ -1622,6 +1696,8 @@ class PlaybackController @Inject constructor(
             sleepTimerMode = sleepTimerMode,
             sleepTimerRemainingMs = sleepTimerRemainingMs(),
             audiobookSpeed = audiobookSpeed,
+            skipBackSeconds = skipBackSeconds,
+            skipForwardSeconds = skipForwardSeconds,
             guestDjEnabled = guestDjEnabled,
             guestDjAvailable = currentTrack?.guestDjEligible == true && player.repeatMode == Player.REPEAT_MODE_OFF,
             guestDjLoading = guestDjLoading,
@@ -1995,10 +2071,44 @@ class PlaybackController @Inject constructor(
             ContentKind.UNKNOWN -> (durationMs ?: 0L) >= LONG_FORM_MIN_DURATION_MS
         }
 
+    /**
+     * True when Emby can hand us the original file and the player can seek it
+     * itself — so we ask for `Static=true` and never involve the server in a seek.
+     *
+     * Only long-form takes this route. Music already streams fine and its seeks
+     * are cheap, so there's no reason to widen the blast radius.
+     *
+     * Why it matters: seeking a *transcoded* stream costs a full server round trip,
+     * because Emby keys a transcode to its start offset and ExoPlayer marks the
+     * chunked result unseekable. On a 14-hour audiobook that meant every scrub
+     * re-encoded from the new position — seconds of silence per attempt, and the
+     * reason a ±15s button was unusable before this. Served statically, Emby
+     * answers byte ranges (verified: a range request 700 MB into an m4b returns
+     * 206 immediately), so a seek is one HTTP request and no transcode at all.
+     *
+     * Fails safe: an unknown container means "assume transcoding" and keep the
+     * server-offset path, matching willTranscode's rule.
+     */
+    private val PlaybackTrack.streamsDirectly: Boolean
+        get() {
+            val known = container?.trim()?.lowercase() ?: return false
+            return known in DIRECT_PLAY_CONTAINERS
+        }
+
+    /** Long-form we can serve whole and seek in the player, like a download. */
+    private val PlaybackTrack.seeksInPlayer: Boolean
+        get() = isLongForm && streamsDirectly
+
     private fun PlaybackTrack.streamStartOffset(): Long =
         // A downloaded file is a normal seekable local file: no server-side offset;
         // the resume position is applied by the player instead (playerStartPosition).
-        if (isLongForm && !downloadStore.isTrackDownloaded(id)) resumePositionForPlayback() else 0L
+        // A directly-streamable long-form source behaves the same way — that's the
+        // whole point of serving it statically.
+        if (isLongForm && !downloadStore.isTrackDownloaded(id) && !streamsDirectly) {
+            resumePositionForPlayback()
+        } else {
+            0L
+        }
 
     private fun PlaybackTrack.playerStartPosition(index: Int): Long =
         resumePositionForPlayback() - (streamOffsetsByIndex[index] ?: 0L)

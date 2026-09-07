@@ -96,6 +96,10 @@ data class PlaybackUiState(
     val sleepTimerMode: SleepTimerMode = SleepTimerMode.OFF,
     val sleepTimerRemainingMs: Long = 0,
     val audiobookSpeed: Float = 1f,
+    // Skip-button jump sizes, surfaced so the buttons can label themselves with the
+    // user's configured values rather than hardcoding 15/30.
+    val skipBackSeconds: Int = 15,
+    val skipForwardSeconds: Int = 30,
     val guestDjEnabled: Boolean = false,
     val guestDjAvailable: Boolean = false,
     val guestDjLoading: Boolean = false,

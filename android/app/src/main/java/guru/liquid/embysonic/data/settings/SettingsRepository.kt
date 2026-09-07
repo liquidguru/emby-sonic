@@ -62,6 +62,8 @@ class SettingsRepository @Inject constructor(
         val DOWNLOAD_WIFI_ONLY = booleanPreferencesKey("download_wifi_only")
         val VOLUME_NORMALIZATION = booleanPreferencesKey("volume_normalization")
         val PREFETCH_COUNT = intPreferencesKey("prefetch_count")
+        val SKIP_BACK_SECONDS = intPreferencesKey("skip_back_seconds")
+        val SKIP_FORWARD_SECONDS = intPreferencesKey("skip_forward_seconds")
         val GENERATED_MIX_TRACKS = intPreferencesKey("generated_mix_tracks")
         val AUDIOBOOK_SPEED = floatPreferencesKey("audiobook_speed")
         val THEME_CHOICE = stringPreferencesKey("theme_choice")
@@ -239,6 +241,28 @@ class SettingsRepository @Inject constructor(
         refreshCache()
     }
 
+    /**
+     * How far the audiobook skip buttons jump. Separate values because the two
+     * directions are used for different things: back is for catching a line you
+     * missed (short), forward is for stepping over something (longer). Defaults of
+     * 15 back / 30 forward match what most audiobook apps settle on.
+     */
+    val skipBackSeconds: Flow<Int> =
+        context.dataStore.data.map { (it[Keys.SKIP_BACK_SECONDS] ?: DEFAULT_SKIP_BACK_SECONDS).coerceInSkip() }
+
+    val skipForwardSeconds: Flow<Int> =
+        context.dataStore.data.map { (it[Keys.SKIP_FORWARD_SECONDS] ?: DEFAULT_SKIP_FORWARD_SECONDS).coerceInSkip() }
+
+    suspend fun setSkipBackSeconds(value: Int) {
+        context.dataStore.edit { it[Keys.SKIP_BACK_SECONDS] = value.coerceInSkip() }
+        refreshCache()
+    }
+
+    suspend fun setSkipForwardSeconds(value: Int) {
+        context.dataStore.edit { it[Keys.SKIP_FORWARD_SECONDS] = value.coerceInSkip() }
+        refreshCache()
+    }
+
     suspend fun setGeneratedMixTracks(value: Int) {
         context.dataStore.edit { it[Keys.GENERATED_MIX_TRACKS] = value }
     }
@@ -294,6 +318,8 @@ class SettingsRepository @Inject constructor(
             downloadWifiOnly = this[Keys.DOWNLOAD_WIFI_ONLY] ?: true,
             volumeNormalizationEnabled = this[Keys.VOLUME_NORMALIZATION] ?: true,
             prefetchAheadCount = (this[Keys.PREFETCH_COUNT] ?: DEFAULT_PREFETCH_COUNT).coerceInPrefetch(),
+            skipBackSeconds = (this[Keys.SKIP_BACK_SECONDS] ?: DEFAULT_SKIP_BACK_SECONDS).coerceInSkip(),
+            skipForwardSeconds = (this[Keys.SKIP_FORWARD_SECONDS] ?: DEFAULT_SKIP_FORWARD_SECONDS).coerceInSkip(),
             generatedMixTracks = this[Keys.GENERATED_MIX_TRACKS] ?: DEFAULT_GENERATED_MIX_TRACKS,
             audiobookSpeed = (this[Keys.AUDIOBOOK_SPEED] ?: DEFAULT_AUDIOBOOK_SPEED).coerceInAudioSpeed(),
             themeChoice = ThemeChoice.fromKey(this[Keys.THEME_CHOICE]),
@@ -396,6 +422,9 @@ class SettingsRepository @Inject constructor(
         const val DEFAULT_AUDIOBOOK_SPEED = 1f
         const val DEFAULT_PREFETCH_COUNT = 3
         val PREFETCH_COUNT_OPTIONS = listOf(3, 5, 10, 15)
+        const val DEFAULT_SKIP_BACK_SECONDS = 15
+        const val DEFAULT_SKIP_FORWARD_SECONDS = 30
+        val SKIP_SECONDS_OPTIONS = listOf(5, 10, 15, 30, 45, 60)
     }
 }
 
@@ -405,3 +434,7 @@ private fun Float.coerceInAudioSpeed(): Float =
 private fun Int.coerceInPrefetch(): Int =
     SettingsRepository.PREFETCH_COUNT_OPTIONS.minByOrNull { kotlin.math.abs(it - this) }
         ?: SettingsRepository.DEFAULT_PREFETCH_COUNT
+
+private fun Int.coerceInSkip(): Int =
+    SettingsRepository.SKIP_SECONDS_OPTIONS.minByOrNull { kotlin.math.abs(it - this) }
+        ?: SettingsRepository.DEFAULT_SKIP_BACK_SECONDS

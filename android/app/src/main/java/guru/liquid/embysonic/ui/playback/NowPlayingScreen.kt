@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
@@ -73,6 +74,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -84,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -192,6 +195,7 @@ fun NowPlayingScreen(
                     onToggle = viewModel::togglePlayPause,
                     onPrevious = viewModel::skipPrevious,
                     onNext = viewModel::skipNext,
+                    onSkipBy = viewModel::skipBy,
                     onShuffleQueue = viewModel::shuffleQueue,
                     onCycleRepeat = viewModel::cycleRepeatMode,
                     onCancelSleepTimer = viewModel::cancelSleepTimer,
@@ -251,6 +255,7 @@ private fun PlayerContent(
     onToggle: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onSkipBy: (Long) -> Unit,
     onShuffleQueue: () -> Unit,
     onCycleRepeat: () -> Unit,
     onCancelSleepTimer: () -> Unit,
@@ -340,7 +345,7 @@ private fun PlayerContent(
             }
 
             Spacer(Modifier.height(if (compact) 12.dp else 8.dp))
-            TransportControls(state, onPrevious, onToggle, onNext)
+            TransportControls(state, onPrevious, onToggle, onNext, onSkipBy)
             Spacer(Modifier.height(8.dp))
             PlaybackModeControls(
                 state = state,
@@ -814,13 +819,45 @@ private fun NowPlayingArtwork(track: PlaybackTrack, artSize: Dp) {
     }
 }
 
+/**
+ * Back/forward nudge for audiobooks. The seconds are user-configurable, so the
+ * count is drawn as text inside a single reusable icon rather than using
+ * Material's fixed Replay5/10/30 icons — those only cover three of the six
+ * options, and a button labelled 30 that jumps 45 is worse than no icon at all.
+ */
+@Composable
+private fun SkipButton(seconds: Int, forward: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Default.Replay,
+                contentDescription = if (forward) "Forward $seconds seconds" else "Back $seconds seconds",
+                // The same circular-arrow glyph mirrored, so the pair reads as one
+                // control rather than two unrelated icons.
+                modifier = Modifier
+                    .size(36.dp)
+                    .scale(scaleX = if (forward) -1f else 1f, scaleY = 1f),
+            )
+            Text(
+                text = seconds.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 9.sp,
+            )
+        }
+    }
+}
+
 @Composable
 private fun TransportControls(
     state: PlaybackUiState,
     onPrevious: () -> Unit,
     onToggle: () -> Unit,
     onNext: () -> Unit,
+    onSkipBy: (Long) -> Unit,
 ) {
+    // Audiobooks only. On music these would crowd the row for something the
+    // progress bar already handles well at three-minute durations.
+    val showSkip = state.currentTrack?.contentKind == ContentKind.AUDIOBOOK
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -828,6 +865,11 @@ private fun TransportControls(
     ) {
         IconButton(onClick = onPrevious, enabled = state.hasPrevious || state.positionMs > 3000) {
             Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(42.dp))
+        }
+        if (showSkip) {
+            SkipButton(seconds = state.skipBackSeconds, forward = false) {
+                onSkipBy(-state.skipBackSeconds * 1000L)
+            }
         }
         IconButton(
             onClick = onToggle,
@@ -849,6 +891,11 @@ private fun TransportControls(
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(48.dp),
                 )
+            }
+        }
+        if (showSkip) {
+            SkipButton(seconds = state.skipForwardSeconds, forward = true) {
+                onSkipBy(state.skipForwardSeconds * 1000L)
             }
         }
         IconButton(onClick = onNext, enabled = state.hasNext) {

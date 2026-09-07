@@ -31,6 +31,10 @@ data class AppSettings(
     val volumeNormalizationEnabled: Boolean = true,
     // How many upcoming tracks to pre-cache for gap-free playback (3/5/10/15).
     val prefetchAheadCount: Int = 3,
+    // How far the audiobook skip buttons jump, in seconds. Asymmetric on purpose:
+    // back is for catching a line you missed, forward for stepping over something.
+    val skipBackSeconds: Int = 15,
+    val skipForwardSeconds: Int = 30,
     val generatedMixTracks: Int = 25,
     val audiobookSpeed: Float = 1f,
     val themeChoice: ThemeChoice = ThemeChoice.DEFAULT,
