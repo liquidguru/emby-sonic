@@ -473,5 +473,13 @@ notes are exactly what I'm after.
   and the track can restart — so they get a clean cut instead. The silence-trimming
   runs as part of a crossfade, so a skipped transition can also leave an audible gap.
   Improving that is on the list.
+- **Audiobooks: no skip buttons yet, and seeking is coarse.** There's no back/forward
+  15 seconds, and the progress bar is tap-only — no dragging. On a long book that's
+  painful: a 14-hour title works out at roughly a minute of audio per pixel, so landing
+  on the spot you wanted is largely luck. Each seek also asks the server to re-encode
+  from the new position, so it takes a moment to resume. **All three are being fixed
+  together in the next release** — playing the original file directly makes seeking
+  instant and local, which is what lets the skip buttons feel immediate rather than
+  sluggish. Until then, chaptered books are easier to navigate than single-file ones.
 
 Thanks again — your feedback shapes what ships. 🌊
