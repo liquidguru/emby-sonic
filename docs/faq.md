@@ -249,6 +249,10 @@ durable fix is a watchdog on the Emby host. There's one in the repo:
 
 # For real; suitable as a scheduled task every 15 minutes
 .\deploy\emby-transcode-watchdog.ps1 -ApiKey <your Emby API key> -Apply
+
+# Or just install it: every 15 minutes, key read from your .env at run time,
+# and it dry-runs first so a bad .env fails here instead of silently forever
+.\deploy\watchdog-install.ps1
 ```
 
 It asks Emby how many transcodes *should* be running, only considers ffmpeg
