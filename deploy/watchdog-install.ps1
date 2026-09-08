@@ -17,6 +17,10 @@
   layers used to administer these hosts remotely. Same reason the service
   installers in this folder exist.
 
+.PARAMETER EnvFile
+  The .env that sets EMBY_API_KEY. Defaults to the repo's own, one level above
+  this deploy folder.
+
 .EXAMPLE
   .\watchdog-install.ps1
   Installs with the repo's own .env, every 15 minutes.
@@ -26,7 +30,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$EnvFile = (Join-Path (Split-Path -Parent $PSScriptRoot) '.env'),
+    [string]$EnvFile,
     [string]$EmbyUrl = 'http://localhost:8096',
     [int]$IntervalMinutes = 15,
     [string]$TaskName = 'EmbyTranscodeWatchdog',
@@ -34,7 +38,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$script = Join-Path $PSScriptRoot 'emby-transcode-watchdog.ps1'
+# Not $PSScriptRoot in the param block: under Windows PowerShell it is EMPTY
+# while param defaults are evaluated, and this installer died on exactly that
+# line the first time it ran on liquidBee. Resolve here, where it is reliable.
+$here = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $EnvFile) { $EnvFile = Join-Path (Split-Path -Parent $here) '.env' }
+$script = Join-Path $here 'emby-transcode-watchdog.ps1'
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
 if ($Uninstall) {
