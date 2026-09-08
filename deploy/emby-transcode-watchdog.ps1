@@ -34,6 +34,12 @@
 .PARAMETER ApiKey
   An Emby API key (Dashboard → Advanced → API Keys). Read-only use.
 
+.PARAMETER EnvFile
+  Alternative to -ApiKey: a .env file that sets EMBY_API_KEY (the coordinator's
+  own .env works). Lets a scheduled task run without the key ever appearing on
+  its command line or in the task definition, and stays correct if the key is
+  rotated in one place.
+
 .EXAMPLE
   .\emby-transcode-watchdog.ps1 -ApiKey abc123
   Reports what it would kill.
@@ -41,11 +47,16 @@
 .EXAMPLE
   .\emby-transcode-watchdog.ps1 -ApiKey abc123 -Apply
   Kills them. Suitable as a scheduled task every 15 minutes.
+
+.EXAMPLE
+  .\emby-transcode-watchdog.ps1 -EnvFile C:\emby-sonic\.env -Apply
+  Same, with the key read from the coordinator's .env at run time.
 #>
 [CmdletBinding()]
 param(
     [string]$EmbyUrl = "http://localhost:8096",
-    [Parameter(Mandatory = $true)][string]$ApiKey,
+    [string]$ApiKey,
+    [string]$EnvFile,
     [int]$MinAgeMinutes = 10,
     [int]$SampleSeconds = 20,
     [switch]$Apply
@@ -57,6 +68,14 @@ $now = Get-Date
 function Write-Line([string]$Message) {
     Write-Output ("[{0}] {1}" -f $now.ToString("yyyy-MM-dd HH:mm:ss"), $Message)
 }
+
+# --- 0. Resolve the API key -------------------------------------------------
+if (-not $ApiKey -and $EnvFile) {
+    if (-not (Test-Path $EnvFile)) { throw "EnvFile not found: $EnvFile" }
+    $line = Get-Content $EnvFile | Where-Object { $_ -match '^\s*EMBY_API_KEY\s*=' } | Select-Object -First 1
+    if ($line) { $ApiKey = ($line -split '=', 2)[1].Trim().Trim('"').Trim("'") }
+}
+if (-not $ApiKey) { throw "Provide -ApiKey, or -EnvFile pointing at a .env that sets EMBY_API_KEY." }
 
 # --- 1. How many transcodes SHOULD be running? ------------------------------
 try {
