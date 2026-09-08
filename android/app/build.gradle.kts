@@ -98,6 +98,20 @@ android {
         compose = true
         buildConfig = true
     }
+    lint {
+        // Lint was red from the start of this project — 30 errors, almost all
+        // Media3 @UnstableApi opt-in noise — so nobody read it, and it could not
+        // tell you when a change added a real one. The baseline freezes the
+        // known set; anything NOT in it fails the build. So lint is a gate for
+        // *new* problems again, without a scattergun annotation sweep through
+        // the playback code that would only hide which Media3 APIs can break
+        // on upgrade.
+        //
+        // Regenerate deliberately, never reflexively: `gradlew updateLintBaseline`
+        // after you've looked at what's being added and decided it belongs there.
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+    }
 }
 
 // Printed at the end of a release build that fell back to the debug key, so it

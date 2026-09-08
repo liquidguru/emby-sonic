@@ -191,18 +191,21 @@ directions, behaviour across suspend/resume, return to local volume after
 disconnect, and the `dumpsys media_session` reading. Those need a deliberate pass
 against the list above before this is called done.
 
-One criterion above is simply wrong and should be read as aspirational: **lint
-does not pass on this project and did not before this change either.**
-`:app:lintRelease` reports *30 errors, 65 warnings* on beta.39 and reports the
-identical 30 errors, 65 warnings on the commit immediately before it (verified by
-running it against both in separate worktrees). Almost all are
-`UnsafeOptInUsageError` from Media3's `@UnstableApi`, plus one `NewApi` and one
-`WrongConstant`. So lint is useful here only as a *differential* check — compare
-the count against the previous commit — until someone does a dedicated pass or
-adopts a baseline file. Treating "lint passes" as a release gate would block every
-release, and treating a green run as required would tempt someone into a
-scattergun opt-in annotation sweep across the playback code, which is a worse
-trade than the warnings.
+A note on the lint criterion, because its meaning changed after beta.40. At the
+time of this fix **lint had never passed on this project**: `:app:lintRelease`
+reported *30 errors, 65 warnings* on beta.39 and the identical count on the commit
+before it (verified in separate worktrees), almost all `UnsafeOptInUsageError`
+from Media3's `@UnstableApi`. So "lint passes" was aspirational, and the only
+honest use of lint was differential — compare the count to the previous commit.
+
+**Since beta.40 there is a baseline (`app/lint-baseline.xml`) that freezes that
+known set, and lint is green.** Now a red run means something *new*, which is the
+signal that was missing. The deliberate non-fix is still worth stating: the
+baseline exists instead of a scattergun opt-in annotation sweep across the
+playback code, because that sweep would silence the one marker telling you which
+Media3 APIs can break on upgrade — and this project has already had three bugs
+fixed by working around Media3 rather than bumping it. Regenerate the baseline
+only after reading what you're adding to it.
 
 ## References
 

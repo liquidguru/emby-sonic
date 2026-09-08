@@ -703,7 +703,7 @@ class SonicPlaybackService : MediaLibraryService() {
                     .setTitle(title)
                     .setIsBrowsable(true)
                     .setIsPlayable(false)
-                    .setFolderType(MediaMetadata.FOLDER_TYPE_MIXED)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MIXED)
                     .build(),
             )
             .build()
