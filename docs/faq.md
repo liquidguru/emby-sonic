@@ -205,6 +205,40 @@ all three problems above rather than working around them. Things to know first:
   genuinely corrupt (seconds of undecodable audio, already unplayable) and one was
   DRM-protected and unreadable.
 
+### My server pegs its CPU while someone uses audiobooks
+
+Fixed in **beta.40** — update the app and it stops. Worth understanding, though,
+because the symptom outlives the session that caused it.
+
+Before beta.40 every seek inside an audiobook asked Emby for a *new* transcode
+starting at the new position, and abandoned the previous one without closing it.
+Emby keys a transcode to its play session, so an abandoned session leaves a
+running `ffmpeg` with nothing reading it. Nothing closed them until playback
+ended.
+
+That is survivable if you seek once. It is not if you are hunting for your place
+in a 14-hour book with no skip buttons and a progress bar you can only tap: one
+real session produced **twelve transcodes in forty seconds, eight running at
+once**, and Emby's graceful stop failed to kill five of them — which then held
+all four CPU cores for twelve minutes after the listener had put the phone down.
+
+beta.40 removes the cause rather than managing it. A book in a container your
+phone can decode is now served as the original file, and the app seeks it with
+HTTP range requests — so **audiobooks transcode not at all**, and seeking is
+instant. Check with:
+
+```powershell
+Get-Process | Where-Object ProcessName -like *ffmpeg*
+```
+
+While a book plays on beta.40 that should return nothing.
+
+**If you find stalled transcodes from an older version**, they will not clear
+themselves — they survive the session that spawned them. Look for `ffmpeg`
+processes with high accumulated CPU and no matching active session in Emby's
+dashboard, and kill them. This is worth checking even after updating, since one
+bad session weeks ago can still be costing you a core.
+
 ### Audiobooks don't get sonic features
 
 By design — only music libraries are analysed. Spoken word would pollute mixes.

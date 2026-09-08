@@ -519,7 +519,10 @@ when your server has more than one music or audiobook library (switch via a
 dropdown on the Library screen — the choice is remembered across restarts and
 also scopes Home, Search, and Artist Mix); Now Playing with
 queue, shuffle/repeat, mini player, and a system media notification; durable
-audiobook resume; music crossfade with a synced artwork cross-dissolve; an in-app
+audiobook resume, with back/forward skip buttons (15s/30s by default, configurable)
+and a draggable progress bar — long-form plays the original file directly wherever
+the phone can decode it, so seeking is instant and audiobooks never transcode;
+music crossfade with a synced artwork cross-dissolve; an in-app
 equalizer (presets + per-band, also broadcasts its session for external EQ apps);
 auto-curated sonic mixes (per-mix refresh, save as playlist); Track Radio; Sonic
 Adventure (a sonic journey from one track to another); the Artist Mix Creator
