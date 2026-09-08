@@ -234,10 +234,28 @@ Get-Process | Where-Object ProcessName -like *ffmpeg*
 While a book plays on beta.40 that should return nothing.
 
 **If you find stalled transcodes from an older version**, they will not clear
-themselves — they survive the session that spawned them. Look for `ffmpeg`
-processes with high accumulated CPU and no matching active session in Emby's
-dashboard, and kill them. This is worth checking even after updating, since one
-bad session weeks ago can still be costing you a core.
+themselves — they survive the session that spawned them. This is worth checking
+even after updating, since one bad session weeks ago can still be costing you a
+core.
+
+It is also not only liquidWave: Emby's stop request to ffmpeg is sometimes
+ignored whatever the client, and the same server was found holding a Live TV
+transcode from an iPad half an hour after that session had cleanly ended. So the
+durable fix is a watchdog on the Emby host. There's one in the repo:
+
+```powershell
+# Dry run — reports what it would kill, touches nothing
+.\deploy\emby-transcode-watchdog.ps1 -ApiKey <your Emby API key>
+
+# For real; suitable as a scheduled task every 15 minutes
+.\deploy\emby-transcode-watchdog.ps1 -ApiKey <your Emby API key> -Apply
+```
+
+It asks Emby how many transcodes *should* be running, only considers ffmpeg
+older than ten minutes, and only kills a process that is both surplus to that
+count *and* has stopped accumulating CPU over a twenty-second sample. A live
+transcode, even a throttled one, keeps moving; a dead one doesn't. It would
+rather leave an orphan for one more run than kill something live.
 
 ### Audiobooks don't get sonic features
 
