@@ -39,3 +39,6 @@ android/keystores/
 # Backups/variants of .env hold real credentials — .env alone does not catch them.
 .env.*
 !.env.example
+
+# Written by deploy/emby-transcode-watchdog.ps1 when installed as a task.
+watchdog.log

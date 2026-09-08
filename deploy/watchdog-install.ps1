@@ -44,7 +44,8 @@ $ErrorActionPreference = 'Stop'
 $here = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $EnvFile) { $EnvFile = Join-Path (Split-Path -Parent $here) '.env' }
 $script = Join-Path $here 'emby-transcode-watchdog.ps1'
-# Beside coordinator.log, and ignored by the same *.log rule.
+# Beside coordinator.log, and ignored by name in .gitignore as that one is
+# (there is no blanket *.log rule — checked, after assuming otherwise).
 $logFile = Join-Path (Split-Path -Parent $here) 'watchdog.log'
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
