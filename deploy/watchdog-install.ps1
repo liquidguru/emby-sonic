@@ -44,6 +44,8 @@ $ErrorActionPreference = 'Stop'
 $here = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $EnvFile) { $EnvFile = Join-Path (Split-Path -Parent $here) '.env' }
 $script = Join-Path $here 'emby-transcode-watchdog.ps1'
+# Beside coordinator.log, and ignored by the same *.log rule.
+$logFile = Join-Path (Split-Path -Parent $here) 'watchdog.log'
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
 if ($Uninstall) {
@@ -60,13 +62,13 @@ if (-not (Test-Path $script)) { throw "Watchdog script not found: $script" }
 if (-not (Test-Path $EnvFile)) { throw "EnvFile not found: $EnvFile (it must set EMBY_API_KEY)" }
 
 Write-Host "Dry run first:" -ForegroundColor Cyan
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -EmbyUrl $EmbyUrl -EnvFile $EnvFile
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -EmbyUrl $EmbyUrl -EnvFile $EnvFile -LogFile $logFile
 if ($LASTEXITCODE -ne 0) { throw "Dry run failed (exit $LASTEXITCODE); not installing." }
 
 # -ExecutionPolicy Bypass is load-bearing: Windows PowerShell's default policy
 # refuses to run a .ps1 at all, and a task that fails that way shows nothing
 # useful anywhere.
-$arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -EmbyUrl $EmbyUrl -EnvFile `"$EnvFile`" -Apply"
+$arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -EmbyUrl $EmbyUrl -EnvFile `"$EnvFile`" -LogFile `"$logFile`" -Apply"
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
     -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
@@ -81,4 +83,4 @@ Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings `
     -Description 'Kills Emby ffmpeg transcodes that have outlived their session. See deploy/emby-transcode-watchdog.ps1.' | Out-Null
 
-Write-Host "Installed '$TaskName': every $IntervalMinutes min as SYSTEM, first run within a minute." -ForegroundColor Cyan
+Write-Host "Installed '$TaskName': every $IntervalMinutes min as SYSTEM, first run within a minute. Log: $logFile" -ForegroundColor Cyan

@@ -40,6 +40,13 @@
   its command line or in the task definition, and stays correct if the key is
   rotated in one place.
 
+.PARAMETER LogFile
+  Append every decision line here as well as to stdout. A scheduled task's
+  stdout goes nowhere, and a watchdog that kills processes should leave a
+  record of what it killed and why. Every run logs, including the quiet
+  "nothing running" ones — that's the only cheap answer to "did it stop
+  running last week?" that doesn't involve Task Scheduler's history view.
+
 .EXAMPLE
   .\emby-transcode-watchdog.ps1 -ApiKey abc123
   Reports what it would kill.
@@ -59,6 +66,7 @@ param(
     [string]$EnvFile,
     [int]$MinAgeMinutes = 10,
     [int]$SampleSeconds = 20,
+    [string]$LogFile,
     [switch]$Apply
 )
 
@@ -66,7 +74,9 @@ $ErrorActionPreference = "Stop"
 $now = Get-Date
 
 function Write-Line([string]$Message) {
-    Write-Output ("[{0}] {1}" -f $now.ToString("yyyy-MM-dd HH:mm:ss"), $Message)
+    $line = "[{0}] {1}" -f $now.ToString("yyyy-MM-dd HH:mm:ss"), $Message
+    Write-Output $line
+    if ($LogFile) { Add-Content -Path $LogFile -Value $line }
 }
 
 # --- 0. Resolve the API key -------------------------------------------------
