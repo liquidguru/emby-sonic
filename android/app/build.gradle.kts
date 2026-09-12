@@ -84,6 +84,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Play warns on every upload that the bundle "contains native code"
+            // with no debug symbols. The native code isn't ours — a dependency
+            // (DataStore's shared-counter .so) ships it — so there is nothing of
+            // liquidWave's to symbolise. This packages whatever symbols the .so
+            // carries, which is enough to stop the warning without changing a
+            // byte of behaviour. Added for beta.41; not worth a rebuild of 40.
+            ndk { debugSymbolLevel = "SYMBOL_TABLE" }
         }
     }
 
