@@ -3,6 +3,7 @@ package guru.liquid.embysonic.ui.main
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -203,6 +205,10 @@ private fun MiniSeekBar(
     durationMs: Long,
     onSeek: (Long) -> Unit,
 ) {
+    // Null unless a drag is in progress; while scrubbing it overrides the played
+    // fraction so the fill follows the finger instead of the playhead.
+    var scrubFraction by remember { mutableStateOf<Float?>(null) }
+    val shown = scrubFraction ?: progress
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -214,6 +220,30 @@ private fun MiniSeekBar(
                         onSeek((durationMs * next).toLong())
                     }
                 }
+            }
+            // The parent Surface owns a swipe-to-dismiss drag. Without a drag
+            // handler of its own the bar had nothing to win the gesture with, so
+            // dragging it slid the whole mini player sideways instead of seeking
+            // (reported on 38 and 40). Claiming horizontal motion here fixes that;
+            // vertical motion is left alone, so swipe-down-to-dismiss still works
+            // even when the finger lands on the bar.
+            .pointerInput(durationMs) {
+                if (durationMs <= 0) return@pointerInput
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        scrubFraction = (offset.x / size.width).coerceIn(0f, 1f)
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        change.consume()
+                        scrubFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                    },
+                    // Commit once, on release, not per drag event.
+                    onDragEnd = {
+                        scrubFraction?.let { onSeek((durationMs * it).toLong()) }
+                        scrubFraction = null
+                    },
+                    onDragCancel = { scrubFraction = null },
+                )
             },
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -225,7 +255,7 @@ private fun MiniSeekBar(
         )
         Box(
             modifier = Modifier
-                .fillMaxWidth(progress)
+                .fillMaxWidth(shown)
                 .height(5.dp)
                 .widthIn(min = 4.dp)
                 .background(MaterialTheme.colorScheme.primary),
