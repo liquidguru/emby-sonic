@@ -23,6 +23,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import android.os.Bundle
+import androidx.media3.session.MediaConstants
 import dagger.hilt.android.AndroidEntryPoint
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.dto.SonicMixDto
@@ -343,7 +344,7 @@ class SonicPlaybackService : MediaLibraryService() {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> =
-            Futures.immediateFuture(LibraryResult.ofItem(browsableItem(ROOT_ID, "liquidWave"), params))
+            Futures.immediateFuture(LibraryResult.ofItem(rootItem(), params))
 
         /**
          * Give Android Auto the last session so it can carry on without the app
@@ -446,16 +447,20 @@ class SonicPlaybackService : MediaLibraryService() {
 
     private suspend fun childrenFor(parentId: String): List<MediaItem> =
         when (parentId) {
+            // Auto renders the root's children as tabs. Three fit without a "More"
+            // overflow; the old seven collapsed into "Recent plays, Sonic Mixes,
+            // Stations, More", which buried the library. Home is one glanceable
+            // screen of headed sections — the YouTube Music layout.
             ROOT_ID -> listOf(
-                // Zero-effort "just play something" nodes first — they're what's
-                // actually usable while driving.
-                browsableItem(RECENT_ID, "Recent plays"),
-                browsableItem(MIXES_ID, "Sonic Mixes"),
-                browsableItem(STATIONS_ID, "Stations"),
+                browsableItem(HOME_ID, "Home"),
+                browsableItem(LIBRARY_ID, "Library"),
+                browsableItem(AUDIOBOOKS_ID, "Audiobooks"),
+            )
+            HOME_ID -> homeChildren()
+            LIBRARY_ID -> listOf(
                 browsableItem(ALBUMS_ID, "Albums"),
                 browsableItem(ARTISTS_ID, "Artists"),
                 browsableItem(PLAYLISTS_ID, "Playlists"),
-                browsableItem(AUDIOBOOKS_ID, "Audiobooks"),
             )
             AUDIOBOOKS_ID -> listOf(
                 browsableItem(AUDIOBOOK_RESUME_ID, "Resume audiobooks"),
@@ -474,8 +479,22 @@ class SonicPlaybackService : MediaLibraryService() {
             )
             DECADES_ID -> STATION_DECADES.map { stationItem(DECADE_PREFIX + it, "${it}s") }
             GENRES_ID -> library.genres(musicLibraryId()).map { it.autoItem(GENRE_PREFIX, "Genre") }
-            RECENT_ID -> recentPlays.recentPlays.first().map { it.autoItem() }
-            MIXES_ID -> coordinator.mixes().map { it.autoItem() }
+            // Skip the recent play that IS the current session: Continue listening
+            // already offers it (resumed), so listing it here too (restarted from
+            // track one) is the same thing twice with a subtle difference nobody
+            // wants to think about at the wheel.
+            RECENT_ID -> {
+                val current = playback.sessionTrackIds()
+                recentPlays.recentPlays.first()
+                    .filterNot { current.isNotEmpty() && it.trackIds == current }
+                    .map { it.autoItem() }
+            }
+            MIXES_ID -> {
+                val mixes = coordinator.mixes()
+                val art = runCatching { library.artworkByIds(mixes.mapNotNull { it.coverTrackId }) }
+                    .getOrDefault(emptyMap())
+                mixes.map { it.autoItem(artworkUrl = it.coverTrackId?.let { id -> art[id] }) }
+            }
             ALBUMS_ID -> library.albums(musicLibraryId()).map { it.autoItem(ALBUM_PREFIX, "Album") }
             ARTISTS_ID -> library.artists(musicLibraryId()).map { it.autoItem(ARTIST_PREFIX, "Artist") }
             // Playlists span libraries, so unlike albums/artists there's no library id to scope by.
@@ -491,6 +510,7 @@ class SonicPlaybackService : MediaLibraryService() {
 
     private suspend fun playAutoItem(mediaId: String): Boolean {
         when {
+            mediaId == CONTINUE_ID -> return playback.continueListening()
             mediaId.startsWith(RECENT_PREFIX) -> {
                 val key = Uri.decode(mediaId.removePrefix(RECENT_PREFIX))
                 val recent = recentPlays.recentPlays.first().firstOrNull { it.key == key } ?: return false
@@ -599,7 +619,10 @@ class SonicPlaybackService : MediaLibraryService() {
 
     private suspend fun mediaItemForId(mediaId: String): MediaItem? =
         when (mediaId) {
-            ROOT_ID -> browsableItem(ROOT_ID, "liquidWave")
+            ROOT_ID -> rootItem()
+            HOME_ID -> browsableItem(HOME_ID, "Home")
+            LIBRARY_ID -> browsableItem(LIBRARY_ID, "Library")
+            CONTINUE_ID -> playback.continueListeningPreview()?.let { continueItem(it) }
             RECENT_ID -> browsableItem(RECENT_ID, "Recent plays")
             MIXES_ID -> browsableItem(MIXES_ID, "Sonic Mixes")
             ALBUMS_ID -> browsableItem(ALBUMS_ID, "Albums")
@@ -664,6 +687,83 @@ class SonicPlaybackService : MediaLibraryService() {
             else -> null
         }
 
+    /**
+     * Home is deliberately SHORT: one tile to carry on, four one-tap stations, and
+     * two rows that drill into the long lists. The first cut put Recent plays and
+     * Sonic Mixes inline as headed groups and the screen ran to three scrolls,
+     * with the same mix showing up three times over. This is the YouTube Music
+     * shape instead — a glanceable top, with the artwork grids one tap away.
+     *
+     * The grid style goes on the Recent / Mixes rows themselves, not on their
+     * children: Auto takes the tile-vs-list style from the PARENT node, which is
+     * why per-item grid hints on Home did nothing in the first cut.
+     */
+    private suspend fun homeChildren(): List<MediaItem> {
+        val out = mutableListOf<MediaItem>()
+        playback.continueListeningPreview()?.let { out += continueItem(it) }
+        out += childrenFor(STATIONS_ID).map { it.styled(group = "Stations", grid = false) }
+        out += browsableItem(RECENT_ID, "Recent plays").styled(group = null, grid = true)
+        out += browsableItem(MIXES_ID, "Sonic Mixes").styled(group = null, grid = true)
+        return out
+    }
+
+    private fun continueItem(preview: ContinueListening): MediaItem =
+        playableItem(
+            mediaId = CONTINUE_ID,
+            title = preview.title,
+            subtitle = preview.subtitle,
+            artworkUrl = preview.artworkUrl,
+        ).styled(group = "Continue listening", grid = false)
+
+    /**
+     * Attach Auto's layout hints, as plain extras Media3 passes through untouched.
+     *
+     * `group` puts a header above the run of items sharing it; null for none.
+     * `grid` on a PLAYABLE is ignored by Auto in practice; `grid` on a BROWSABLE
+     * makes the list it opens render as artwork tiles. So Home's two drill-in
+     * rows carry it, and the grids appear one level down.
+     */
+    private fun MediaItem.styled(group: String?, grid: Boolean): MediaItem {
+        val style = if (grid) {
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM
+        } else {
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+        }
+        val extras = Bundle(mediaMetadata.extras ?: Bundle()).apply {
+            if (group != null) putString(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_GROUP_TITLE, group)
+            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, style)
+            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, style)
+        }
+        return buildUpon()
+            .setMediaMetadata(mediaMetadata.buildUpon().setExtras(extras).build())
+            .build()
+    }
+
+    /**
+     * The root, flagged as content-style aware so Auto honours the per-item hints
+     * above. The flag key predates Media3 and has no constant there, hence the
+     * literal — it's the documented Android Auto string.
+     */
+    private fun rootItem(): MediaItem {
+        val extras = Bundle().apply {
+            putBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED", true)
+            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM)
+            putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM)
+        }
+        return MediaItem.Builder()
+            .setMediaId(ROOT_ID)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle("liquidWave")
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MIXED)
+                    .setExtras(extras)
+                    .build(),
+            )
+            .build()
+    }
+
     private fun RecentPlay.autoItem(): MediaItem =
         playableItem(
             mediaId = RECENT_PREFIX + Uri.encode(key),
@@ -672,12 +772,15 @@ class SonicPlaybackService : MediaLibraryService() {
             artworkUrl = coverUrl,
         )
 
-    private fun SonicMixDto.autoItem(): MediaItem =
+    // Raw name, NOT displayTitle(): the phone strips the coordinator's "(2)"
+    // suffix for tidiness, but in Auto two mixes both called "Driving Mid-Tempo"
+    // with different artwork read as a bug. The suffix is what tells them apart.
+    private fun SonicMixDto.autoItem(artworkUrl: String? = null): MediaItem =
         playableItem(
             mediaId = MIX_PREFIX + Uri.encode(id),
-            title = displayTitle(),
+            title = name?.takeIf { it.isNotBlank() } ?: "Sonic mix",
             subtitle = "Sonic mix",
-            artworkUrl = null,
+            artworkUrl = artworkUrl,
         )
 
     private fun LibraryItem.autoItem(prefix: String, subtitleFallback: String): MediaItem =
@@ -756,6 +859,9 @@ class SonicPlaybackService : MediaLibraryService() {
 
     private companion object {
         const val ROOT_ID = "auto:root"
+        const val HOME_ID = "auto:home"
+        const val LIBRARY_ID = "auto:library"
+        const val CONTINUE_ID = "auto:continue"
         const val RECENT_ID = "auto:recent"
         const val MIXES_ID = "auto:mixes"
         const val ALBUMS_ID = "auto:albums"

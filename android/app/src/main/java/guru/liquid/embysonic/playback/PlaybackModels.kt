@@ -58,6 +58,13 @@ data class OfflinePrefetchState(
  * "radio:<seedId>", "station:library", "track:<id>"). Audiobook plays are never
  * recorded — the controller skips them by content kind.
  */
+/** The "Continue listening" tile's label: the track the last session stopped on. */
+data class ContinueListening(
+    val title: String,
+    val subtitle: String?,
+    val artworkUrl: String?,
+)
+
 data class PlaybackSource(
     val key: String,
     val title: String,

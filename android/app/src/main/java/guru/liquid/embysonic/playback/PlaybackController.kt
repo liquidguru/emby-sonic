@@ -1035,6 +1035,55 @@ class PlaybackController @Inject constructor(
         return MediaSession.MediaItemsWithStartPosition(activeMediaItems(), index, position)
     }
 
+    /**
+     * What a "Continue listening" tile should show: the track the last session
+     * stopped on, so the tile reads "Uprising — Muse" with its artwork rather
+     * than a generic label. Null when there is nothing to carry on from.
+     *
+     * Prefers the live queue when there is one (the app may simply be paused),
+     * otherwise peeks at the persisted session WITHOUT restoring it — building
+     * a browse tree must not have the side effect of loading a queue.
+     */
+    suspend fun continueListeningPreview(): ContinueListening? {
+        awaitRestore()
+        val live = queue.getOrNull(activePlayerRef.currentMediaItemIndex.coerceAtLeast(0))
+        val track = live ?: sessionStore.load()?.let { saved ->
+            saved.tracks.getOrNull(saved.currentIndex.coerceAtLeast(0))?.toPlaybackTrack()
+        } ?: return null
+        return ContinueListening(
+            title = track.title,
+            subtitle = track.artist ?: track.album,
+            artworkUrl = track.imageUrl,
+        )
+    }
+
+    /**
+     * The track ids of the session "Continue listening" would resume — live queue
+     * first, else the persisted one. Lets a browse tree recognise which Recent
+     * play IS the current session, so it isn't offered twice (once to resume,
+     * once to restart). Matching on ids rather than a remembered source key
+     * survives process death, which a key held in memory would not.
+     */
+    suspend fun sessionTrackIds(): List<String> {
+        awaitRestore()
+        if (queue.isNotEmpty()) return queue.map { it.id }
+        return sessionStore.load()?.tracks?.map { it.id }.orEmpty()
+    }
+
+    /**
+     * Carry on exactly where the last session stopped: same track, same position.
+     * This is what "Continue listening" does and what Recent plays does NOT — a
+     * recent play restarts its queue from track one.
+     */
+    suspend fun continueListening(): Boolean {
+        awaitRestore()
+        if (queue.isEmpty()) runCatching { restoreSession() }
+        if (queue.isEmpty()) return false
+        playActive()
+        publishState()
+        return true
+    }
+
     /** Launch the app when a widget command has nothing to act on (no session). */
     private fun openApp() {
         runCatching {
