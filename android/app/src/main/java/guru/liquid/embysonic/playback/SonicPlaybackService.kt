@@ -23,6 +23,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import android.os.Bundle
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaConstants
 import dagger.hilt.android.AndroidEntryPoint
 import guru.liquid.embysonic.data.coordinator.CoordinatorApi
@@ -723,6 +724,11 @@ class SonicPlaybackService : MediaLibraryService() {
      * makes the list it opens render as artwork tiles. So Home's two drill-in
      * rows carry it, and the grids appear one level down.
      */
+    // The CONTENT_STYLE constants are @UnstableApi. Opted in HERE, on the two
+    // functions that knowingly use them, rather than baselined or file-wide:
+    // this is exactly the marker that says "re-check on a Media3 upgrade", and
+    // it should stay visible on the code it applies to.
+    @androidx.annotation.OptIn(UnstableApi::class)
     private fun MediaItem.styled(group: String?, grid: Boolean): MediaItem {
         val style = if (grid) {
             MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM
@@ -744,6 +750,7 @@ class SonicPlaybackService : MediaLibraryService() {
      * above. The flag key predates Media3 and has no constant there, hence the
      * literal — it's the documented Android Auto string.
      */
+    @androidx.annotation.OptIn(UnstableApi::class)
     private fun rootItem(): MediaItem {
         val extras = Bundle().apply {
             putBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED", true)
