@@ -452,9 +452,9 @@ class SonicPlaybackService : MediaLibraryService() {
             // Stations, More", which buried the library. Home is one glanceable
             // screen of headed sections — the YouTube Music layout.
             ROOT_ID -> listOf(
-                browsableItem(HOME_ID, "Home"),
-                browsableItem(LIBRARY_ID, "Library"),
-                browsableItem(AUDIOBOOKS_ID, "Audiobooks"),
+                browsableItem(HOME_ID, "Home", R.drawable.ic_auto_home),
+                browsableItem(LIBRARY_ID, "Library", R.drawable.ic_auto_library),
+                browsableItem(AUDIOBOOKS_ID, "Audiobooks", R.drawable.ic_auto_audiobooks),
             )
             HOME_ID -> homeChildren()
             LIBRARY_ID -> listOf(
@@ -620,8 +620,8 @@ class SonicPlaybackService : MediaLibraryService() {
     private suspend fun mediaItemForId(mediaId: String): MediaItem? =
         when (mediaId) {
             ROOT_ID -> rootItem()
-            HOME_ID -> browsableItem(HOME_ID, "Home")
-            LIBRARY_ID -> browsableItem(LIBRARY_ID, "Library")
+            HOME_ID -> browsableItem(HOME_ID, "Home", R.drawable.ic_auto_home)
+            LIBRARY_ID -> browsableItem(LIBRARY_ID, "Library", R.drawable.ic_auto_library)
             CONTINUE_ID -> playback.continueListeningPreview()?.let { continueItem(it) }
             RECENT_ID -> browsableItem(RECENT_ID, "Recent plays")
             MIXES_ID -> browsableItem(MIXES_ID, "Sonic Mixes")
@@ -633,7 +633,7 @@ class SonicPlaybackService : MediaLibraryService() {
             GENRES_ID -> browsableItem(GENRES_ID, "Genres")
             STATION_LIBRARY_ID -> stationItem(STATION_LIBRARY_ID, "Library Radio")
             STATION_RANDOM_ALBUM_ID -> stationItem(STATION_RANDOM_ALBUM_ID, "Random Album Radio")
-            AUDIOBOOKS_ID -> browsableItem(AUDIOBOOKS_ID, "Audiobooks")
+            AUDIOBOOKS_ID -> browsableItem(AUDIOBOOKS_ID, "Audiobooks", R.drawable.ic_auto_audiobooks)
             AUDIOBOOK_RESUME_ID -> browsableItem(AUDIOBOOK_RESUME_ID, "Resume audiobooks")
             AUDIOBOOK_BOOKS_ID -> browsableItem(AUDIOBOOK_BOOKS_ID, "Books")
             AUDIOBOOK_AUTHORS_ID -> browsableItem(AUDIOBOOK_AUTHORS_ID, "Authors")
@@ -798,7 +798,14 @@ class SonicPlaybackService : MediaLibraryService() {
     private fun stationItem(mediaId: String, title: String): MediaItem =
         playableItem(mediaId = mediaId, title = title, subtitle = "Station", artworkUrl = null)
 
-    private fun browsableItem(mediaId: String, title: String): MediaItem =
+    /**
+     * [iconRes] becomes the tab glyph when the item is a root child: Auto reads a
+     * tab's icon off its artwork URI, and a resource URI is the documented way
+     * to hand it a drawable. Resolved through the real package name, because the
+     * debug build's applicationId carries a suffix and a hardcoded package would
+     * silently give the debug build no icons.
+     */
+    private fun browsableItem(mediaId: String, title: String, iconRes: Int? = null): MediaItem =
         MediaItem.Builder()
             .setMediaId(mediaId)
             .setMediaMetadata(
@@ -807,6 +814,7 @@ class SonicPlaybackService : MediaLibraryService() {
                     .setIsBrowsable(true)
                     .setIsPlayable(false)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_MIXED)
+                    .setArtworkUri(iconRes?.let { Uri.parse("android.resource://$packageName/$it") })
                     .build(),
             )
             .build()
