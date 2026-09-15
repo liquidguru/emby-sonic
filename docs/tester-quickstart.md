@@ -338,10 +338,15 @@ prompted.
 > with a **private release key** (`CN=liquidguru`). Verify with
 > `apksigner verify --print-certs <apk>`. Only install builds you got directly from me.
 
-> **Want Android Auto?** Sideloaded apps are hidden from Android Auto by default.
-> To use liquidWave in the car, enable AA developer mode once on the phone:
-> Android Auto settings → tap **Version** repeatedly to unlock *Developer settings*
-> → enable **Unknown sources**. liquidWave then shows up in the AA app list.
+> **Want Android Auto?** If you installed from **Google Play**, it just works.
+> If you **sideloaded the APK**, Android Auto hides it by default — enable AA
+> developer mode once on the phone: Android Auto settings → tap **Version**
+> repeatedly to unlock *Developer settings* → enable **Unknown sources**.
+> liquidWave then shows up in the AA app list.
+>
+> Since beta.41 the car screen has a proper Home: **Continue listening** picks up
+> the last session at the exact position, the one-tap Stations sit under it, and
+> Recent plays and Sonic Mixes open as artwork grids.
 
 On first launch enter:
 

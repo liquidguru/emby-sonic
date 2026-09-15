@@ -541,10 +541,12 @@ Offline prefetch, 3/5/10/15 tracks ahead) to ride through signal drops; a
 **responsive Now Playing** that switches to compact chrome in short panes
 (split-screen, AppPair) so transport controls stay visible; a **Dynamic** theme
 that follows the system light/dark setting (in the app and the Now Playing
-widget), alongside five fixed dark palettes; Android Auto shuffle/repeat controls
-(mirrored in the notification shade) alongside its Playlists/Stations browse tree;
-and search across music (tracks/albums/artists), audiobooks (books/authors), or
-everything from Home.
+widget), alongside five fixed dark palettes; **Android Auto** with a glanceable
+Home — *Continue listening* resumes the last session at the exact position, the
+one-tap Stations sit beneath it, and Recent plays and Sonic Mixes open as artwork
+grids — plus Library and Audiobooks tabs, and shuffle/repeat controls mirrored in
+the notification shade; and search across music (tracks/albums/artists),
+audiobooks (books/authors), or everything from Home.
 
 <table>
 <tr>
@@ -629,17 +631,18 @@ adb -s <phone-ip>:<connect-port> install -r android/app/build/outputs/apk/debug/
 On first launch, enter your Emby server URL + credentials and the coordinator URL
 in the login screen. The phone must be on the same LAN as Emby and the coordinator.
 
-### Android Auto (sideloaded build)
+### Android Auto
 
-Because the app is sideloaded (not from the Play Store), Android Auto hides it by
-default. To use it in the car, enable Android Auto **developer mode** and allow
-unknown sources — once, on the phone:
+**Installed from Google Play:** nothing to do — liquidWave appears in Android
+Auto's app list like any other media app.
+
+**Sideloaded APK:** Android Auto hides apps that didn't come from the Play Store.
+Enable **developer mode** and allow unknown sources — once, on the phone:
 
 1. Android Auto settings → tap the **Version** repeatedly to unlock *Developer settings*.
 2. Developer settings → enable **Unknown sources**.
 
-liquidWave then appears in Android Auto's app list. (A future Play Store release
-won't need this.)
+liquidWave then appears in Android Auto's app list.
 
 ## License
 
