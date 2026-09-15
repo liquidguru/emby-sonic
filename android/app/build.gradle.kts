@@ -85,11 +85,13 @@ android {
                 "proguard-rules.pro",
             )
             // Play warns on every upload that the bundle "contains native code"
-            // with no debug symbols. The native code isn't ours — a dependency
-            // (DataStore's shared-counter .so) ships it — so there is nothing of
-            // liquidWave's to symbolise. This packages whatever symbols the .so
-            // carries, which is enough to stop the warning without changing a
-            // byte of behaviour. Added for beta.41; not worth a rebuild of 40.
+            // with no debug symbols. The native code isn't ours — DataStore's
+            // shared-counter .so and androidx.graphics.path ship it, both STRIPPED.
+            // This line was added to silence the warning and does NOT: AGP can only
+            // emit symbols for native code it builds or for unstripped libraries,
+            // and the beta.41 bundle carries no debugsymbols entry (checked). Kept
+            // because it is harmless and would pick up symbols if a dependency ever
+            // ships them, but expect the warning to stay. It is cosmetic.
             ndk { debugSymbolLevel = "SYMBOL_TABLE" }
         }
     }
