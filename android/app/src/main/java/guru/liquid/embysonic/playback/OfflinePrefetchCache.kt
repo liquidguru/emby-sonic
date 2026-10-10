@@ -36,6 +36,21 @@ class OfflinePrefetchCache @Inject constructor(
     fun isCached(trackId: String): Boolean =
         cacheFile(trackId).let { it.exists() && it.length() > 0 }
 
+    /** True when [uri] points at a file in this cache (as opposed to a download or a stream). */
+    fun isCacheUri(uri: Uri?): Boolean {
+        val path = uri?.takeIf { it.scheme == "file" }?.path ?: return false
+        return path.startsWith(cacheDir.absolutePath)
+    }
+
+    /**
+     * Drop one track's cached copy so the next attempt streams it fresh. Used when
+     * a cached file fails to play: a bad copy would otherwise be handed straight
+     * back on every retry, because [cachedUri] can't tell good bytes from bad.
+     */
+    fun invalidate(trackId: String) {
+        cacheFile(trackId).delete()
+    }
+
     suspend fun prefetch(trackId: String, streamUrl: String, headers: Map<String, String>): Uri? =
         withContext(Dispatchers.IO) {
             cacheDir.mkdirs()
@@ -54,6 +69,13 @@ class OfflinePrefetchCache @Inject constructor(
                 val code = connection.responseCode
                 if (code !in 200..299) {
                     Log.w(TAG, "Prefetch failed for $trackId: HTTP $code")
+                    return@withContext null
+                }
+                // A 2xx body that isn't audio — a captive-portal or proxy page on a
+                // café or roadside Wi-Fi — would otherwise be saved as the track.
+                val contentType = connection.contentType.orEmpty().lowercase()
+                if (contentType.startsWith("text/") || contentType.contains("json")) {
+                    Log.w(TAG, "Prefetch rejected for $trackId: non-audio response ($contentType)")
                     return@withContext null
                 }
                 val expectedBytes = connection.contentLengthLong
@@ -79,6 +101,16 @@ class OfflinePrefetchCache @Inject constructor(
                     }
                 }
                 if (temp.length() <= 0L) return@withContext null
+                // A connection that ENDS early, rather than erroring, returns -1 from
+                // read() exactly like a finished download. Without this check half a
+                // song was promoted into the cache as a whole one — and stopping the
+                // bike mid-prefetch is precisely when the network drops cleanly. The
+                // decoder then hit the cut on the next restore. Unknown length (a
+                // chunked transcode) can't be verified, so it's accepted as before.
+                if (expectedBytes > 0 && temp.length() != expectedBytes) {
+                    Log.w(TAG, "Prefetch incomplete for $trackId: ${temp.length()} of $expectedBytes bytes")
+                    return@withContext null
+                }
                 if (destination.exists()) destination.delete()
                 if (!temp.renameTo(destination)) {
                     temp.copyTo(destination, overwrite = true)

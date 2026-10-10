@@ -109,6 +109,7 @@ class PlaybackController @Inject constructor(
     private val helperLatencyStore: HelperLatencyStore,
     private val downloadStore: DownloadStore,
     private val downloadProgress: DownloadProgressStore,
+    private val errorLog: PlaybackErrorLog,
 ) {
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("liquidWave/${BuildConfig.VERSION_NAME}")
@@ -2066,17 +2067,63 @@ class PlaybackController @Inject constructor(
      * current item to a streaming URL and resume, so the player never gets stuck in
      * ERROR — where play() is a no-op and only skipping forward escapes.
      */
+    /**
+     * Last-chance recovery when the primary player fails. Every failure is written to
+     * [PlaybackErrorLog] first — logcat can't hold field errors long enough to read.
+     *
+     * Two recoverable cases:
+     * - The item came from the PREFETCH CACHE, whatever the error. The cache can't
+     *   tell good bytes from bad, so a corrupt or truncated copy (a download cut
+     *   short when the bike stopped) used to fail with a raw decoder error and
+     *   stop dead — and rebuilding the item would have picked the same file again.
+     *   Drop the copy and stream it fresh, keeping the position.
+     * - A cached file that was evicted under the player (FILE_NOT_FOUND).
+     *
+     * Each track gets one retry a minute, so a file that keeps failing can't loop.
+     */
     private fun recoverFromSourceError(error: PlaybackException) {
-        if (error.errorCode != PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) return
-        val index = player.currentMediaItemIndex.takeIf { it in queue.indices } ?: return
+        val index = player.currentMediaItemIndex.takeIf { it in queue.indices }
+        val track = index?.let { queue[it] }
+        val uri = player.currentMediaItem?.localConfiguration?.uri
+        val fromCache = prefetchCache.isCacheUri(uri)
+        val source = when {
+            fromCache -> "prefetch cache"
+            uri?.scheme == "file" || uri?.scheme == "content" -> "download"
+            else -> "stream"
+        }
+        val now = System.currentTimeMillis()
+        val lastRetry = track?.let { sourceRetryAt[it.id] } ?: 0L
+        val retryAllowed = track != null && now - lastRetry > SOURCE_RETRY_COOLDOWN_MS
+        val recoverable = fromCache || error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
+        val willRetry = recoverable && retryAllowed
+
+        errorLog.record(
+            event = "${error.errorCodeName} — ${track?.title ?: "?"} (${track?.id ?: "?"})",
+            details = listOf(
+                "source: $source",
+                "position: ${player.currentPosition} ms",
+                "action: ${if (willRetry) "dropped cached copy, retrying from server" else "none"}",
+            ) + errorLog.causeLines(error),
+        )
+        Log.w(TAG, "Playback error (${error.errorCodeName}) from $source on ${track?.id}", error)
+
+        if (!willRetry || index == null || track == null) return
+        sourceRetryAt[track.id] = now
+        if (fromCache) prefetchCache.invalidate(track.id)
         val wasPlaying = player.playWhenReady
+        val position = player.currentPosition.coerceAtLeast(0L)
         player.replaceMediaItem(
             index,
             mediaItem(queue[index], streamOffsetsByIndex[index] ?: 0L, playbackSessionId(index)),
         )
+        player.seekTo(index, position)
         player.prepare()
         if (wasPlaying) playActive()
     }
+
+    // Per-track time of the last source-error retry; bounds recovery to one
+    // attempt a minute so a file or stream that keeps failing can't spin.
+    private val sourceRetryAt = mutableMapOf<String, Long>()
 
     private fun Int.toPlaybackRepeatMode(): PlaybackRepeatMode = when (this) {
         Player.REPEAT_MODE_ALL -> PlaybackRepeatMode.ALL
@@ -2981,6 +3028,7 @@ class PlaybackController @Inject constructor(
         // transition quickly even on long blends.
         const val CROSSFADE_MAX_FADE_IN_MS = 750L
         const val PREFETCH_AHEAD_COUNT = 3
+        const val SOURCE_RETRY_COOLDOWN_MS = 60_000L
         const val GUEST_DJ_TRIGGER_REMAINING = 3
         const val GUEST_DJ_INJECT_COUNT = 5
         const val CAST_MIME = "audio/mpeg"
