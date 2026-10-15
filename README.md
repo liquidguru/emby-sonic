@@ -566,8 +566,13 @@ audiobooks (books/authors), or everything from Home.
 </tr>
 </table>
 
-<img src="docs/screenshots/android-auto.png" alt="liquidWave running in Android Auto" width="100%">
-<sub>Android Auto</sub>
+<table>
+<tr>
+<td width="33%"><img src="docs/screenshots/android-auto.png" alt="Android Auto Home: Jump back in, with Continue listening beside your newest Recent plays"><br><sub>Android Auto: Home</sub></td>
+<td width="33%"><img src="docs/screenshots/android-auto-stations.png" alt="Android Auto Stations tab: the radios, and a tile for every decade"><br><sub>Android Auto: Stations</sub></td>
+<td width="33%"><img src="docs/screenshots/android-auto-audiobooks.png" alt="Android Auto Audiobooks tab: books in progress as one row of covers"><br><sub>Android Auto: Audiobooks</sub></td>
+</tr>
+</table>
 
 ### Build
 
