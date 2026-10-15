@@ -685,11 +685,15 @@ class SonicPlaybackService : MediaLibraryService() {
      * HOME item itself ([childStyleFor]) because Auto takes tile-vs-list from the
      * PARENT node, never from the children.
      *
-     * Recent plays and Sonic Mixes show their newest few as tiles with a "See all"
-     * tile at the end. An earlier cut did this as headed LIST groups and ran to
-     * three scrolls with the same mix three times over, so two things differ now:
-     * tiles are compact, and a recent play that IS a mix is left out of the Recent
-     * group (the Mixes group already shows it).
+     * Continue listening shares ONE group ("Jump back in") with the newest Recent
+     * plays and their "See all" tile. As a group of its own it was a single tile
+     * with an empty row beside it, pushing everything else off the first screen.
+     * Sonic Mixes follow as their own group, then the Stations.
+     *
+     * An earlier cut did Recent/Mixes as headed LIST groups and ran to three
+     * scrolls with the same mix three times over, so two things differ now: tiles
+     * are compact, and a recent play that IS a mix is left out of the Recent tiles
+     * (the Mixes group already shows it).
      */
     private suspend fun homeChildren(): List<MediaItem> {
         val out = mutableListOf<MediaItem>()
@@ -699,10 +703,10 @@ class SonicPlaybackService : MediaLibraryService() {
         val recents = recentPlays.recentPlays.first()
             .filterNot { current.isNotEmpty() && it.trackIds == current }
             .filterNot { it.key.startsWith("mix:") }
-            .take(HOME_TILES)
+            .take(HOME_RECENTS)
+        out += recents.map { it.autoItem().styled(group = JUMP_BACK_IN) }
         if (recents.isNotEmpty()) {
-            out += recents.map { it.autoItem().styled(group = "Recent plays") }
-            out += browsableItem(RECENT_ID, "See all", R.drawable.auto_art_see_recent).styled(group = "Recent plays")
+            out += browsableItem(RECENT_ID, "See all", R.drawable.auto_art_see_recent).styled(group = JUMP_BACK_IN)
         }
 
         val mixes = runCatching { mixTiles(coordinator.mixes().take(HOME_TILES)) }.getOrDefault(emptyList())
@@ -755,7 +759,7 @@ class SonicPlaybackService : MediaLibraryService() {
             title = preview.title,
             subtitle = preview.subtitle,
             artworkUrl = preview.artworkUrl,
-        ).styled(group = "Continue listening")
+        ).styled(group = JUMP_BACK_IN)
 
     /**
      * Put an item under a heading. Items sharing a [group] must be contiguous or
@@ -956,8 +960,15 @@ class SonicPlaybackService : MediaLibraryService() {
     }
 
     private companion object {
-        /** How many Recent / Mixes tiles Home shows before its "See all" tile. */
+        /** How many Mixes tiles Home shows before its "See all" tile (two rows of three with it). */
         const val HOME_TILES = 5
+
+        /**
+         * Recent-play tiles beside Continue listening: Continue + 4 + "See all" is two
+         * full rows of three, with no orphan tile left on a row of its own.
+         */
+        const val HOME_RECENTS = 4
+        const val JUMP_BACK_IN = "Jump back in"
 
         /**
          * Tiles that fit across one row of Auto's grid at the screen size tested (the
