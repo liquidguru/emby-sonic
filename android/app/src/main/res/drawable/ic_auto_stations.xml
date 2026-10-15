@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android Auto "Stations" tab glyph: a dot with radio waves either side.
+     Monochrome: Auto tints it. Drawn here rather than borrowed so the stroke
+     weight matches the other tab glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10,12a2,2 0 1,0 4,0a2,2 0 1,0 -4,0z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M8.46,8.46A5,5 0 0,0 8.46,15.54M15.54,8.46A5,5 0 0,1 15.54,15.54M5.64,5.64A9,9 0 0,0 5.64,18.36M18.36,5.64A9,9 0 0,1 18.36,18.36" />
+</vector>

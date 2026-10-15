@@ -345,8 +345,12 @@ prompted.
 > liquidWave then shows up in the AA app list.
 >
 > Since beta.41 the car screen has a proper Home: **Continue listening** picks up
-> the last session at the exact position, the one-tap Stations sit under it, and
-> Recent plays and Sonic Mixes open as artwork grids.
+> the last session at the exact position. Since beta.43 it is a grid of artwork
+> tiles: Continue listening beside your newest Recent plays, then Sonic Mixes.
+> **Stations** has its own tab (Library Radio, Random Album Radio, Genres and
+> every decade as a one-tap tile, each with its own generated cover), and the
+> **Audiobooks** tab leads with the books you are partway through, so carrying
+> on is one tap.
 
 On first launch enter:
 

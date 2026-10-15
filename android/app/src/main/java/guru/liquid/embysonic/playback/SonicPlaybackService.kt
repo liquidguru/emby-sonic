@@ -448,12 +448,13 @@ class SonicPlaybackService : MediaLibraryService() {
 
     private suspend fun childrenFor(parentId: String): List<MediaItem> =
         when (parentId) {
-            // Auto renders the root's children as tabs. Three fit without a "More"
-            // overflow; the old seven collapsed into "Recent plays, Sonic Mixes,
-            // Stations, More", which buried the library. Home is one glanceable
-            // screen of headed sections — the YouTube Music layout.
+            // Auto renders the root's children as tabs. Four fit; a fifth starts a
+            // "More" overflow (the old seven collapsed into "Recent plays, Sonic
+            // Mixes, Stations, More", which buried the library). Stations has its
+            // own tab so it isn't lost at the bottom of Home.
             ROOT_ID -> listOf(
                 browsableItem(HOME_ID, "Home", R.drawable.ic_auto_home),
+                browsableItem(STATIONS_ID, "Stations", R.drawable.ic_auto_stations),
                 browsableItem(LIBRARY_ID, "Library", R.drawable.ic_auto_library),
                 browsableItem(AUDIOBOOKS_ID, "Audiobooks", R.drawable.ic_auto_audiobooks),
             )
@@ -464,16 +465,13 @@ class SonicPlaybackService : MediaLibraryService() {
                 browsableItem(PLAYLISTS_ID, "Playlists", R.drawable.auto_art_lib_playlists),
             )
             AUDIOBOOKS_ID -> audiobooksChildren()
-            // Library/Random Album are playable (one tap = music). Decade and Genres
-            // need a choice, so they browse one level deeper. Sonic Adventure and the
-            // Artist Mix Creator are deliberately absent: both need a multi-item
-            // selection that a browse tree can't express (and shouldn't, at speed).
-            STATIONS_ID -> listOf(
-                stationItem(STATION_LIBRARY_ID, "Library Radio"),
-                stationItem(STATION_RANDOM_ALBUM_ID, "Random Album Radio"),
-                browsableItem(DECADES_ID, "Decade Radio", R.drawable.auto_art_station_decades),
-                browsableItem(GENRES_ID, "Genres", R.drawable.auto_art_station_genres),
-            )
+            // The Stations tab. Library/Random are playable (one tap = music); Genres
+            // needs a choice so it browses one level deeper. The decades sit right
+            // here as tiles: "80s" is one tap, not Decade Radio -> 80s. Sonic Adventure
+            // and the Artist Mix Creator are deliberately absent: both need a
+            // multi-item selection that a browse tree can't express (and shouldn't,
+            // at speed).
+            STATIONS_ID -> stationsChildren()
             DECADES_ID -> STATION_DECADES.map { stationItem(DECADE_PREFIX + it, "${it}s") }
             GENRES_ID -> library.genres(musicLibraryId()).map { it.autoItem(GENRE_PREFIX, "Genre", genreArt(it.title)) }
             // Skip the recent play that IS the current session: Continue listening
@@ -620,7 +618,7 @@ class SonicPlaybackService : MediaLibraryService() {
             ALBUMS_ID -> browsableItem(ALBUMS_ID, "Albums", R.drawable.auto_art_lib_albums)
             ARTISTS_ID -> browsableItem(ARTISTS_ID, "Artists", R.drawable.auto_art_lib_artists)
             PLAYLISTS_ID -> browsableItem(PLAYLISTS_ID, "Playlists", R.drawable.auto_art_lib_playlists)
-            STATIONS_ID -> browsableItem(STATIONS_ID, "Stations")
+            STATIONS_ID -> browsableItem(STATIONS_ID, "Stations", R.drawable.ic_auto_stations)
             DECADES_ID -> browsableItem(DECADES_ID, "Decade Radio", R.drawable.auto_art_station_decades)
             GENRES_ID -> browsableItem(GENRES_ID, "Genres", R.drawable.auto_art_station_genres)
             STATION_LIBRARY_ID -> stationItem(STATION_LIBRARY_ID, "Library Radio")
@@ -681,14 +679,14 @@ class SonicPlaybackService : MediaLibraryService() {
 
     /**
      * Home is a grid of artwork tiles, the Spotify / YouTube Music shape: what you
-     * were just listening to first, then the stations. The grid style lives on the
+     * were just listening to first, then the mixes. The grid style lives on the
      * HOME item itself ([childStyleFor]) because Auto takes tile-vs-list from the
      * PARENT node, never from the children.
      *
      * Continue listening shares ONE group ("Jump back in") with the newest Recent
      * plays and their "See all" tile. As a group of its own it was a single tile
      * with an empty row beside it, pushing everything else off the first screen.
-     * Sonic Mixes follow as their own group, then the Stations.
+     * Sonic Mixes follow as their own group. Stations have their own tab.
      *
      * An earlier cut did Recent/Mixes as headed LIST groups and ran to three
      * scrolls with the same mix three times over, so two things differ now: tiles
@@ -715,9 +713,16 @@ class SonicPlaybackService : MediaLibraryService() {
             out += browsableItem(MIXES_ID, "See all", R.drawable.auto_art_see_mixes).styled(group = "Sonic Mixes")
         }
 
-        out += childrenFor(STATIONS_ID).map { it.styled(group = "Stations") }
         return out
     }
+
+    /** The Stations tab: the radios, then every decade as its own one-tap tile. */
+    private fun stationsChildren(): List<MediaItem> =
+        listOf(
+            stationItem(STATION_LIBRARY_ID, "Library Radio").styled(group = "Radio"),
+            stationItem(STATION_RANDOM_ALBUM_ID, "Random Album Radio").styled(group = "Radio"),
+            browsableItem(GENRES_ID, "Genres", R.drawable.auto_art_station_genres).styled(group = "Radio"),
+        ) + STATION_DECADES.map { stationItem(DECADE_PREFIX + it, "${it}s").styled(group = "Decades") }
 
     /**
      * The Audiobooks tab: the books in progress straight away as big cover tiles
@@ -787,7 +792,7 @@ class SonicPlaybackService : MediaLibraryService() {
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun childStyleFor(mediaId: String): Int? =
         when (mediaId) {
-            HOME_ID, LIBRARY_ID, ALBUMS_ID, PLAYLISTS_ID, RECENT_ID, MIXES_ID, DECADES_ID, GENRES_ID,
+            HOME_ID, STATIONS_ID, LIBRARY_ID, ALBUMS_ID, PLAYLISTS_ID, RECENT_ID, MIXES_ID, DECADES_ID, GENRES_ID,
             AUDIOBOOKS_ID, AUDIOBOOK_RESUME_ID, AUDIOBOOK_BOOKS_ID, AUDIOBOOK_AUTHORS_ID ->
                 MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM
             else -> null

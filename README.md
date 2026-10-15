@@ -542,10 +542,13 @@ Offline prefetch, 3/5/10/15 tracks ahead) to ride through signal drops; a
 (split-screen, AppPair) so transport controls stay visible; a **Dynamic** theme
 that follows the system light/dark setting (in the app and the Now Playing
 widget), alongside five fixed dark palettes; **Android Auto** with a glanceable
-Home — *Continue listening* resumes the last session at the exact position, the
-one-tap Stations sit beneath it, and Recent plays and Sonic Mixes open as artwork
-grids — plus Library and Audiobooks tabs, and shuffle/repeat controls mirrored in
-the notification shade; and search across music (tracks/albums/artists),
+Home built as a grid of artwork tiles — *Continue listening* resumes the last
+session at the exact position beside your newest Recent plays, then Sonic Mixes —
+plus a Stations tab (the radios and every decade, each with its own generated
+cover), a Library tab, and an Audiobooks tab that leads with the books you're
+partway through, and
+shuffle/repeat controls mirrored in the notification shade; and search across
+music (tracks/albums/artists),
 audiobooks (books/authors), or everything from Home.
 
 <table>
