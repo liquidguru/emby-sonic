@@ -554,7 +554,7 @@ audiobooks (books/authors), or everything from Home.
 <table>
 <tr>
 <td width="25%"><img src="docs/screenshots/home.png" alt="Home screen with Stations, Sonic mixes and Recent plays"><br><sub>Home</sub></td>
-<td width="25%"><img src="docs/screenshots/mixes.png" alt="An auto-curated Sonic Mix, open with its tracks"><br><sub>Sonic Mixes</sub></td>
+<td width="25%"><img src="docs/screenshots/mixes.png" alt="The Mixes tab: auto-curated Sonic Mixes, each with its mood and track count"><br><sub>Sonic Mixes</sub></td>
 <td width="25%"><img src="docs/screenshots/similar.png" alt="Now Playing's Similar tab listing sonically-alike tracks"><br><sub>Track Radio &amp; Similar</sub></td>
 <td width="25%"><img src="docs/screenshots/sonic-adventure.png" alt="Sonic Adventure: a generated journey from one track to another"><br><sub>Sonic Adventure</sub></td>
 </tr>
