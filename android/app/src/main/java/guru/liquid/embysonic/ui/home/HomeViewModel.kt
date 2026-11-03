@@ -18,6 +18,7 @@ import guru.liquid.embysonic.data.recent.RecentPlay
 import guru.liquid.embysonic.data.recent.RecentPlaysRepository
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.playback.PlaybackController
+import guru.liquid.embysonic.playback.PlaybackErrorLog
 import guru.liquid.embysonic.playback.PlaybackSource
 import guru.liquid.embysonic.playback.playbackSourceFor
 import kotlinx.coroutines.async
@@ -130,6 +131,7 @@ class HomeViewModel @Inject constructor(
     private val recentPlaysRepo: RecentPlaysRepository,
     private val playlists: PlaylistRepository,
     private val downloadStore: DownloadStore,
+    private val errorLog: PlaybackErrorLog,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -263,7 +265,10 @@ class HomeViewModel @Inject constructor(
             // outage must not blank the Emby-backed rows (and vice versa), and a
             // single failed Emby query degrades only its own row rather than the
             // whole screen.
-            val libraries = runCatching { repository.audioLibraries() }.getOrElse { emptyList() }
+            val libraryResult = runCatching { repository.audioLibraries() }
+            val libraryFailure = libraryResult.exceptionOrNull()
+            libraryFailure?.let { errorLog.recordFailure("Home: library list", it) }
+            val libraries = libraryResult.getOrElse { emptyList() }
             val musicLibrary = libraries.preferredLibrary(
                 LibraryKind.MUSIC,
                 settings.selectedMusicLibraryId.first(),
@@ -279,7 +284,19 @@ class HomeViewModel @Inject constructor(
                     userName = settings.snapshot().userName,
                     loading = false,
                     offline = libraries.isEmpty(),
-                    error = if (libraries.isEmpty() && it.hasNoContent()) "Couldn't reach your server" else null,
+                    error = if (libraries.isEmpty() && it.hasNoContent()) {
+                        if (libraryFailure != null) {
+                            "Couldn't reach your server"
+                        } else {
+                            // The server answered; it just showed this account no library the
+                            // app can use (it only lists content type Music or Audiobooks).
+                            "No Music or Audiobooks library found for this account.\n\n" +
+                                "In Emby, check the library's content type is Music (or Audiobooks) " +
+                                "and that this user is allowed to see it."
+                        }
+                    } else {
+                        null
+                    },
                 )
             }
             if (libraries.isEmpty()) return@launch

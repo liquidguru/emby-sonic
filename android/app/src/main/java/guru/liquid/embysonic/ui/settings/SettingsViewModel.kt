@@ -9,6 +9,7 @@ import guru.liquid.embysonic.data.coordinator.dto.SonicStatus
 import guru.liquid.embysonic.data.settings.SettingsRepository
 import guru.liquid.embysonic.data.settings.ThemeChoice
 import guru.liquid.embysonic.domain.AuthRepository
+import guru.liquid.embysonic.playback.DiagnosticsReport
 import guru.liquid.embysonic.playback.PlaybackController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,6 +52,7 @@ class SettingsViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val authRepository: AuthRepository,
     private val playback: PlaybackController,
+    private val diagnostics: DiagnosticsReport,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -176,6 +178,10 @@ class SettingsViewModel @Inject constructor(
             )
         }
     }
+
+    /** Writes the diagnostics report and returns a Uri for the share sheet, or null on failure. */
+    fun diagnosticsUri(includeAddress: Boolean): android.net.Uri? =
+        runCatching { diagnostics.write(includeAddress) }.getOrNull()
 
     fun logout() {
         viewModelScope.launch {

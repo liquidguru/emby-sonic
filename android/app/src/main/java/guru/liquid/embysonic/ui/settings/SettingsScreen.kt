@@ -1,5 +1,7 @@
 package guru.liquid.embysonic.ui.settings
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
@@ -32,9 +34,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -53,6 +59,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var includeAddress by remember { mutableStateOf(false) }
 
     if (state.loggedOut) {
         onLoggedOut()
@@ -398,6 +406,44 @@ fun SettingsScreen(
                     DiagnosticRow(
                         label = "Cast server",
                         value = state.castServerUrl.ifBlank { "Using Emby server" },
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Include my server address",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Switch(checked = includeAddress, onCheckedChange = { includeAddress = it })
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val uri = viewModel.diagnosticsUri(includeAddress)
+                            if (uri == null) {
+                                Toast.makeText(context, "Couldn't create the diagnostics file", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    putExtra(Intent.EXTRA_SUBJECT, "liquidWave diagnostics")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(send, "Share diagnostics"))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Share diagnostics")
+                    }
+                    Text(
+                        "Shares the app version, your device model and the recent error log. Your " +
+                            "server's address is hidden unless you switch it on above, and passwords " +
+                            "and tokens are never included. You choose where it goes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

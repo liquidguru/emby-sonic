@@ -65,6 +65,9 @@ class SonicPlaybackService : MediaLibraryService() {
     lateinit var library: LibraryRepository
 
     @Inject
+    lateinit var errorLog: PlaybackErrorLog
+
+    @Inject
     lateinit var coordinator: CoordinatorApi
 
     @Inject
@@ -948,7 +951,10 @@ class SonicPlaybackService : MediaLibraryService() {
         serviceScope.launch {
             runCatching { block() }.fold(
                 onSuccess = { future.set(it) },
-                onFailure = { future.setException(it) },
+                onFailure = {
+                    errorLog.recordFailure("Android Auto browse", it)
+                    future.setException(it)
+                },
             )
         }
         return future

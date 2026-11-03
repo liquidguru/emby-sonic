@@ -473,6 +473,11 @@ Once some of your library is analysed:
 what happened, and any crash. Screenshots help. Rough edges and "this felt slow/weird"
 notes are exactly what I'm after.
 
+**Something went wrong?** From beta.44, open Settings → About & diagnostics → **Share
+diagnostics**. It sends the app version, your device model and the recent error log through
+the share sheet, so you can attach it to a post or email. Your server's address is hidden
+unless you switch "Include my server address" on, and passwords and tokens are never included.
+
 ### Known limitations (beta)
 
 - **Android only** for now (iOS is a later phase).

@@ -49,6 +49,25 @@ class PlaybackErrorLog @Inject constructor(
         }.onFailure { Log.w(TAG, "Could not write playback error log", it) }
     }
 
+    /**
+     * A browse or network failure outside playback (library list, Android Auto
+     * tree, sign-in). Same file, so one share-able record covers both.
+     */
+    fun recordFailure(area: String, error: Throwable) {
+        if (error is kotlinx.coroutines.CancellationException) return
+        record("failure: $area", causeLines(error))
+    }
+
+    /** The log as text for the diagnostics report, newest entries kept if it is long. */
+    fun readText(maxChars: Int = REPORT_MAX_CHARS): String {
+        val target = file ?: return ""
+        val text = runCatching { synchronized(this) { target.takeIf { it.exists() }?.readText().orEmpty() } }
+            .getOrDefault("")
+        if (text.length <= maxChars) return text
+        val tail = text.takeLast(maxChars)
+        return tail.substring(tail.indexOf('[').takeIf { it >= 0 } ?: 0)
+    }
+
     /** Cause chain as lines, outermost first, so the root cause is never cut off. */
     fun causeLines(error: Throwable): List<String> {
         val lines = mutableListOf<String>()
@@ -76,5 +95,6 @@ class PlaybackErrorLog @Inject constructor(
         const val FILE_NAME = "playback-errors.log"
         const val MAX_BYTES = 256L * 1024L
         const val MAX_CAUSE_DEPTH = 6
+        const val REPORT_MAX_CHARS = 60_000
     }
 }
