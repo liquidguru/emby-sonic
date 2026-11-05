@@ -263,6 +263,7 @@ async def build_artist_mix(
     per_artist: int,
     db: AsyncSession,
     length: int | None = None,
+    exclude_ids: list[str] | None = None,
 ) -> list[TrackOut]:
     """
     Artist Mix Creator: for each selected artist, pick the tracks closest to that
@@ -270,10 +271,25 @@ async def build_artist_mix(
     the chosen artists (de-duped by song identity so duplicate library files don't
     repeat), then shuffle the pool so the artists are interleaved in a fresh random
     order on every build rather than played in artist-grouped blocks.
+
+    ``exclude_ids`` skips tracks the caller already has, including other library
+    files of the same song, so asking again yields the next-most-representative
+    songs. The centroid is still taken over all of an artist's tracks, so excluding
+    songs does not move what "representative" means.
     """
     per_artist = max(1, per_artist)
     pooled: list[TrackOut] = []
     seen_keys: set[str] = set()
+    excluded = set(exclude_ids or [])
+    if excluded:
+        excluded_list = list(excluded)
+        # Chunked: SQLite caps the number of bound variables in one statement.
+        for i in range(0, len(excluded_list), 500):
+            rows = (
+                await db.execute(select(Track).where(Track.id.in_(excluded_list[i:i + 500])))
+            ).scalars().all()
+            for row in rows:
+                seen_keys.add(_track_identity_key(TrackOut.model_validate(row)))
 
     for name in artist_names:
         tracks = (
@@ -291,6 +307,8 @@ async def build_artist_mix(
         scored.sort(key=lambda tv: float(np.dot(tv[1], centroid)), reverse=True)
         picked = 0
         for t, _ in scored:
+            if t.id in excluded:
+                continue
             out = TrackOut.model_validate(t)
             key = _track_identity_key(out)
             if key in seen_keys:

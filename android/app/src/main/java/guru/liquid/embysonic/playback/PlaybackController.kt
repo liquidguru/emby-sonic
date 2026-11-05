@@ -50,6 +50,7 @@ import guru.liquid.embysonic.data.coordinator.CoordinatorApi
 import guru.liquid.embysonic.data.coordinator.bufferedCoordinatorTrackCount
 import guru.liquid.embysonic.data.coordinator.dto.LoudnessRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.TrackEdgesDto
+import guru.liquid.embysonic.data.coordinator.dto.ArtistMixRequestDto
 import guru.liquid.embysonic.data.coordinator.dto.QueueInjectRequestDto
 import guru.liquid.embysonic.data.download.DownloadProgressStore
 import guru.liquid.embysonic.data.download.DownloadStore
@@ -326,6 +327,11 @@ class PlaybackController @Inject constructor(
     private var guestDjEnabled = false
     private var guestDjLoading = false
     private var guestDjAttemptSignature: String? = null
+
+    // Artists the current queue was built from, when it came from the Artist Mix
+    // Creator. A property of the queue, not of Guest DJ being on: it is set when the
+    // queue is, and cleared when the queue is replaced by anything else or stopped.
+    private var artistMixArtists: List<String> = emptyList()
     private var lastCastIndex: Int = C.INDEX_UNSET
     private var lastCastPositionMs: Long = C.TIME_UNSET
     private var castVolume = CastVolumeState()
@@ -829,6 +835,7 @@ class PlaybackController @Inject constructor(
         cancelCrossfade()
         suppressCrossfadeIndex = -1
         clearGuestDjState()
+        artistMixArtists = source?.artistMixArtists.orEmpty()
         // Guarantee audible playback for a new queue even if the volume was left
         // low by an interrupted ramp or external glitch (self-heals "silent but
         // advancing").
@@ -955,6 +962,7 @@ class PlaybackController @Inject constructor(
             positionMs = position,
             shuffled = queueShuffled,
             guestDjEnabled = guestDjEnabled,
+            artistMixArtists = artistMixArtists,
         )
         scope.launch { runCatching { sessionStore.save(session) } }
     }
@@ -983,6 +991,7 @@ class PlaybackController @Inject constructor(
         // switches itself off if repeat is on, and injection only happens once an
         // eligible track is actually playing.
         guestDjEnabled = saved.guestDjEnabled
+        artistMixArtists = saved.artistMixArtists
         playSessionIdsByIndex = tracks.indices
             .associateWith { UUID.randomUUID().toString() }
             .toMutableMap()
@@ -1157,6 +1166,7 @@ class PlaybackController @Inject constructor(
         prefetchSignature = null
         offlinePrefetch = OfflinePrefetchState()
         clearGuestDjState()
+        artistMixArtists = emptyList()
         clearSleepTimer()
         lastStartedItemId = null
         // Explicit Stop forgets the session: nothing to resume, widget clears.
@@ -1871,31 +1881,14 @@ class PlaybackController @Inject constructor(
         guestDjLoading = true
         publishState()
         scope.launch {
-            val result = runCatching {
-                coordinator.injectQueue(
-                    QueueInjectRequestDto(
-                        currentTrackId = current.id,
-                        queueLength = bufferedCoordinatorTrackCount(GUEST_DJ_INJECT_COUNT),
-                    ),
-                ).injected.let { tracks ->
-                    library.itemsByIds(tracks.map { it.id })
-                }
-            }
+            val result = runCatching { guestDjCandidates(current.id) }
             result.onSuccess { injected ->
                 // Dedupe by item id AND by a normalized title+artist key. A library
                 // with duplicate files holds the same song under several item ids;
                 // those are all maximally similar to the seed, so one inject batch
                 // can return three "different" tracks that are really one song
                 // (the 36/37/38 repeat). The content key rejects those too.
-                val seenIds = queue.map { it.id }.toMutableSet()
-                val seenContent = queue.mapTo(mutableSetOf()) { it.contentKey() }
-                val additions = injected
-                    .filter {
-                        it.contentKind == ContentKind.MUSIC &&
-                            seenIds.add(it.id) &&
-                            seenContent.add(it.contentKey())
-                    }
-                    .take(GUEST_DJ_INJECT_COUNT)
+                val additions = injected.newForQueue().take(GUEST_DJ_INJECT_COUNT)
                 if (guestDjEnabled && additions.isNotEmpty()) {
                     appendGuestDjItems(additions)
                 }
@@ -1905,6 +1898,48 @@ class PlaybackController @Inject constructor(
             guestDjLoading = false
             publishState()
         }
+    }
+
+    /** Music not already queued, by item id and by normalized title + artist (see the note above). */
+    private fun List<LibraryItem>.newForQueue(): List<LibraryItem> {
+        val seenIds = queue.map { it.id }.toMutableSet()
+        val seenContent = queue.mapTo(mutableSetOf()) { it.contentKey() }
+        return filter {
+            it.contentKind == ContentKind.MUSIC &&
+                seenIds.add(it.id) &&
+                seenContent.add(it.contentKey())
+        }
+    }
+
+    /**
+     * What Guest DJ adds next. A queue built by the Artist Mix Creator keeps drawing
+     * from the artists it was made from. Every other queue gets songs sonically
+     * similar to the current track, as it always has, and so does an artist mix whose
+     * artists have nothing new left or whose coordinator predates `exclude_ids` (it
+     * returns the same picks again, which all count as already queued).
+     */
+    private suspend fun guestDjCandidates(currentTrackId: String): List<LibraryItem> {
+        val count = bufferedCoordinatorTrackCount(GUEST_DJ_INJECT_COUNT)
+        if (artistMixArtists.isNotEmpty()) {
+            val fromArtists = runCatching {
+                val picks = coordinator.artistMix(
+                    ArtistMixRequestDto(
+                        artists = artistMixArtists,
+                        // Generous per artist: the coordinator pools them, shuffles, then
+                        // cuts to [count], so an artist that has run out is simply skipped.
+                        perArtist = count,
+                        length = count,
+                        excludeIds = queue.takeLast(GUEST_DJ_EXCLUDE_LIMIT).map { it.id },
+                    ),
+                ).tracks
+                library.itemsByIds(picks.map { it.id }).newForQueue()
+            }.onFailure { Log.w(TAG, "Guest DJ could not extend the artist mix", it) }
+                .getOrDefault(emptyList())
+            if (fromArtists.isNotEmpty()) return fromArtists
+        }
+        return coordinator.injectQueue(
+            QueueInjectRequestDto(currentTrackId = currentTrackId, queueLength = count),
+        ).injected.let { tracks -> library.itemsByIds(tracks.map { it.id }) }
     }
 
     private fun appendGuestDjItems(items: List<LibraryItem>) {
@@ -3031,6 +3066,7 @@ class PlaybackController @Inject constructor(
         const val SOURCE_RETRY_COOLDOWN_MS = 60_000L
         const val GUEST_DJ_TRIGGER_REMAINING = 3
         const val GUEST_DJ_INJECT_COUNT = 5
+        const val GUEST_DJ_EXCLUDE_LIMIT = 1000
         const val CAST_MIME = "audio/mpeg"
         const val CAST_VOLUME_DEBOUNCE_MS = 80L
         const val CAST_VOLUME_PENDING_GRACE_MS = 1_500L

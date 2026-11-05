@@ -119,6 +119,9 @@ class ArtistMixRequest(BaseModel):
     artists: list[str]          # artist names (as stored on tracks)
     per_artist: int = Field(default=5, ge=1, le=100)        # representative tracks to draw from each artist
     length: int | None = Field(default=None, ge=1, le=100)  # optional cap on the final ordered queue
+    # Tracks (and their duplicate files) to leave out: the app sends what is already
+    # queued so Guest DJ can ask for "more from these artists" and get fresh songs.
+    exclude_ids: list[str] = Field(default_factory=list, max_length=2000)
 
 
 class ArtistMixPlaylist(BaseModel):

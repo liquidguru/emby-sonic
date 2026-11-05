@@ -36,6 +36,11 @@ class RequestBoundsTests(unittest.TestCase):
     def test_artist_mix_per_artist_is_bounded(self) -> None:
         self.assert_rejected(ArtistMixRequest, {"artists": ["A"], "per_artist": 0})
 
+    def test_artist_mix_exclude_ids_is_bounded(self) -> None:
+        self.assert_rejected(
+            ArtistMixRequest, {"artists": ["A"], "exclude_ids": [str(i) for i in range(2001)]}
+        )
+
     def test_artist_mix_length_is_bounded(self) -> None:
         self.assert_rejected(ArtistMixRequest, {"artists": ["A"], "length": 0})
 

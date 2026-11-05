@@ -49,6 +49,9 @@ data class PersistedSession(
     // whenever Android killed the process during a pause — the queue came back but
     // the DJ didn't. Defaulted so sessions written before this field deserialize.
     val guestDjEnabled: Boolean = false,
+    // The artists an Artist Mix Creator queue was built from, so Guest DJ keeps
+    // drawing from them after the process is killed. Empty for every other queue.
+    val artistMixArtists: List<String> = emptyList(),
 )
 
 private val Context.playbackSessionDataStore: DataStore<Preferences> by

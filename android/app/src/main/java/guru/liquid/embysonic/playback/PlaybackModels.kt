@@ -70,6 +70,12 @@ data class PlaybackSource(
     val title: String,
     val subtitle: String,
     val coverUrl: String? = null,
+    /**
+     * Set only for queues built by the Artist Mix Creator: the artist names the mix
+     * was made from, as the coordinator stores them. Guest DJ then keeps drawing
+     * from these artists instead of from songs similar to the current track.
+     */
+    val artistMixArtists: List<String> = emptyList(),
 )
 
 /**

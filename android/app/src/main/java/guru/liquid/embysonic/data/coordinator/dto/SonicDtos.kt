@@ -77,6 +77,10 @@ data class ArtistMixRequestDto(
     @SerialName("artists") val artists: List<String>,
     @SerialName("per_artist") val perArtist: Int = 5,
     @SerialName("length") val length: Int? = null,
+    // Tracks already in hand, so asking again returns fresh songs. An older
+    // coordinator ignores the field and returns the same picks; the caller drops
+    // those as duplicates and falls back to sonic similarity.
+    @SerialName("exclude_ids") val excludeIds: List<String> = emptyList(),
 )
 
 /** Response of `POST /sonic/artists/mix`. */

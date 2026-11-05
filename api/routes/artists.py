@@ -27,5 +27,6 @@ async def artist_mix(
         per_artist=body.per_artist,
         db=db,
         length=body.length,
+        exclude_ids=body.exclude_ids,
     )
     return ArtistMixPlaylist(artists=body.artists, tracks=tracks)

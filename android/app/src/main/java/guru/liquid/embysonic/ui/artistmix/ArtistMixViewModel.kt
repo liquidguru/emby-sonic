@@ -233,6 +233,7 @@ class ArtistMixViewModel @Inject constructor(
                             title = "Artist Mix Creator",
                             subtitle = label,
                             coverUrl = tracks.first().imageUrl,
+                            artistMixArtists = artists.map { it.title },
                         ),
                     )
                     _openNowPlaying.send(Unit)
