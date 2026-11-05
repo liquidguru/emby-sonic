@@ -175,18 +175,32 @@ pip install -r requirements.txt
 python main.py
 ```
 
-> **On Windows specifically:** if this is a "one Windows box does everything"
-> setup (see the table above), there's a wrapper that does the above for you
-> and also runs the test suite: `.\dev.ps1 bootstrap` (first run) or
-> `.\dev.ps1 test`. It creates its own `.venv`, so it won't touch anything you
-> already have installed. See
-> [README → Setup](../README.md#setup) for details.
+> **On Windows specifically:** `.\dev.ps1 bootstrap` creates its own `.venv` and
+> installs the dependencies for you (it won't touch anything you already have
+> installed), and `.\dev.ps1 test` runs the test suite. **Neither one starts the
+> coordinator** — they set up and check, then exit. Once `bootstrap` has
+> finished, start it from the repo folder with:
+>
+> ```powershell
+> .\.venv\Scripts\python.exe main.py
+> ```
+>
+> Leave that window open; you should see uvicorn report it is running on port
+> 8765. To keep it running after you close the window or log out, install it as
+> a scheduled task instead: `.\deploy\coordinator-install.ps1` (run elevated).
+> See [README → Setup](../README.md#setup) for details.
 
 Either way the coordinator listens on **`http://<host>:8765`**. Check it:
 
 ```bash
 curl http://<host>:8765/docs      # interactive API docs should load
 ```
+
+> **"Connection refused" (or a 502) when you open it?** Connection refused means
+> nothing is listening yet: the coordinator isn't running, so start it as above.
+> A 502 is not something the coordinator itself returns, so it usually means a
+> proxy is intercepting the request. In Edge/Windows proxy settings, add
+> `localhost` and the server's IP to the bypass list.
 
 ### Updating the coordinator later
 

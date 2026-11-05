@@ -73,6 +73,10 @@ The wrapper uses `.venv\Scripts\python.exe` directly, so a global `python`
 command does not need to be on `PATH`. Install Python 3.12 first if the wrapper
 reports that `py -3.12` is unavailable.
 
+`dev.ps1` only sets up and checks; it does **not** start the coordinator. After
+`bootstrap`, copy `.env.example` to `.env`, set `EMBY_URL` and `EMBY_API_KEY`,
+then start it with `.\.venv\Scripts\python.exe main.py` (listens on port 8765).
+
 For Linux, macOS, containers, or a manual installation:
 
 ```bash
