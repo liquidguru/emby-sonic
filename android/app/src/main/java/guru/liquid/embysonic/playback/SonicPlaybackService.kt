@@ -409,6 +409,7 @@ class SonicPlaybackService : MediaLibraryService() {
                 LibraryResult.ofItemList(childrenFor(parentId).paged(page, pageSize), params)
             }
 
+        @androidx.annotation.OptIn(UnstableApi::class)
         override fun onSetMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
