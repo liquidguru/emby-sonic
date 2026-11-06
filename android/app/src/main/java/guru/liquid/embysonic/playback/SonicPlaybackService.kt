@@ -221,6 +221,11 @@ class SonicPlaybackService : MediaLibraryService() {
             .setSessionActivity(sessionActivity)
             // Shuffle + repeat buttons for Android Auto and the notification shade.
             .setCustomLayout(buildCustomLayout())
+            // Media3 otherwise republishes the playback state every 3 seconds while
+            // playing, and Android Auto redraws its Queue list on each one, throwing
+            // the user back to the top mid-scroll. Clients extrapolate the position
+            // from the state's position + speed, so the updates aren't needed.
+            .setPeriodicPositionUpdateEnabled(false)
             .build()
         serviceScope.launch {
             playback.activePlayer.collect { active ->
