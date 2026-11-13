@@ -3,7 +3,7 @@ import hashlib
 import time
 
 import httpx
-from fastapi import HTTPException, Security
+from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 from config import settings
@@ -58,6 +58,7 @@ def clear_token_cache() -> None:
     """Clear cached validations and counters (startup/tests/admin diagnostics)."""
     global _cache_hits, _cache_misses
     _valid_token_cache.clear()
+    _admin_token_cache.clear()
     _cache_hits = 0
     _cache_misses = 0
 
@@ -94,6 +95,52 @@ async def verify_emby_token(token: str = Security(_header)) -> str:
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Invalid or expired Emby token")
     _cache_valid_token(digest)
+    return token
+
+
+# SHA-256 token digest -> monotonic expiry, for tokens Emby has confirmed belong
+# to an administrator. Kept apart from _valid_token_cache: a token being valid
+# says nothing about whose it is.
+_admin_token_cache: OrderedDict[str, float] = OrderedDict()
+
+
+async def verify_emby_admin(token: str = Depends(verify_emby_token)) -> str:
+    """Allow only an Emby administrator (or the server API key).
+
+    Library maintenance (rescans, rebuilding or refreshing mixes) changes what
+    every user of the server sees and starts heavy background work, so a
+    regular Emby user must not be able to trigger it.
+
+    The coordinator never learns which user a token belongs to, so it asks
+    Emby directly: /ScheduledTasks is administrator-only on Emby, and answers
+    200 for an admin session or API key and 401/403 for anyone else.
+    """
+    if settings.emby_api_key and token == settings.emby_api_key:
+        return token
+    digest = _token_digest(token)
+    now = time.monotonic()
+    expiry = _admin_token_cache.get(digest)
+    if expiry is not None and expiry > now:
+        return token
+    _admin_token_cache.pop(digest, None)
+    async with httpx.AsyncClient(base_url=settings.emby_url, timeout=5.0) as client:
+        resp = await client.get(
+            "/ScheduledTasks",
+            params={"IsHidden": "true"},
+            headers={"X-Emby-Token": token},
+        )
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=403,
+            detail="Only an Emby administrator can do this",
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Couldn't check Emby permissions")
+    ttl = settings.auth_cache_ttl_seconds
+    if ttl > 0:
+        _admin_token_cache[digest] = now + ttl
+        while len(_admin_token_cache) > max(settings.auth_cache_max_entries, 1):
+            _admin_token_cache.popitem(last=False)
     return token
 
 

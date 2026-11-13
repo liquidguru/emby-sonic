@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select, delete, func
-from api.deps import DB, AuthToken
+from api.deps import DB, AdminToken, AuthToken
 from api.schemas import MixOut, MixDetail, RegenerateMixRequest, TrackOut
 from analysis.mixes import is_mix_excluded, mix_features
 from config import settings
@@ -77,7 +77,7 @@ async def regenerate_mix(
     mix_id: str,
     body: RegenerateMixRequest,
     db: DB,
-    _token: AuthToken,
+    _token: AdminToken,
 ) -> MixDetail:
     """Refresh one mix's track selection using its stored centroid.
 

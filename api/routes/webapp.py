@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import threading
 import time
@@ -47,13 +48,46 @@ def _emby_headers(token: str | None = None, device_id: str | None = None) -> dic
     return headers
 
 
+def _trusted_networks() -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    networks = []
+    for part in settings.trusted_proxies.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            logger.warning("Ignoring invalid TRUSTED_PROXIES entry: %r", part)
+    return networks
+
+
+def _is_trusted(address: str, networks: list) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return any(ip in network for network in networks)
+
+
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        first = forwarded.split(",", 1)[0].strip()
-        if first:
-            return first
-    return request.client.host if request.client else "unknown"
+    """The address the login rate limit is keyed on.
+
+    X-Forwarded-For is written by the client as much as by any proxy, so it is
+    only believed when the request arrives from a proxy listed in
+    TRUSTED_PROXIES. Even then the header is read from the right: each trusted
+    proxy appends the address it saw, so the right-most entry that is not
+    itself a trusted proxy is the real client. Taking the left-most entry, as
+    this used to, let anyone dodge the lockout with a fake address per attempt.
+    """
+    peer = request.client.host if request.client else "unknown"
+    networks = _trusted_networks()
+    if not networks or not _is_trusted(peer, networks):
+        return peer
+    forwarded = request.headers.get("x-forwarded-for", "")
+    for hop in reversed([h.strip() for h in forwarded.split(",") if h.strip()]):
+        if not _is_trusted(hop, networks):
+            return hop
+    return peer
 
 
 def _rate_limit_trip(ip: str, now: float) -> None:

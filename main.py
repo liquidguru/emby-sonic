@@ -42,6 +42,13 @@ async def lifespan(app: FastAPI):
     # is reconciled on every startup.
     await rebuild_index_from_db()
     await _warn_if_emby_urls_unreachable()
+    problem = settings.worker_secret_problem()
+    if problem:
+        log.warning(
+            "%s. Set WORKER_SECRET in .env to a long random value of its own "
+            "and give workers the same value (see the README's Security section).",
+            problem,
+        )
     yield
 
 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from api.deps import DB, AuthToken
+from api.deps import DB, AdminToken, AuthToken
 from api.schemas import (
     ScanRequest,
     ScanStarted,
@@ -17,7 +17,7 @@ router = APIRouter(tags=["library"])
 async def trigger_scan(
     background_tasks: BackgroundTasks,
     db: DB,
-    _token: AuthToken,
+    _token: AdminToken,
     body: ScanRequest = ScanRequest(),
 ) -> ScanStarted:
     if scan_state["running"]:
@@ -29,7 +29,7 @@ async def trigger_scan(
 @router.post("/library/build-mixes", response_model=BuildMixesStarted)
 async def trigger_build_mixes(
     background_tasks: BackgroundTasks,
-    _token: AuthToken,
+    _token: AdminToken,
     body: BuildMixesRequest = BuildMixesRequest(),
 ) -> BuildMixesStarted:
     if build_state()["running"]:

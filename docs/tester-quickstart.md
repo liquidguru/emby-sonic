@@ -63,8 +63,9 @@ Running Windows instead, or want a GPU worker on a separate box? See
 - [ ] A machine to run the **coordinator** (Docker, *or* Python 3.11+). A NAS is fine.
 - [ ] A machine to run a **worker** (can be the same box; a GPU makes it ~2× faster).
 - [ ] An **Android phone**, Android 8 / API 26 or newer.
-- [ ] Everything on the **same LAN** (or reachable over your own VPN — nothing here is
-      meant to be exposed to the public internet).
+- [ ] Everything on the **same LAN**, or reachable over a VPN such as Tailscale when
+      you're away. **Nothing here is meant to be exposed to the public internet**, so
+      never port-forward the coordinator (see [Privacy & security](#privacy--security)).
 - [ ] **Patience for the first scan.** Analysing a library is a one-time job:
       ~**10–15 s/track on a GPU**, ~**20–30 s/track CPU-only**. A few thousand tracks
       is an overnight run; after that it's automatic and incremental as you add music.
@@ -142,7 +143,8 @@ EMBY_API_KEY=<your-emby-api-key>
 WORKER_SECRET=<any-long-random-string>     # shared secret for workers (see Security)
 ```
 
-If you access the **web app** from outside your LAN (a public domain / reverse proxy),
+If you access the **web app** from outside your LAN, the safe way is over a VPN (see
+[Privacy & security](#privacy--security)). If Emby itself has a separate public address,
 also set `EMBY_URL_EXTERNAL=https://<your-public-emby-domain>` — the web app streams
 audio straight from Emby to your browser, so it needs Emby's externally-reachable
 address when you're not on the LAN, or streaming will fail.
@@ -407,16 +409,29 @@ about your library, listening, or credentials is sent to me or any third party.
 - Workers fetch audio straight from **Emby's own HTTP API** over your LAN — no SMB/NFS
   shares, no extra ports opened, nothing new exposed.
 - The coordinator is designed to live **inside your network**. It speaks plain HTTP
-  (no TLS of its own) and is meant to sit behind your LAN/VPN — **don't port-forward
-  `:8765` to the public internet.** If you want remote access, use your existing VPN or
-  reverse proxy, exactly as you'd protect Emby itself.
+  (no TLS of its own), and its worker routes share the same port. **Never port-forward
+  `:8765` to the internet.**
+- **Away from home, use a VPN.** [Tailscale](https://tailscale.com) is the easiest:
+  install it on the coordinator's machine and on your phone, then use the
+  coordinator's Tailscale address in the app. Nothing to open on your router.
+- A **reverse proxy** adds HTTPS but still publishes the coordinator to the internet.
+  Only do it if you know how to put an access layer in front (Cloudflare Access,
+  Authelia), and set `TRUSTED_PROXIES` to the proxy's address. If you're not sure,
+  that's the sign to use Tailscale instead.
 
 **Authentication & secrets:**
 
 - Every user-facing coordinator route requires an **`X-Emby-Token`**, validated against
   *your* Emby server (`/System/Info`) — the coordinator trusts Emby, not its own user list.
+- **Library maintenance is admin-only** (since beta.47): rescans, building mixes and
+  refreshing a mix need an Emby **administrator** account. Everyone else on your server
+  can still play and browse.
 - Workers use a **separate `WORKER_SECRET`** (in `X-Worker-Token`), so the worker
-  credential can be rotated independently of your Emby API key.
+  credential can be rotated independently of your Emby API key. Give it its own long
+  random value: the coordinator warns at startup if it's unset, still the example
+  placeholder, or the same as your Emby API key.
+- The web app login is **rate-limited** per client, and `X-Forwarded-For` is only
+  trusted from addresses you list in `TRUSTED_PROXIES`.
 - The Emby API key is **no longer embedded in audio download URLs** (closed in hardening).
 
 **Android app hardening:**

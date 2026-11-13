@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     emby_url_external: str = ""
     emby_api_key: str = ""
     worker_secret: str = ""
+    # Reverse proxies allowed to report the real client address in
+    # X-Forwarded-For (comma-separated IPs or CIDR ranges, e.g. "127.0.0.1,
+    # 172.17.0.0/16"). Empty = trust no proxy: the login rate limit then keys on
+    # the connecting address, because a client can put anything in that header.
+    trusted_proxies: str = ""
     # Successful Emby user-token validations are cached briefly by SHA-256
     # digest. This avoids an Emby /System/Info round trip on every coordinator
     # request while bounding both revocation delay and process memory.
@@ -105,6 +110,25 @@ class Settings(BaseSettings):
     @property
     def effective_worker_secret(self) -> str:
         return self.worker_secret or self.emby_api_key
+
+    def worker_secret_problem(self) -> str | None:
+        """Why the worker secret is weak, or None when it is set properly.
+
+        Worker routes accept results that end up in everyone's mixes, so their
+        secret should be its own value. Falling back to the Emby API key still
+        works (existing installs depend on it) but means anyone holding that
+        key can also post analysis results, and the .env.example placeholder
+        is public.
+        """
+        if self.worker_secret in ("", "change_me_for_worker_routes"):
+            if self.worker_secret:
+                return "WORKER_SECRET is still the .env.example placeholder"
+            return "WORKER_SECRET is not set, so workers authenticate with the Emby API key"
+        if self.worker_secret == self.emby_api_key:
+            return "WORKER_SECRET is the same as EMBY_API_KEY"
+        if len(self.worker_secret) < 16:
+            return "WORKER_SECRET is shorter than 16 characters"
+        return None
 
     @property
     def faiss_index_path(self) -> Path:

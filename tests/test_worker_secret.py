@@ -32,5 +32,19 @@ class WorkerSecretAuthTests(unittest.IsolatedAsyncioTestCase):
             await verify_worker("worker-secret")
 
 
+    def test_secret_problems_are_reported(self) -> None:
+        settings.emby_api_key = "emby-key-long-enough-1234"
+        for secret, expected in [
+            ("", "not set"),
+            ("change_me_for_worker_routes", "placeholder"),
+            ("emby-key-long-enough-1234", "same as EMBY_API_KEY"),
+            ("short", "shorter than 16"),
+        ]:
+            settings.worker_secret = secret
+            self.assertIn(expected, settings.worker_secret_problem() or "", secret)
+        settings.worker_secret = "a-proper-separate-worker-secret"
+        self.assertIsNone(settings.worker_secret_problem())
+
+
 if __name__ == "__main__":
     unittest.main()

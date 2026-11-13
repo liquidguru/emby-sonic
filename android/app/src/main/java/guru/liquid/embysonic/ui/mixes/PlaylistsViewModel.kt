@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.IOException
+import retrofit2.HttpException
 import javax.inject.Inject
 
 /** Backs the Playlists tab of the Mixes screen: lists the user's Emby playlists. */
@@ -273,7 +274,7 @@ class PlaylistsViewModel @Inject constructor(
                 onFailure = {
                     _mixOptions.value = _mixOptions.value.copy(
                         generating = false,
-                        message = it.message ?: "Regeneration failed",
+                        message = it.mixActionMessage("Regeneration failed"),
                     )
                 },
             )
@@ -314,7 +315,7 @@ class PlaylistsViewModel @Inject constructor(
                 onFailure = {
                     _mixOptions.value = _mixOptions.value.copy(
                         generating = false,
-                        message = it.message ?: "Failed to generate mixes",
+                        message = it.mixActionMessage("Failed to generate mixes"),
                     )
                 },
             )
@@ -367,6 +368,18 @@ sealed interface SonicMixesState {
     data class DetailLoading(val mix: SonicMixDto) : SonicMixesState
     data class DetailData(val mix: SonicMixDto, val tracks: List<LibraryItem>) : SonicMixesState
 }
+
+/**
+ * Rebuilding or refreshing mixes is admin-only on the coordinator (beta.47),
+ * because it changes the mixes every user sees. Say so plainly rather than
+ * showing "HTTP 403".
+ */
+private fun Throwable.mixActionMessage(fallback: String): String =
+    if (this is HttpException && code() == 403) {
+        "Only an Emby administrator can rebuild or refresh mixes"
+    } else {
+        message ?: fallback
+    }
 
 fun SonicMixDto.displayTitle(): String {
     val base = name?.takeIf { it.isNotBlank() } ?: "Sonic mix"

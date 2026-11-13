@@ -427,6 +427,36 @@ isn't persisting — check that `-v emby-sonic-panns:/root/panns_data` (or the
 Compose equivalent) is actually mounted and that the volume hasn't been
 recreated (e.g. by `docker compose down -v`).
 
+### Remote access and security
+
+**The coordinator is built for your home network. Don't put it on the open internet.**
+It speaks plain HTTP with no TLS of its own, the worker routes share its port, and it
+assumes the network around it is trusted. So:
+
+- **Never port-forward `:8765`** on your router.
+- **To use liquidWave or the web app away from home, use a VPN.**
+  [Tailscale](https://tailscale.com) is the easiest (free, nothing to open on your
+  router): install it on the coordinator's machine and on your phone, then point the app
+  at the coordinator's Tailscale address. WireGuard or your router's own VPN work too.
+- A **reverse proxy** (Nginx Proxy Manager, Caddy, Traefik) adds HTTPS but still
+  publishes the coordinator to the internet. Only do it if you know how to lock it down
+  (an access layer such as Cloudflare Access or Authelia in front), and set
+  `TRUSTED_PROXIES` to the proxy's address so the login rate limit sees real client
+  addresses.
+
+What the coordinator does to protect itself, for when you're deciding:
+
+- Every user route needs an Emby token, checked against your own Emby server.
+- **Library maintenance is admin-only** (since beta.47): rescans, building mixes and
+  refreshing a mix need an Emby **administrator** account (or the server API key, which
+  the Emby plugin uses). Other Emby users can still play and browse everything.
+- Workers authenticate with **`WORKER_SECRET`**. Give it its own long random value; the
+  coordinator warns at startup if it's missing, still the example placeholder, or the
+  same as your Emby API key.
+- The web app's login is **rate-limited** per client (5 failures in a minute locks that
+  client out for 5 minutes). `X-Forwarded-For` is only believed from addresses in
+  `TRUSTED_PROXIES`, so a client can't dodge the limit by faking it.
+
 ## API
 
 All user-facing routes are under `/sonic` and require an `X-Emby-Token` header
@@ -461,7 +491,8 @@ Set via environment variables or a `.env` file:
 | `EMBY_URL` | `http://localhost:8096` | Emby server URL. Use the **LAN address** (e.g. `http://192.168.1.50:8096`) even if Emby runs on the same host as the coordinator — **not** `localhost`/`127.0.0.1`. The web app hands this to the browser to fetch music directly, so a loopback address makes every browser look for Emby on itself: login works, library is empty |
 | `EMBY_URL_EXTERNAL` | *(blank = same as `EMBY_URL`)* | Emby's publicly-reachable address (FQDN/reverse proxy). Only needed for the web app: it streams audio browser→Emby directly, so a LAN-only `EMBY_URL` fails for anyone loading the page over WAN. Set this and the web app picks whichever address the browser loaded the page from |
 | `EMBY_API_KEY` | *(required)* | Emby API key for coordinator admin calls and worker audio downloads |
-| `WORKER_SECRET` | falls back to `EMBY_API_KEY` | Shared secret required in `X-Worker-Token` for worker routes |
+| `WORKER_SECRET` | falls back to `EMBY_API_KEY` | Shared secret required in `X-Worker-Token` for worker routes. Set your own long random value; the coordinator warns at startup if you haven't |
+| `TRUSTED_PROXIES` | *(blank = none)* | Comma-separated IPs or CIDR ranges of reverse proxies allowed to report the real client address in `X-Forwarded-For` (used by the login rate limit). Leave blank if nothing sits in front of the coordinator |
 | `AUTH_CACHE_TTL_SECONDS` | `30` | Seconds to cache successful Emby user-token validation by SHA-256 digest; `0` disables caching |
 | `AUTH_CACHE_MAX_ENTRIES` | `1024` | Maximum successful token digests retained in the in-process validation cache; `0` disables caching |
 | `HOST` | `0.0.0.0` | Bind address |
